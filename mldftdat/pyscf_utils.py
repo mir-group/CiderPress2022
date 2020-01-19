@@ -61,7 +61,7 @@ def get_cc_rdms(calc, mo_coeff=None):
     rdm2 = calc.make_rdm2()
     if mo_coeff is not None:
         rdm1 = np.matmul(mo_coeff, np.matmul(rdm1, np.transpose(mo_coeff)))
-        rdm2 = ao2mo.incore.fill(rdm2, np.transpose(mo_coeff))
+        rdm2 = ao2mo.incore.full(rdm2, np.transpose(mo_coeff))
     return rdm1, rdm2
 
 def get_grid(mol):
@@ -72,17 +72,34 @@ def get_grid(mol):
     grid.kernel()
     return grid
 
-def make_rdm2_from_rdm1_restricted(rdm1):
+def get_ha_total(rdm1, eeint):
+    return np.sum(np.sum(eeint * rdm1, axis=(2,3)) * rdm1)
+
+def get_hf_coul_ex_total(mol, hf):
+    rdm1 = hf.make_rdm1()
+    jmat, kmat = scf.hf.get_jk(mol, rdm1)
+    return np.sum(jmat * rdm1) / 2, np.sum(kmat * rdm1) / 2
+
+def get_ccsd_ee_total(mol, cccalc, hfcalc):
+    rdm2 = cccalc.make_rdm2()
+    eeint = mol.intor('int2e', aosym='s1')
+    eeint = ao2mo.incore.full(eeint, hfcalc.mo_coeff)
+    return np.sum(eeint * rdm2) / 2
+
+integrate_on_grid = np.dot
+
+def make_rdm2_from_rdm1(rdm1, restricted = True):
     """
     For an RHF calculation, return the 2-RDM from
     a given 1-RDM. Given D2(ijkl)=<psi| i+ k+ l j |psi>,
     and D(ij)=<psi| i+ j |psi>, then
     D2(ijkl) = D(ij) * D(kl) - 0.5 * D(lj) * D(ki)
     """
+    factor = 0.5 if restricted else 1.0
     rdm1copy = rdm1.copy()
     part1 = np.einsum('ij,kl->ijkl', rdm1, rdm1copy)
     part2 = np.einsum('lj,ki->ijkl', rdm1, rdm1copy)
-    return part1 - 0.5 * part2
+    return part1 - factor * part2
 
 def get_vele_mat(mol, points):
     auxmol = gto.fakemol_for_charges(points)
@@ -99,16 +116,17 @@ def get_ha_energy_density(mol, rdm1, vele_mat, ao_vals):
     rho = eval_rho(mol, ao_vals, rdm1)
     return 0.5 * Vele * rho
 
-def get_fx_energy_density(mol, rdm1, vele_mat, ao_vals):
+def get_fx_energy_density(mol, rdm1, vele_mat, ao_vals, restricted = True):
     """
     Get the Hartree Fock exchange energy density on a real-space grid,
     for a given molecular structure with basis set (mol),
     for a given atomic orbital (AO) 1-electron reduced density matrix (rdm1).
     Returns the exchange energy density, which is negative.
     """
+    mul_factor = 0.25 if restriced else 0.5
     Vele = np.einsum('jip,ij->p', vele_mat, rdm1)
     rho = eval_rho(mol, ao_vals, rdm1)
-    return -0.25 * Vele * rho
+    return -mul_factor * Vele * rho
 
 def get_ee_energy_density(mol, rdm2, vele_mat, ao_vals):
     """
