@@ -3,15 +3,13 @@ from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.dft.gen_grid import Grids
 import numpy as np
 
+print("SCF DIR", scf.__file__)
+
 def make_rdm2_from_rdm1(rdm1):
-    rdm2 = np.zeros(rdm1.shape * 2)
-    length = rdm1.shape[0]
-    for i in range(length):
-        for j in range(length):
-            for k in range(length):
-                for l in range(length):
-                    rdm2[i,j,k,l] = rdm1[i,j] * rdm1[k,l] - 0.5 * rdm1[l,j] * rdm1[k,i]
-    return rdm2
+    rdm1copy = rdm1.copy()
+    part1 = np.einsum('ij,kl->ijkl', rdm1, rdm1copy)
+    part2 = np.einsum('lj,ki->ijkl', rdm1, rdm1copy)
+    return part1 - 0.5 * part2
 
 def get_hartree_energy_density(mol, rdm1, points):
     auxmol = gto.fakemol_for_charges(points)
@@ -20,21 +18,6 @@ def get_hartree_energy_density(mol, rdm1, points):
     ao_vals = eval_ao(mol, points)
     rho = eval_rho(mol, ao_vals, rdm1)
     return 0.5 * Vele * rho
-
-"""
-def get_ee_energy_density(mol, rdm2, points):
-    auxmol = gto.fakemol_for_charges(points)
-    Vele_mat = df.incore.aux_e2(mol, auxmol)
-    Vele_tmp = 0 * Vele_mat
-    ao_vals = eval_ao(mol, points).transpose()
-    #mu,nu,lambda,sigma->i,j,k,l; r->p
-    for i in range(rdm2.shape[0]):
-        for j in range(rdm2.shape[1]):
-            Vele_tmp[i,j,:] = np.einsum('ijp,ij->p', Vele_mat, rdm2[i,j,:,:])
-    tmp = np.sum(Vele_tmp * ao_vals, axis=1)
-    Vele = np.sum(tmp * ao_vals, axis=0)
-    return 0.5 * Vele
-"""
 
 def get_ee_energy_density(mol, rdm2, points):
     #mu,nu,lambda,sigma->i,j,k,l; r->p
@@ -47,7 +30,8 @@ def get_ee_energy_density(mol, rdm2, points):
     Vele = np.einsum('pi,pi->p', tmp, ao_vals)
     return 0.5 * Vele
 
-mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'ccpvtz')
+mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'cc-pvtz')
+#mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'aug-cc-pvtz')
 mol.build()
 myhf = scf.RHF(mol)
 myhf.kernel()
@@ -65,19 +49,22 @@ jmat, kmat = scf.hf.get_jk(mol, mol_rdm1)
 print(np.sum(jmat * mol_rdm1), np.sum(kmat * mol_rdm1) / 2)
 print(myhf.e_tot)
 
-he = gto.Mole(atom='He 0 0 0', basis='ccpvtz')
+he = gto.Mole(atom='He 0 0 0', basis='cc-pvtz')
+#he = gto.Mole(atom='He 0 0 0', basis='aug-cc-pvtz')
 mol.build()
 hf = scf.RHF(he).run()
 ci = cc.CCSD(hf)
 ci.kernel()
 rdm1 = ci.make_rdm1()
-rdm1 = np.matmul(hf.mo_coeff, np.matmul(rdm1, np.matmul(np.linalg.inv(hf.get_ovlp()), hf.mo_coeff.transpose())))
+orb = hf.mo_coeff
+rdm1 = np.matmul(orb, np.matmul(rdm1, np.transpose(orb)))
 rdm2 = ci.make_rdm2()
-rdm2 = ao2mo.incore.full(rdm2, hf.mo_coeff.transpose())
+rdm2 = ao2mo.incore.full(rdm2, np.transpose(orb))
 eeint = he.intor('int2e', aosym='s1')
+#eeint = ao2mo.incore.full(eeint, hf.mo_coeff)
+print("MOs")
 print(np.trace(rdm1), np.sum(np.sum(eeint*rdm1, axis=(2,3)) * rdm1) / 2, np.sum(np.conj(np.transpose(eeint))*rdm2) / 2)
-# extend box ~2.5x from the center of the corner atoms
-# density of 0.025 au
+
 grid = Grids(he)
 grid.kernel()
 points = grid.coords
@@ -98,13 +85,4 @@ mat = np.matmul(overlap, mol_rdm1)
 print(np.dot(myhf.mo_energy, myhf.mo_occ))
 print(myhf.mo_occ, myhf.mo_energy, myhf.energy_elec(), myhf.energy_tot())
 print(np.trace(mol_rdm1), np.trace(mat), np.trace(np.trace(mol_rdm2)), np.dot(ha, grid.weights), np.dot(ee, grid.weights))
-
-#Vele_mat = df.incore.aux_e2(mol, auxmol)
-#print(Vele_mat.shape)
-#Vele = points * 0
-#ao_vals = eval_ao(mol, points).transpose()
-#print(ao_vals.shape)
-#tmp = np.sum(Vele_mat * ao_vals, axis=1)
-#Vele = np.sum(tmp * ao_vals, axis=0)
-#print(Vele.shape)
 

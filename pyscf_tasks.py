@@ -8,8 +8,8 @@ from pyscf import gto, scf, dft, cc, fci
 @explicit_serialize
 class HFCalc(FiretaskBase):
 
-    required_params = ['name', 'struct']
-    optional_params = ['calc', 'basis']
+    required_params = ['name', 'struct', 'basis']
+    optional_params = ['calc_type']
 
     calc_opts = {
                 'RHF': scf.RHF,
@@ -21,18 +21,22 @@ class HFCalc(FiretaskBase):
             }
 
     def run_task(self, fw_spec):
-        atoms = ase.io.read(self.struct, format='xyz')
+        atoms = ase.io.read(self['struct'], format='xyz')
         mol = gto.Mole()
         mol.atom = atoms_from_ase(atoms)
-        mol.basis = 'ccpvdz'
+        mol.basis = self['basis']
         mol.build()
-        if self.calc == None:
-            self.calc = 'RHF'
-        calc = self.calc_opts[self.calc](mol)
+        if self['calc_type'] == None:
+            calc_type = 'RHF'
+        else:
+            calc_type = self['calc_type']
+        calc = self.calc_opts[calc_type](mol)
         calc.kernel()
         return FWAction(update_spec={
-                'mol'  :  mol,
-                'calc' :  calc
+                'calc_type' :  calc_type,
+                'struct'    :  struct,
+                'mol'       :  mol,
+                'calc'      :  calc
             })
 
         
@@ -59,10 +63,25 @@ class PostHFCalc(FiretaskBase):
 
 
 @explicit_serialize
-class TrainingDataCollection(FiretaskBase):
+class TrainingDataCollector(FiretaskBase):
 
     def run_task(self, fw_spec):
         calc = fw_spec['calc']
         dm1 = calc.make_rdm1()
         dm2 = calc.make_rdm2()
+
+@explicit_serialize
+class TrainingDataSaver(FiretaskBase):
+
+    required_params = ['save_root_dir', 'id']
+
+    def run_task(self, fw_spec):
+        calc_type = fw_spec['calc_type']
+        basis = fw_spec['basis']
+        struct = fw_spec['struct']
+        mol = fw_spec['mol']
+        calc = fw_spec['calc']
+        save_dir = os.path.join(self['save_root_dir'], calc_type,
+                basis, self['id'] + '-%s' % struct.get_chemical_formula())
+
 
