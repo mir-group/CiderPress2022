@@ -5,8 +5,8 @@ from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 import numpy as np
 
 SCF_TYPES = {
-    'RHF': scf.RHF,
-    'UHF': scf.UHF,
+    'RHF': scf.hf.RHF,
+    'UHF': scf.uhf.UHF,
     'RKS': dft.RKS,
     'UKS': dft.UKS
 }
@@ -34,18 +34,20 @@ def run_scf(mol, calc_type):
     calc.kernel()
     return calc
 
-def run_cc(mol, hf):
+def run_cc(hf):
     """
     Run and return a restricted CCSD calculation on mol,
     with HF molecular orbital coefficients in the RHF object hf.
     """
+    print(type(hf))
     if type(hf) == SCF_TYPES['RHF']:
         calc_cls = cc.CCSD
     elif type(hf) == SCF_TYPES['UHF']:
         calc_cls = cc.UCCSD
     else:
-        raise NotImplementedError('HF type {} not supported'.format(type(hf)))
-    calc = calc_cls(mol, hf.mo_coeff)
+        raise NotImplementedError('HF type {} not supported'.format(type(hf)) +\
+            '\nSupported Types: {}'.format(SCF_TYPES['RHF'], SCF_TYPES['UHF']))
+    calc = calc_cls(hf)
     calc.kernel()
     return calc
 
@@ -59,9 +61,25 @@ def get_cc_rdms(calc, mo_coeff=None):
     """
     rdm1 = calc.make_rdm1()
     rdm2 = calc.make_rdm2()
+    print(rdm2[0].shape, len(rdm2))
     if mo_coeff is not None:
-        rdm1 = np.matmul(mo_coeff, np.matmul(rdm1, np.transpose(mo_coeff)))
-        rdm2 = ao2mo.incore.full(rdm2, np.transpose(mo_coeff))
+        if len(mo_coeff.shape) == 2:
+            axes = (1,0)
+        else:
+            axes = (0,2,1)
+        mo_coeff_trans = np.transpose(mo_coeff, axes=axes)
+        rdm1 = np.matmul(mo_coeff, np.matmul(rdm1, mo_coeff_trans))
+        if len(mo_coeff.shape) == 2:
+            rdm2 = ao2mo.incore.full(rdm2, mo_coeff_trans)
+        else:
+            shape = mo_coeff.shape
+            new_shape = (shape[0], shape[0], shape[1], shape[1], shape[2], shape[2])
+            rdm2 = np.zeros(new_shape)
+            for i in range(2):
+                for j in range(2):
+                    rdm2[i,j,:,:,:,:] = ao2mo.incore.general(rdm2[i,j,:,:,:,:], 
+                        [mo_coeff_trans[i], mo_coeff_trans[i],\
+                        mo_coeff_trans[j], mo_coeff_trans[j]])
     return rdm1, rdm2
 
 def get_grid(mol):
@@ -112,7 +130,10 @@ def get_ha_energy_density(mol, rdm1, vele_mat, ao_vals):
     for a given 1-electron reduced density matrix (rdm1).
     Returns the Hartree energy density.
     """
-    Vele = np.einsum('ijp,ij->p', vele_mat, rdm1)
+    if len(rdm1.shape) == 2:
+        Vele = np.einsum('ijp,ij->p', vele_mat, rdm1)
+    else:
+        Vele = np.einsum('ijp,sij->p', vele_mat, rdm1)
     rho = eval_rho(mol, ao_vals, rdm1)
     return 0.5 * Vele * rho
 
@@ -123,10 +144,12 @@ def get_fx_energy_density(mol, rdm1, vele_mat, ao_vals, restricted = True):
     for a given atomic orbital (AO) 1-electron reduced density matrix (rdm1).
     Returns the exchange energy density, which is negative.
     """
-    mul_factor = 0.25 if restriced else 0.5
-    Vele = np.einsum('jip,ij->p', vele_mat, rdm1)
+    if len(rdm1.shape) == 2:
+        Vele = 0.5 * np.einsum('jip,ij->p', vele_mat, rdm1)
+    else:
+        Vele = np.einsum('jip,sij->sp', vele_mat, rdm1)
     rho = eval_rho(mol, ao_vals, rdm1)
-    return -mul_factor * Vele * rho
+    return -0.5 * Vele * rho
 
 def get_ee_energy_density(mol, rdm2, vele_mat, ao_vals):
     """

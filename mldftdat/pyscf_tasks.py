@@ -42,7 +42,7 @@ class CCSDCalc(FiretaskBase):
     def run_task(self, fw_spec):
         mol = fw_spec['mol']
         hfcalc = fw_spec['calc']
-        calc = run_cc(mol, hfcalc)
+        calc = run_cc(hfcalc)
         return FWAction(update_spec={
                 'calc'      : calc,
                 'hfcalc'    : hfcalc,
