@@ -31,6 +31,7 @@ def run_scf(mol, calc_type):
     if not calc_type in SCF_TYPES:
         raise ValueError('Calculation type must be in {}'.format(list(SCF_TYPES.keys())))
     calc = SCF_TYPES[calc_type](mol)
+    print('Running calc')
     calc.kernel()
     return calc
 
@@ -51,7 +52,7 @@ def run_cc(hf):
     calc.kernel()
     return calc
 
-def get_cc_rdms(calc, mo_coeff=None):
+def get_cc_rdms(calc):
     """
     Get RDMs of a coupled cluster object calc.
     If mo_coeff is None (default), the RDMs
@@ -61,25 +62,6 @@ def get_cc_rdms(calc, mo_coeff=None):
     """
     rdm1 = calc.make_rdm1()
     rdm2 = calc.make_rdm2()
-    print(rdm2[0].shape, len(rdm2))
-    if mo_coeff is not None:
-        if len(mo_coeff.shape) == 2:
-            axes = (1,0)
-        else:
-            axes = (0,2,1)
-        mo_coeff_trans = np.transpose(mo_coeff, axes=axes)
-        rdm1 = np.matmul(mo_coeff, np.matmul(rdm1, mo_coeff_trans))
-        if len(mo_coeff.shape) == 2:
-            rdm2 = ao2mo.incore.full(rdm2, mo_coeff_trans)
-        else:
-            shape = mo_coeff.shape
-            new_shape = (shape[0], shape[0], shape[1], shape[1], shape[2], shape[2])
-            rdm2 = np.zeros(new_shape)
-            for i in range(2):
-                for j in range(2):
-                    rdm2[i,j,:,:,:,:] = ao2mo.incore.general(rdm2[i,j,:,:,:,:], 
-                        [mo_coeff_trans[i], mo_coeff_trans[i],\
-                        mo_coeff_trans[j], mo_coeff_trans[j]])
     return rdm1, rdm2
 
 def get_grid(mol):
@@ -95,33 +77,96 @@ def get_ha_total(rdm1, eeint):
 
 def get_hf_coul_ex_total(mol, hf):
     rdm1 = hf.make_rdm1()
-    jmat, kmat = scf.hf.get_jk(mol, rdm1)
-    return np.sum(jmat * rdm1) / 2, np.sum(kmat * rdm1) / 2
+    jmat, kmat = hf.get_jk(mol, rdm1)
+    return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
+
+def get_hf_coul_ex_total_unrestricted(mol, hf):
+    rdm1 = hf.make_rdm1()
+    jmat, kmat = hf.get_jk(mol, rdm1)
+    return np.sum(jmat * np.sum(rdm1, axis=0)) / 2, -np.sum(kmat * rdm1) / 2
+
+def ao2mo_full(eri, coeff):
+    if len(coeff.shape) == 2:
+        return ao2mo.incore.full(eri, coeff)
+    else:
+        set00 = [coeff[0]] * 4
+        set11 = [coeff[1]] * 4
+        set01 = set00[:2] + set11[:2]
+        part00 = ao2mo.incore.general(eri, set00)
+        part01 = ao2mo.incore.general(eri, set01)
+        part11 = ao2mo.incore.general(eri, set11)
+        return (part00, part01, part11)
 
 def get_ccsd_ee_total(mol, cccalc, hfcalc):
     rdm2 = cccalc.make_rdm2()
     eeint = mol.intor('int2e', aosym='s1')
-    eeint = ao2mo.incore.full(eeint, hfcalc.mo_coeff)
-    return np.sum(eeint * rdm2) / 2
+    eeint = ao2mo_full(eeint, hfcalc.mo_coeff)
+    if len(hfcalc.mo_coeff.shape) == 2:
+        return np.sum(eeint * rdm2) / 2
+    else:
+        return 0.5 * np.sum(eeint[0] * rdm2[0])\
+                + np.sum(eeint[1] * rdm2[1])\
+                + 0.5 * np.sum(eeint[2] * rdm2[2])
 
 integrate_on_grid = np.dot
 
-def make_rdm2_from_rdm1(rdm1, restricted = True):
+def make_rdm2_from_rdm1(rdm1):
     """
     For an RHF calculation, return the 2-RDM from
     a given 1-RDM. Given D2(ijkl)=<psi| i+ k+ l j |psi>,
     and D(ij)=<psi| i+ j |psi>, then
     D2(ijkl) = D(ij) * D(kl) - 0.5 * D(lj) * D(ki)
     """
-    factor = 0.5 if restricted else 1.0
     rdm1copy = rdm1.copy()
     part1 = np.einsum('ij,kl->ijkl', rdm1, rdm1copy)
     part2 = np.einsum('lj,ki->ijkl', rdm1, rdm1copy)
-    return part1 - factor * part2
+    return part1 - 0.5 * part2
+
+def make_rdm2_from_rdm1_unrestricted(rdm1):
+    spinparts = []
+    rdm1copy = rdm1.copy()
+    for s in [0,1]:
+        part1 = np.einsum('ij,kl->ijkl', rdm1[s], rdm1copy[s])
+        part2 = np.einsum('lj,ki->ijkl', rdm1[s], rdm1copy[s])
+        spinparts.append(part1 - part2)
+    mixspinpart = np.einsum('ij,kl->ijkl', rdm1[0], rdm1copy[1])
+    return spinparts[0], mixspinpart, spinparts[1]
+
+def get_ao_vals(mol, points):
+    return eval_ao(mol, points)
 
 def get_vele_mat(mol, points):
+    """
+    Return shape (N, nao, nao)
+    """
     auxmol = gto.fakemol_for_charges(points)
-    return df.incore.aux_e2(mol, auxmol)
+    vele_mat = df.incore.aux_e2(mol, auxmol)
+    return np.ascontiguousarray(np.transpose(vele_mat, axes=(2,0,1)))
+
+def get_mo_vals(ao_vals, mo_coeff):
+    """
+    Args:
+        ao_vals shape (N,nao)
+        mo_coeff shape (nao,nao)
+    Returns
+        shape (N,nao)
+    """
+    return np.matmul(ao_vals, mo_coeff)
+
+def get_mo_vele_mat(vele_mat, mo_coeff):
+    return np.matmul(mo_coeff.transpose(),
+            np.matmul(vele_mat, mo_coeff))
+
+def get_mo_vele_mat_unrestricted(vele_mat, mo_coeff):
+    """
+    Args:
+        ao_vals shape (N,nao,nao)
+        mo_coeff shape (nao,nao)
+    Returns
+        shape (N,nao,nao)
+    """
+    tmp = np.einsum('puv,svj->spuj', vele_mat, mo_coeff)
+    return np.einsum('sui,spuj->spij', mo_coeff, tmp)
 
 def get_ha_energy_density(mol, rdm1, vele_mat, ao_vals):
     """
@@ -131,35 +176,55 @@ def get_ha_energy_density(mol, rdm1, vele_mat, ao_vals):
     Returns the Hartree energy density.
     """
     if len(rdm1.shape) == 2:
-        Vele = np.einsum('ijp,ij->p', vele_mat, rdm1)
+        Vele = np.einsum('pij,ij->p', vele_mat, rdm1)
     else:
-        Vele = np.einsum('ijp,sij->p', vele_mat, rdm1)
+        rdm1 = np.array(rdm1)
+        Vele = np.einsum('pij,sij->p', vele_mat, rdm1)
     rho = eval_rho(mol, ao_vals, rdm1)
     return 0.5 * Vele * rho
 
-def get_fx_energy_density(mol, rdm1, vele_mat, ao_vals, restricted = True):
+def get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals):
     """
     Get the Hartree Fock exchange energy density on a real-space grid,
     for a given molecular structure with basis set (mol),
     for a given atomic orbital (AO) 1-electron reduced density matrix (rdm1).
     Returns the exchange energy density, which is negative.
     """
-    if len(rdm1.shape) == 2:
-        Vele = 0.5 * np.einsum('jip,ij->p', vele_mat, rdm1)
-    else:
-        Vele = np.einsum('jip,sij->sp', vele_mat, rdm1)
-    rho = eval_rho(mol, ao_vals, rdm1)
-    return -0.5 * Vele * rho
+    A = mo_occ * mo_vals
+    tmp = np.einsum('pi,pij->pj', A, mo_vele_mat)
+    return -0.25 * np.sum(A * tmp, axis=1)
 
+"""
 def get_ee_energy_density(mol, rdm2, vele_mat, ao_vals):
+    vele_mat = np.ascontiguousarray(np.transpose(vele_mat, axes=(2,0,1)))
+    vele_mat = vele_mat.view()
+    shape = vele_mat.shape
+    vele_mat.shape = (shape[0] * shape[1], shape[2] * shape[3])
+    rdm2 = rdm2.view()
+    shape = rdm2.shape
+    rdm2.shape = (shape[0], shape[1] * shape[2])
+    tmp = np.dot(vele_mat, rdm2)
+
+    Vele_tmp = np.einsum('ij,pkl->pij', rdm2, vele_mat)
+    tmp = np.einsum('pij,pj->pi', Vele_tmp, ao_vals)
+    Vele = np.einsum('pi,pi->p', tmp, ao_vals)
+    return 0.5 * Vele
+"""
+
+def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     """
     Get the electron-electron repulsion energy density for a system and basis set (mol),
     for a given molecular structure with basis set (mol).
     Returns the electron-electron repulsion energy.
+    NOTE: vele_mat, rdm2, and orb_vals must be in the same basis! (AO or MO)
+    Args:
+        mol (gto.Mole)
+        rdm2 (4-dimensional array shape (nao, nao, nao, nao))
+        vele_mat (3-dimensional array shape (nao, nao, N))
+        orb_vals (2D array shape (N, nao))
     """
     #mu,nu,lambda,sigma->i,j,k,l; r->p
-    vele_mat = np.ascontiguousarray(np.transpose(vele_mat, axes=(2,0,1)))
     Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
-    tmp = np.einsum('pij,pj->pi', Vele_tmp, ao_vals)
-    Vele = np.einsum('pi,pi->p', tmp, ao_vals)
+    tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
+    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
