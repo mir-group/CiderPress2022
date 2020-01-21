@@ -152,7 +152,12 @@ def get_ao_vals(mol, points):
 
 def get_mgga_data(mol, grid, rdm1):
     ao_data = eval_ao(mol, grid.coords, deriv=3)
-    rho_data = eval_rho(mol, ao_data, rdm1, xctype='mGGA')
+    if len(rdm1.shape) == 2:
+        rho_data = eval_rho(mol, ao_data, rdm1, xctype='mGGA')
+    else:
+        part0 = eval_rho(mol, ao_data, rdm1[0], xctype='mGGA')
+        part1 = eval_rho(mol, ao_data, rdm1[1], xctype='mGGA')
+        rho_data = (part0, part1)
     return ao_data, rho_data
 
 def get_vele_mat(mol, points):

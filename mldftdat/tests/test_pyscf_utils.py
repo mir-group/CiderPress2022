@@ -5,7 +5,7 @@ import unittest
 from nose import SkipTest
 from nose.tools import nottest
 from nose.plugins.skip import Skip
-from numpy.testing import assert_almost_equal, assert_equal
+from numpy.testing import assert_almost_equal, assert_equal, assert_raises
 
 
 class TestPyscfUtils(unittest.TestCase):
@@ -82,6 +82,22 @@ class TestPyscfUtils(unittest.TestCase):
         trdm1 = transform_basis_1e(self.He_rdm1, self.hf_He.mo_coeff.transpose())
         rdm1 = transform_basis_1e(trdm1, np.linalg.inv(self.hf_He.mo_coeff.transpose()))
         assert_almost_equal(rdm1, self.He_rdm1)
+
+    def test_get_mgga_data(self):
+        ao_data, rho_data = get_mgga_data(self.FH, self.rhf_grid, self.rhf_rdm1)
+        desired_shape_ao = (20, self.rhf_grid.coords.shape[0], self.rhf_rdm1.shape[0])
+        desired_shape_rho = (6, self.rhf_grid.coords.shape[0])
+        assert_equal(ao_data.shape, desired_shape_ao)
+        assert_equal(rho_data.shape, desired_shape_rho)
+
+        ao_data, rho_data = get_mgga_data(self.NO, self.uhf_grid, self.uhf_rdm1)
+        desired_shape_ao = (20, self.uhf_grid.coords.shape[0], self.uhf_rdm1[0].shape[0])
+        desired_shape_rho = (6, self.uhf_grid.coords.shape[0])
+        assert_equal(ao_data.shape, desired_shape_ao)
+        assert_equal(len(rho_data), 2)
+        for spin_data in rho_data:
+            assert_equal(spin_data.shape, desired_shape_rho)
+        assert_raises(AssertionError, assert_almost_equal, rho_data[0], rho_data[1])
 
     def test_make_rdm2_from_rdm1(self):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
