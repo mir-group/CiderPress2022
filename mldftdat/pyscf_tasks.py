@@ -1,10 +1,12 @@
-from fireworks import FiretaskBase
+from fireworks import FiretaskBase, FWAction
 from fireworks.utilities.fw_utilities import explicit_serialize
+from fireworks.utilities.fw_serializers import recursive_dict
 from ase import Atoms
-from pyscf_utils import *
+from mldftdat.pyscf_utils import *
 import json
 from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
+import os
 
 from pyscf import gto, scf, dft, cc, fci
 
@@ -27,7 +29,7 @@ class HFCalc(FiretaskBase):
             kwargs['spin'] = spin
         if self.get('charge'):
             kwargs['charge'] = charge
-        mol = pyscf_utils.mol_from_ase(atoms, self['basis'], **kwargs)
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
         calc = self.calc_opts[calc_type](mol)
         calc.kernel()
@@ -79,7 +81,7 @@ class TrainingDataCollector(FiretaskBase):
         mol = fw_spec['mol']
         mol_dat = {
             'atom': mol.atom,
-            'calc_type': calc_type
+            'calc_type': calc_type,
             'basis': mol.basis,
         }
 
@@ -128,8 +130,8 @@ def get_general_data(analyzer):
     ao_data, rho_data = get_mgga_data(analyzer.mol, analyzer.grid,
                                         analyzer.rdm1)
     return {
-                'coords': analyzer.coords,
-                'weights': analyzer.weights,
+                'coords': analyzer.grid.coords,
+                'weights': analyzer.grid.weights,
                 'mo_coeff': analyzer.mo_coeff,
                 'mo_occ': analyzer.mo_occ,
                 'ao_vals': analyzer.ao_vals,
@@ -142,7 +144,7 @@ def get_general_data(analyzer):
                 'rho_data': rho_data
             }
 
-def analyzer_rhf(calc):
+def analyze_rhf(calc):
     analyzer = RHFAnalyzer(calc)
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
@@ -150,7 +152,7 @@ def analyzer_rhf(calc):
     data_dict['rdm1'] = analyzer.rdm1
     return data_dict
 
-def analyzer_uhf(calc):
+def analyze_uhf(calc):
     analyzer = UHFAnalyzer(calc)
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
@@ -160,9 +162,9 @@ def analyzer_uhf(calc):
     data_dict['fx_energy_density_d'] = analyzer.fx_energy_density_d
     return data_dict
 
-def analyzer_ccsd(calc):
+def analyze_ccsd(calc):
     analyzer = CCSDAnalyzer(calc)
-    data_dict = get_general_data(calc)
+    data_dict = get_general_data(analyzer)
     data_dict['ao_rdm1'] = analyzer.ao_rdm1
     data_dict['ao_rdm2'] = analyzer.ao_rdm2
     data_dict['mo_rdm1'] = analyzer.mo_rdm1
@@ -171,9 +173,9 @@ def analyzer_ccsd(calc):
                                         - data_dict['ha_energy_density']
     return data_dict
 
-def analyzer_uccsd(calc):
+def analyze_uccsd(calc):
     analyzer = UCCSDAnalyzer(calc)
-    data_dict = get_general_data(calc)
+    data_dict = get_general_data(analyzer)
     data_dict['ao_rdm1'] = analyzer.ao_rdm1
     data_dict['ao_rdm2'] = analyzer.ao_rdm2
     data_dict['mo_rdm1'] = analyzer.mo_rdm1
@@ -197,11 +199,12 @@ class TrainingDataCollector(FiretaskBase):
         calc = fw_spec['calc']
         calc_type = fw_spec['calc_type']
         mol = fw_spec['mol']
+        struct = fw_spec['struct']
         mol_dat = {
             'atom': mol.atom,
             'calc_type': calc_type,
             'basis': mol.basis,
-            'struct': struct.todict()
+            'struct': struct.todict(),
             'task_run': date.today()
         }
         if type(calc) == scf.hf.RHF:
@@ -211,7 +214,7 @@ class TrainingDataCollector(FiretaskBase):
         elif type(calc) == cc.ccsd.CCSD:
             arrays = analyze_ccsd(calc)
         elif type(calc) == cc.uccsd.UCCSD:
-            arrays = analyzer_uccsd(calc)
+            arrays = analyze_uccsd(calc)
         else:
             raise NotImplementedError(
                 'Training data collection not supported for {}'.format(type(calc)))
@@ -221,12 +224,12 @@ class TrainingDataCollector(FiretaskBase):
         else:
             exist_ok = True
         save_dir = os.path.join(self['save_root_dir'], calc_type,
-                basis, self['mol_id'] + '-%s' % struct.get_chemical_formula())
-        os.makedirs(save_dir, exist_ok=exist_ok)
+                mol.basis, self['mol_id'] + '-%s' % struct.get_chemical_formula())
+        os.makedirs(save_dir, exist_ok=True)
 
         mol_dat_file = os.path.join(save_dir, 'mol_dat.json')
-        f = open(save_dir, 'w')
-        json.dump(mol_dat, f, indent=4, sort_keys=True)
+        f = open(mol_dat_file, 'w')
+        json.dump(recursive_dict(mol_dat), f, indent=4, sort_keys=True)
         f.close()
 
         for dat_name, dat_arr in arrays.items():

@@ -1,6 +1,6 @@
 from mldftdat.pyscf_tasks import HFCalc, CCSDCalc, TrainingDataCollector
 from ase import Atoms
-from fireworks import Firework
+from fireworks import Firework, LaunchPad
 import os
 
 SAVE_ROOT = os.environ['MLDFTDB']
@@ -24,4 +24,5 @@ def make_ccsd_firework(struct, mol_id, basis, spin, charge=0):
 
 if __name__ == '__main__':
     fw = make_ccsd_firework(Atoms('He', positions=[(0,0,0)]), 'noble_gas/test', 'cc-pvdz', 0)
+    launchpad = LaunchPad.auto_load()
     launchpad.add_wf(fw)
