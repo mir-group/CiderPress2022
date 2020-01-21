@@ -214,23 +214,6 @@ def get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals):
     tmp = np.einsum('pi,pij->pj', A, mo_vele_mat)
     return -0.25 * np.sum(A * tmp, axis=1)
 
-"""
-def get_ee_energy_density(mol, rdm2, vele_mat, ao_vals):
-    vele_mat = np.ascontiguousarray(np.transpose(vele_mat, axes=(2,0,1)))
-    vele_mat = vele_mat.view()
-    shape = vele_mat.shape
-    vele_mat.shape = (shape[0] * shape[1], shape[2] * shape[3])
-    rdm2 = rdm2.view()
-    shape = rdm2.shape
-    rdm2.shape = (shape[0], shape[1] * shape[2])
-    tmp = np.dot(vele_mat, rdm2)
-
-    Vele_tmp = np.einsum('ij,pkl->pij', rdm2, vele_mat)
-    tmp = np.einsum('pij,pj->pi', Vele_tmp, ao_vals)
-    Vele = np.einsum('pi,pi->p', tmp, ao_vals)
-    return 0.5 * Vele
-"""
-
 def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     """
     Get the electron-electron repulsion energy density for a system and basis set (mol),
@@ -242,14 +225,15 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
         rdm2 (4-dimensional array shape (nao, nao, nao, nao))
         vele_mat (3-dimensional array shape (nao, nao, N))
         orb_vals (2D array shape (N, nao))
-    """
-    #mu,nu,lambda,sigma->i,j,k,l; r->p
+
+    The following script is equivalent and easier to read (but slower):
+
     Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
     tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
-
-def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
+    """
+    #mu,nu,lambda,sigma->i,j,k,l; r->p
     rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
     rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
     vele_mat, shape = vele_mat.view(), vele_mat.shape
@@ -259,5 +243,3 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
-
-
