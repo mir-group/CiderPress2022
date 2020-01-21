@@ -185,11 +185,11 @@ class CCSDAnalyzer():
 
     @property
     def rdm1(self):
-        return self.ao_rdm1
+        return np.array(self.ao_rdm1)
 
     @property
     def rdm2(self):
-        return self.ao_rdm2
+        return np.array(self.ao_rdm2)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -245,11 +245,11 @@ class UCCSDAnalyzer():
 
     @property
     def rdm1(self):
-        return self.ao_rdm1
+        return np.array(self.ao_rdm1)
 
     @property
     def rdm2(self):
-        return self.ao_rdm2
+        return np.array(self.ao_rdm2)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
