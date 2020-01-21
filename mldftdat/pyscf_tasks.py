@@ -234,4 +234,4 @@ class TrainingDataCollector(FiretaskBase):
 
         for dat_name, dat_arr in arrays.items():
             arr_file = os.path.join(save_dir, dat_name)
-            np.save(arr_file, dat_arr)
+            np.save(arr_file, np.array(dat_arr, copy=False))
