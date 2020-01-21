@@ -3,6 +3,7 @@ from fireworks.utilities.fw_utilities import explicit_serialize
 import ase.io
 from pyscf_utils import *
 import json
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 
 from pyscf import gto, scf, dft, cc, fci
 
@@ -43,10 +44,11 @@ class CCSDCalc(FiretaskBase):
         mol = fw_spec['mol']
         hfcalc = fw_spec['calc']
         calc = run_cc(hfcalc)
+        calc_type = 'CCSD' if type(calc) == cc.ccsd.CCSD else 'UCCSD'
         return FWAction(update_spec={
                 'calc'      : calc,
                 'hfcalc'    : hfcalc,
-                'calc_type' : 'CCSD',
+                'calc_type' : calc_type,
             })
 
 
@@ -118,24 +120,96 @@ class TrainingDataCollector(FiretaskBase):
         mol_dat['arrays'] = arrays
 
         return FWAction(update_spec = {'mol_dat': mol_dat})
-        
+
+def get_general_data(analyzer):
+    ao_data, rho_data = get_mgga_data(analyzer.mol, analyzer.grid,
+                                        analyzer.rdm1)
+    return {
+                'coords': analyzer.coords,
+                'weights': analyzer.weights,
+                'mo_coeff': analyzer.mo_coeff,
+                'mo_occ': analyzer.mo_occ,
+                'ao_vals': analyzer.ao_vals,
+                'mo_vals': analyzer.mo_vals,
+                'ao_vele_mat': analyzer.ao_vele_mat,
+                'mo_vele_mat': analyzer.mo_vele_mat,
+                'ha_energy_density': analyzer.get_ha_energy_density(),
+                'ee_energy_density': analyzer.get_ee_energy_density(),
+                'ao_data': ao_data,
+                'rho_data': rho_data
+            }
+
+def analyzer_rhf(calc):
+    analyzer = RHFAnalyzer(calc)
+    data_dict = get_general_data(analyzer)
+    data_dict['mo_energy'] = analyzer.mo_energy
+    data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
+    data_dict['rdm1'] = analyzer.rdm1
+    return data_dict
+
+def analyzer_uhf(calc):
+    analyzer = UHFAnalyzer(calc)
+    data_dict = get_general_data(analyzer)
+    data_dict['mo_energy'] = analyzer.mo_energy
+    data_dict['rdm1'] = analyzer.rdm1
+    data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
+    data_dict['fx_energy_density_u'] = analyzer.fx_energy_density_u
+    data_dict['fx_energy_density_d'] = analyzer.fx_energy_density_d
+    return data_dict
+
+def analyzer_ccsd(calc):
+    analyzer = CCSDAnalyzer(calc)
+    data_dict = get_general_data(calc)
+    data_dict['ao_rdm1'] = analyzer.ao_rdm1
+    data_dict['ao_rdm2'] = analyzer.ao_rdm2
+    data_dict['mo_rdm1'] = analyzer.mo_rdm1
+    data_dict['mo_rdm2'] = analyzer.mo_rdm2
+    data_dict['xc_energy_density'] = data_dict['ee_energy_density']\
+                                        - data_dict['ha_energy_density']
+    return data_dict
+
+def analyzer_uccsd(calc):
+    analyzer = UCCSDAnalyzer(calc)
+    data_dict = get_general_data(calc)
+    data_dict['ao_rdm1'] = analyzer.ao_rdm1
+    data_dict['ao_rdm2'] = analyzer.ao_rdm2
+    data_dict['mo_rdm1'] = analyzer.mo_rdm1
+    data_dict['mo_rdm2'] = analyzer.mo_rdm2
+    data_dict['xc_energy_density'] = data_dict['ee_energy_density']\
+                                        - data_dict['ha_energy_density']
+    data_dict['ee_energy_density_uu'] = analyzer.ee_energy_density_uu
+    data_dict['ee_energy_density_ud'] = analyzer.ee_energy_density_ud
+    data_dict['ee_energy_density_dd'] = analyzer.ee_energy_density_dd
+    return data_dict
 
 @explicit_serialize
-class TrainingDataSaver(FiretaskBase):
+class TrainingDataCollector(FiretaskBase):
 
     required_params = ['save_root_dir', 'id']
     optional_params = ['overwrite']
+    implemented_calcs = ['RHF', 'UHF', 'CCSD', 'UCCSD']
 
     def run_task(self, fw_spec):
 
-        mol_dat = fw_spec['mol_dat']
-        struct = fw_spec['struct']
-
-        calc_type = mol_dat['calc_type']
-        basis = mol_dat['basis']
-
-        mol = fw_spec['mol']
         calc = fw_spec['calc']
+        calc_type = fw_spec['calc_type']
+        mol = fw_spec['mol']
+        mol_dat = {
+            'atom': mol.atom,
+            'calc_type': calc_type
+            'basis': mol.basis
+        }
+        if type(calc) == scf.hf.RHF:
+            arrays = analyze_rhf(calc)
+        elif type(calc) == scf.uhf.UHF:
+            arrays = analyze_uhf(calc)
+        elif type(calc) == cc.ccsd.CCSD:
+            arrays = analyze_ccsd(calc)
+        elif type(calc) == cc.uccsd.UCCSD:
+            arrays = analyzer_uccsd(calc)
+        else:
+            raise NotImplementedError(
+                'Training data collection not supported for {}'.format(type(calc)))
 
         if not self.get('overwrite'):
             exist_ok = False
@@ -145,7 +219,6 @@ class TrainingDataSaver(FiretaskBase):
                 basis, self['id'] + '-%s' % struct.get_chemical_formula())
         os.makedirs(save_dir, exist_ok=exist_ok)
 
-        arrays = mol_dat.pop('arrays')
         mol_dat_file = os.path.join(save_dir, 'mol_dat.json')
         f = open(save_dir, 'w')
         json.dump(mol_dat, f, indent=4, sort_keys=True)

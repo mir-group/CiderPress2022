@@ -147,6 +147,11 @@ def make_rdm2_from_rdm1_unrestricted(rdm1):
 def get_ao_vals(mol, points):
     return eval_ao(mol, points)
 
+def get_mgga_data(mol, grid, rdm1):
+    ao_data = eval_ao(mol, grid.coords, deriv=3)
+    rho_data = eval_rho(mol, ao_data, rdm1, xctype='mGGA')
+    return ao_data, rho_data
+
 def get_vele_mat(mol, points):
     """
     Return shape (N, nao, nao)

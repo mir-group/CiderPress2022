@@ -183,6 +183,14 @@ class CCSDAnalyzer():
         self.ee_energy_density = None
         self.xc_energy_density = None
 
+    @property
+    def rdm1(self):
+        return self.ao_rdm1
+
+    @property
+    def rdm2(self):
+        return self.ao_rdm2
+
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
             self.ha_energy_density = get_ha_energy_density(
