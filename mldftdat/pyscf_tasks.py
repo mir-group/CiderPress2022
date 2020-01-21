@@ -25,10 +25,10 @@ class HFCalc(FiretaskBase):
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
         kwargs = {}
-        if self.get('spin'):
-            kwargs['spin'] = spin
-        if self.get('charge'):
-            kwargs['charge'] = charge
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
         calc = self.calc_opts[calc_type](mol)
