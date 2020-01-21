@@ -44,6 +44,15 @@ class TestPyscfUtils(unittest.TestCase):
         cls.utot_ref_h, cls.utot_ref_x = get_hf_coul_ex_total_unrestricted(cls.NO, cls.uhf)
         cls.He_ref_ee = get_ccsd_ee_total(cls.He, cls.cc_He, cls.hf_He)
 
+    def test_matrix_understanding(self):
+        b = self.FH.get_ovlp()
+        v = self.rhf.mo_coeff
+        e = self.rhf.mo_energy
+        f = self.rhf.get_fock()
+        assert_almost_equal(np.dot(v.transpose(), np.dot(b, v)),
+                            np.identity(b.shape[0]), 6)
+        assert_almost_equal(np.dot(f, v[:,0]), e[0] * np.dot(b, v[:,0]), 6)
+
     def test_mol_from_ase(self):
         water = ase.io.read('test_files/water.sdf')
         mol = mol_from_ase(water, 'cc-pvdz')
