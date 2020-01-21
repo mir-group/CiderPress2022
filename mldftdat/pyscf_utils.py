@@ -31,7 +31,6 @@ def run_scf(mol, calc_type):
     if not calc_type in SCF_TYPES:
         raise ValueError('Calculation type must be in {}'.format(list(SCF_TYPES.keys())))
     calc = SCF_TYPES[calc_type](mol)
-    print('Running calc')
     calc.kernel()
     return calc
 
@@ -40,7 +39,6 @@ def run_cc(hf):
     Run and return a restricted CCSD calculation on mol,
     with HF molecular orbital coefficients in the RHF object hf.
     """
-    print(type(hf))
     if type(hf) == SCF_TYPES['RHF']:
         calc_cls = cc.CCSD
     elif type(hf) == SCF_TYPES['UHF']:
@@ -51,18 +49,6 @@ def run_cc(hf):
     calc = calc_cls(hf)
     calc.kernel()
     return calc
-
-def get_cc_rdms(calc):
-    """
-    Get RDMs of a coupled cluster object calc.
-    If mo_coeff is None (default), the RDMs
-    are returned in the MO basis set (this is pyscf default).
-    If mo_coeff if given, the RDMs are converted to the atomic
-    orbital (AO) basis set.
-    """
-    rdm1 = calc.make_rdm1()
-    rdm2 = calc.make_rdm2()
-    return rdm1, rdm2
 
 def get_grid(mol):
     """
@@ -85,25 +71,52 @@ def get_hf_coul_ex_total_unrestricted(mol, hf):
     jmat, kmat = hf.get_jk(mol, rdm1)
     return np.sum(jmat * np.sum(rdm1, axis=0)) / 2, -np.sum(kmat * rdm1) / 2
 
-def ao2mo_full(eri, coeff):
+def transform_basis_1e(mat, coeff):
+    """
+    Transforms the 1-electron matrix mat into the basis
+    described by coeff (with the basis vectors being the columns).
+    E.g. if mat is in the AO basis, passing mo_coeff transforms
+    to the MO basis. If mat is in the MO basis, passing mo_coeff.transpose()
+    transforms into the AO basis.
+    """
+    if len(coeff.shape) == 2:
+        return np.matmul(coeff.transpose(), np.matmul(mat, coeff))
+    else:
+        if len(coeff) != 2 or len(mat) != 2:
+            raise ValueError('Need two sets of orbitals, two mats for unrestricted case.')
+        part0 = np.matmul(coeff[0].transpose(), np.matmul(mat[0], coeff[0]))
+        part1 = np.matmul(coeff[1].transpose(), np.matmul(mat[1], coeff[1]))
+        return (part0, part1)
+
+def transform_basis_2e(eri, coeff):
+    """
+    Transforms the 2-electron matrix eri into the basis
+    described by coeff (with the basis vectors being the columns).
+    E.g. if mat is in the AO basis, passing mo_coeff transforms
+    to the MO basis. If mat is in the MO basis, passing mo_coeff.transpose()
+    transforms into the AO basis.
+    """
     if len(coeff.shape) == 2:
         return ao2mo.incore.full(eri, coeff)
     else:
+        if len(coeff) != 2 or len(eri) != 3:
+            raise ValueError('Need two sets of orbitals, three eri tensors for unrestricted case.')
         set00 = [coeff[0]] * 4
         set11 = [coeff[1]] * 4
         set01 = set00[:2] + set11[:2]
-        part00 = ao2mo.incore.general(eri, set00)
-        part01 = ao2mo.incore.general(eri, set01)
-        part11 = ao2mo.incore.general(eri, set11)
+        part00 = ao2mo.incore.general(eri[0], set00)
+        part01 = ao2mo.incore.general(eri[1], set01)
+        part11 = ao2mo.incore.general(eri[2], set11)
         return (part00, part01, part11)
 
 def get_ccsd_ee_total(mol, cccalc, hfcalc):
     rdm2 = cccalc.make_rdm2()
     eeint = mol.intor('int2e', aosym='s1')
-    eeint = ao2mo_full(eeint, hfcalc.mo_coeff)
     if len(hfcalc.mo_coeff.shape) == 2:
+        eeint = transform_basis_2e(eeint, hfcalc.mo_coeff)
         return np.sum(eeint * rdm2) / 2
     else:
+        eeint = transform_basis_2e([eeint] * 3, hfcalc.mo_coeff)
         return 0.5 * np.sum(eeint[0] * rdm2[0])\
                 + np.sum(eeint[1] * rdm2[1])\
                 + 0.5 * np.sum(eeint[2] * rdm2[2])

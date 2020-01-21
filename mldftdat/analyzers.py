@@ -147,3 +147,114 @@ class UHFAnalyzer():
         edd = get_ee_energy_density(self.mol, self.rdm2[2],
                                     self.ao_vele_mat, self.ao_vals)
         return euu + 2 * eud + edd
+
+
+
+class CCSDAnalyzer():
+
+    def __init__(self, calc):
+        if type(calc) != cc.ccsd.CCSD:
+            raise ValueError('Calculation must be type cc.ccsd.CCSD')
+        if calc.e_corr is None:
+            raise ValueError('CCSD calculation must be complete.')
+        self.calc = calc
+        self.mol = calc.mol
+        self.post_process()
+
+    def post_process(self):
+        self.mo_rdm1 = self.calc.make_rdm1()
+        self.mo_rdm2 = self.calc.make_rdm2()
+        self.grid = get_grid(self.mol)
+        self.eri_ao = self.mol.intor('int2e')
+
+        self.mo_coeff = self.calc.mo_coeff
+        self.mo_occ = self.calc.mo_occ
+        self.ao_vals = get_ao_vals(self.mol, self.grid.coords)
+        self.mo_vals = get_mo_vals(self.ao_vals, self.mo_coeff)
+        self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
+        self.mo_vele_mat = get_mo_vele_mat(
+                            self.ao_vele_mat, self.mo_coeff)
+
+        self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, self.mo_coeff.transpose())
+        self.ao_rdm2 = transform_basis_2e(self.mo_rdm2, self.mo_coeff.transpose())
+        self.eri_mo = transform_basis_2e(self.eri_ao, self.mo_coeff)        
+
+        self.ha_energy_density = None
+        self.ee_energy_density = None
+        self.xc_energy_density = None
+
+    def get_ha_energy_density(self):
+        if self.ha_energy_density is None:
+            self.ha_energy_density = get_ha_energy_density(
+                                    self.mol, self.ao_rdm1,
+                                    self.ao_vele_mat, self.ao_vals
+                                    )
+        return self.ha_energy_density
+
+    def get_ee_energy_density(self):
+        if self.ee_energy_density is None:
+            self.ee_energy_density = get_ee_energy_density(
+                                    self.mol, self.ao_rdm2,
+                                    self.ao_vele_mat, self.ao_vals)
+        return self.ee_energy_density
+
+
+class UCCSDAnalyzer():
+
+    def __init__(self, calc):
+        if type(calc) != cc.uccsd.UCCSD:
+            raise ValueError('Calculation must be type cc.uccsd.UCCSD')
+        if calc.e_corr is None:
+            raise ValueError('UCCSD calculation must be complete.')
+        self.calc = calc
+        self.mol = calc.mol
+        self.post_process()
+
+    def post_process(self):
+        self.mo_rdm1 = self.calc.make_rdm1()
+        self.mo_rdm2 = self.calc.make_rdm2()
+        self.grid = get_grid(self.mol)
+        self.eri_ao = self.mol.intor('int2e')
+
+        self.mo_coeff = self.calc.mo_coeff
+        self.mo_occ = self.calc.mo_occ
+        self.ao_vals = get_ao_vals(self.mol, self.grid.coords)
+        self.mo_vals = get_mo_vals(self.ao_vals, self.mo_coeff)
+        self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
+        self.mo_vele_mat = get_mo_vele_mat_unrestricted(
+                            self.ao_vele_mat, self.mo_coeff)
+
+        # These are all three-tuples
+        trans_mo_coeff = np.transpose(self.mo_coeff, axes=(0,2,1))
+        self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, trans_mo_coeff)
+        self.ao_rdm2 = transform_basis_2e(self.mo_rdm2, trans_mo_coeff)
+        eri_ao_lst = [self.eri_ao] * 3
+        self.eri_mo = transform_basis_2e(eri_ao_lst, self.mo_coeff)
+
+        self.ha_energy_density = None
+        self.ee_energy_density = None
+        self.xc_energy_density = None
+
+    def get_ha_energy_density(self):
+        if self.ha_energy_density is None:
+            self.ha_energy_density = get_ha_energy_density(
+                                    self.mol, np.sum(self.ao_rdm1, axis=0),
+                                    self.ao_vele_mat, self.ao_vals
+                                    )
+        return self.ha_energy_density
+
+    def get_ee_energy_density(self):
+        if self.ee_energy_density is None:
+            self.ee_energy_density_uu = get_ee_energy_density(
+                                    self.mol, self.ao_rdm2[0],
+                                    self.ao_vele_mat, self.ao_vals)
+            self.ee_energy_density_ud = get_ee_energy_density(
+                                    self.mol, self.ao_rdm2[1],
+                                    self.ao_vele_mat, self.ao_vals)
+            self.ee_energy_density_dd = get_ee_energy_density(
+                                    self.mol, self.ao_rdm2[2],
+                                    self.ao_vele_mat, self.ao_vals)
+            self.ee_energy_density = self.ee_energy_density_uu\
+                                    + 2 * self.ee_energy_density_ud\
+                                    + self.ee_energy_density_dd
+        return self.ee_energy_density

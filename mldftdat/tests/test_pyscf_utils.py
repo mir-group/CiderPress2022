@@ -34,9 +34,9 @@ class TestPyscfUtils():
         cls.He_grid = get_grid(cls.He)
         cls.He_ao_vals = eval_ao(cls.He, cls.He_grid.coords)
         cls.He_rdm1, cls.He_rdm2 = get_cc_rdms(cls.cc_He)
-        cls.He_aordm1, cls.He_aordm2 = get_cc_rdms(cls.cc_He,
-                                                    cls.hf_He.mo_coeff)
         cls.He_vele_mat = get_vele_mat(cls.He, cls.He_grid.coords)
+        cls.He_mo_vals = get_mo_vals(cls.He_ao_vals, cls.hf_He.mo_coeff)
+        cls.He_mo_vele_mat = get_mo_vele_mat(cls.He_vele_mat, cls.hf_He.mo_coeff)
 
         cls.Li = gto.Mole(atom='Li 0 0 0', basis = 'cc-pvdz', spin = 1)
         cls.Li.build()
@@ -45,10 +45,9 @@ class TestPyscfUtils():
         cls.Li_grid = get_grid(cls.Li)
         cls.Li_ao_vals = eval_ao(cls.Li, cls.Li_grid.coords)
         cls.Li_rdm1, cls.Li_rdm2 = get_cc_rdms(cls.cc_Li)
-        cls.Li_aordm1, cls.Li_aordm2 = get_cc_rdms(cls.cc_Li,
-                                                    cls.hf_Li.mo_coeff)
         cls.Li_vele_mat = get_vele_mat(cls.Li, cls.Li_grid.coords)
-        print("SHAPE", cls.Li_aordm2.shape)
+        cls.Li_mo_vals = get_mo_vals(cls.Li_ao_vals, cls.hf_Li.mo_coeff)
+        cls.Li_mo_vele_mat = get_mo_vele_mat_unrestricted(cls.Li_vele_mat, cls.hf_Li.mo_coeff)
 
         cls.rtot_ref_h, cls.rtot_ref_x = get_hf_coul_ex_total(cls.FH, cls.rhf)
         cls.utot_ref_h, cls.utot_ref_x = get_hf_coul_ex_total(cls.NO, cls.uhf)
@@ -67,16 +66,8 @@ class TestPyscfUtils():
         pass
 
     def test_get_cc_rdms(self):
-        eeint = self.He.intor('int2e', aosym='s1')
-        eee = np.sum(eeint * self.He_aordm2) / 2
-        ha = get_ha_total(self.He_aordm1, eeint)
-        assert_almost_equal(eee, self.He_ref_ee)
-
-        eeint = ao2mo.incore.full(eeint, self.hf_He.mo_coeff)
-        ha_ref = get_ha_total(self.He_rdm1, eeint)
-        ee_ref = np.sum(eeint * self.He_rdm2) / 2
-        assert_almost_equal(ee_ref, self.He_ref_ee)
-        assert_almost_equal(ha, ha_ref)
+        # covered in setup
+        pass
 
     def test_get_grid(self):
         # covered in setup
@@ -95,19 +86,17 @@ class TestPyscfUtils():
         pass
 
     def test_make_rdm2_from_rdm1(self):
-
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
-        uhf_rdm2 = make_rdm2_from_rdm1(self.uhf_rdm1, restricted = False)
-
         ree = get_ee_energy_density(self.FH, rhf_rdm2,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
+        rtot = integrate_on_grid(ree, self.rhf_grid.weights)
+        assert_almost_equal(rtot, self.rtot_ref_h + self.rtot_ref_x, 5)
+
+    def test_make_rdm2_from_rdm1_unrestricted(self):
+        uhf_rdm2 = make_rdm2_from_rdm1_unrestricted(self.uhf_rdm1)
         uee = get_ee_energy_density(self.NO, uhf_rdm2,
                                     self.uhf_vele_mat, self.uhf_ao_vals)
-
-        rtot = integrate_on_grid(ree, self.rhf_grid.weights)
         utot = integrate_on_grid(uee, self.uhf_grid.weights)
-
-        assert_almost_equal(rtot, self.rtot_ref_h + self.rtot_ref_x, 5)
         assert_almost_equal(utot, self.utot_ref_h + self.utot_ref_x, 5)
 
     def test_get_vele_mat(self):
@@ -128,11 +117,16 @@ class TestPyscfUtils():
         assert_almost_equal(utot, self.utot_ref_h, 5)
 
     def test_get_fx_energy_density(self):
-        rfx = get_fx_energy_density(self.FH, self.rhf_rdm1,
-                                    self.rhf_vele_mat, self.rhf_ao_vals)
-        ufx = get_fx_energy_density(self.NO, self.uhf_rdm1,
-                                    self.uhf_vele_mat, self.uhf_ao_vals,
-                                    restricted = False)
+        rfx = get_fx_energy_density(self.FH, self.rhf.mo_occ,
+                                    get_mo_vele_mat(
+                                        self.rhf_vele_mat, self.rhf.mo_coeff),
+                                    get_mo_vals(self.rhf_ao_vals,
+                                        self.rhf.mo_coeff))
+        uhf_mo_vele_mat = get_mo_vele_mat_unrestricted(
+                                self.uhf_vele_mat, self.uhf.mo_coeff)
+        uhf_mo_vals = get_mo_vals(self.uhf_ao_vals, self.uhf.mo_coeff)
+        ufx, ufx_parts = get_fx_energy_density_unrestricted(self.NO, self.uhf.mo_occ,
+                                    uhf_mo_vele_mat, uhf_mo_vals)
 
         rtot = integrate_on_grid(rfx, self.rhf_grid.weights)
         utot = integrate_on_grid(ufx, self.uhf_grid.weights)
@@ -141,7 +135,14 @@ class TestPyscfUtils():
         assert_almost_equal(utot, self.utot_ref_x, 5)
 
     def test_get_ee_energy_density(self):
-        eee = get_ee_energy_density(self.He, self.He_aordm2,
-                                    self.He_vele_mat, self.He_ao_vals)
-        tot = integrate_on_grid(eee, self.He_grid.weights)
-        assert_almost_equal(tot, self.He_ref_ee)
+        ree = get_ee_energy_density(self.He, self.He_rdm2,
+                                    self.He_mo_vele_mat, self.He_mo_vals)
+        rtot = integrate_on_grid(ree, self.He_grid.weights)
+        assert_almost_equal(rtot, self.He_ref_ee)
+
+        uee, uee_parts = get_ee_energy_density_unrestricted(
+                                    self.Li, self.Li_rdm2,
+                                    self.Li_mo_vele_mat, self.Li_mo_vals
+                                    )
+        utot = integrate_on_grid(uee, self.Li_grid.weights)
+        assert_almost_equal(utot, self.Li_ref_ee)
