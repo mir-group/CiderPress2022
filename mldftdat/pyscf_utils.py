@@ -75,9 +75,10 @@ def transform_basis_1e(mat, coeff):
     """
     Transforms the 1-electron matrix mat into the basis
     described by coeff (with the basis vectors being the columns).
-    E.g. if mat is in the AO basis, passing mo_coeff transforms
-    to the MO basis. If mat is in the MO basis, passing mo_coeff.transpose()
-    transforms into the AO basis.
+    To transform AO operator to MO operator, pass mo_coeff.
+    To transform MO operator to AO operator, pass inv(mo_coeff).
+    To transform AO density matrix to MO density matrix, pass inv(transpose(mo_coeff)).
+    To transform MO density matrix to AO density matrix, pass transpose(mo_coeff).
     """
     if len(coeff.shape) == 2:
         return np.matmul(coeff.transpose(), np.matmul(mat, coeff))
@@ -92,9 +93,7 @@ def transform_basis_2e(eri, coeff):
     """
     Transforms the 2-electron matrix eri into the basis
     described by coeff (with the basis vectors being the columns).
-    E.g. if mat is in the AO basis, passing mo_coeff transforms
-    to the MO basis. If mat is in the MO basis, passing mo_coeff.transpose()
-    transforms into the AO basis.
+    See transform_basis_1e for how to do different transformations.
     """
     if len(coeff.shape) == 2:
         return ao2mo.incore.full(eri, coeff)
