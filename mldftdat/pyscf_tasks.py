@@ -1,8 +1,9 @@
 from fireworks import FiretaskBase
 from fireworks.utilities.fw_utilities import explicit_serialize
-import ase.io
+from ase import Atoms
 from pyscf_utils import *
 import json
+from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 
 from pyscf import gto, scf, dft, cc, fci
@@ -11,8 +12,8 @@ from pyscf import gto, scf, dft, cc, fci
 @explicit_serialize
 class HFCalc(FiretaskBase):
 
-    required_params = ['name', 'struct', 'basis']
-    optional_params = ['calc_type']
+    required_params = ['struct', 'basis', 'calc_type']
+    optional_params = ['spin', 'charge']
 
     calc_opts = {
                 'RHF': scf.RHF,
@@ -20,17 +21,19 @@ class HFCalc(FiretaskBase):
             }
 
     def run_task(self, fw_spec):
-        atoms = ase.io.read(self['struct'], format='xyz')
-        mol = pyscf_utils.mol_from_ase(atoms, self['basis'])
-        if self['calc_type'] == None:
-            calc_type = 'RHF'
-        else:
-            calc_type = self['calc_type']
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin'):
+            kwargs['spin'] = spin
+        if self.get('charge'):
+            kwargs['charge'] = charge
+        mol = pyscf_utils.mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = self['calc_type']
         calc = self.calc_opts[calc_type](mol)
         calc.kernel()
         return FWAction(update_spec={
                 'calc_type' :  calc_type,
-                'struct'    :  struct,
+                'struct'    :  atoms,
                 'mol'       :  mol,
                 'calc'      :  calc,
                 'rdm1'      :  calc.make_rdm1()
@@ -55,7 +58,7 @@ class CCSDCalc(FiretaskBase):
 @explicit_serialize
 class DFTCalc(FiretaskBase):
 
-    required_params = ['name', 'struct', 'basis']
+    required_params = ['struct', 'basis']
     optional_params = ['calc_type']
 
     calc_opts = {
@@ -77,7 +80,7 @@ class TrainingDataCollector(FiretaskBase):
         mol_dat = {
             'atom': mol.atom,
             'calc_type': calc_type
-            'basis': mol.basis
+            'basis': mol.basis,
         }
 
         rdm1 = fw_spec['rdm1']
@@ -185,7 +188,7 @@ def analyzer_uccsd(calc):
 @explicit_serialize
 class TrainingDataCollector(FiretaskBase):
 
-    required_params = ['save_root_dir', 'id']
+    required_params = ['save_root_dir', 'mol_id']
     optional_params = ['overwrite']
     implemented_calcs = ['RHF', 'UHF', 'CCSD', 'UCCSD']
 
@@ -196,8 +199,10 @@ class TrainingDataCollector(FiretaskBase):
         mol = fw_spec['mol']
         mol_dat = {
             'atom': mol.atom,
-            'calc_type': calc_type
-            'basis': mol.basis
+            'calc_type': calc_type,
+            'basis': mol.basis,
+            'struct': struct.todict()
+            'task_run': date.today()
         }
         if type(calc) == scf.hf.RHF:
             arrays = analyze_rhf(calc)
@@ -216,7 +221,7 @@ class TrainingDataCollector(FiretaskBase):
         else:
             exist_ok = True
         save_dir = os.path.join(self['save_root_dir'], calc_type,
-                basis, self['id'] + '-%s' % struct.get_chemical_formula())
+                basis, self['mol_id'] + '-%s' % struct.get_chemical_formula())
         os.makedirs(save_dir, exist_ok=exist_ok)
 
         mol_dat_file = os.path.join(save_dir, 'mol_dat.json')
