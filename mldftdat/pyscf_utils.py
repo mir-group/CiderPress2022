@@ -2,6 +2,7 @@ from pyscf import scf, dft, gto, ao2mo, df, lib, fci, cc
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
+from scipy.linalg.blas import dgemm
 import numpy as np
 
 SCF_TYPES = {
@@ -247,3 +248,16 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
+
+def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
+    rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
+    rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
+    vele_mat, shape = vele_mat.view(), vele_mat.shape
+    vele_mat.shape = (shape[0], shape[1] * shape[2])
+    vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
+    vele_tmp.shape = (shape[0], shape[1], shape[2])
+    tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
+    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
+    return 0.5 * Vele
+
+
