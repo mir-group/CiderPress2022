@@ -4,6 +4,7 @@ from fireworks.utilities.fw_serializers import recursive_dict
 from ase import Atoms
 from mldftdat.pyscf_utils import *
 import json
+import datetime
 from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 import os
@@ -31,8 +32,8 @@ class HFCalc(FiretaskBase):
             kwargs['charge'] = self['charge']
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
-        calc = self.calc_opts[calc_type](mol)
-        calc.kernel()
+        calc = run_scf(mol, calc_type)
+        assert calc.converged, "HF calculation did not converge!"
         return FWAction(update_spec={
                 'calc_type' :  calc_type,
                 'struct'    :  atoms,
@@ -136,8 +137,8 @@ def get_general_data(analyzer):
                 'mo_occ': analyzer.mo_occ,
                 'ao_vals': analyzer.ao_vals,
                 'mo_vals': analyzer.mo_vals,
-                'ao_vele_mat': analyzer.ao_vele_mat,
-                'mo_vele_mat': analyzer.mo_vele_mat,
+                #'ao_vele_mat': analyzer.ao_vele_mat,
+                #'mo_vele_mat': analyzer.mo_vele_mat,
                 'ha_energy_density': analyzer.get_ha_energy_density(),
                 'ee_energy_density': analyzer.get_ee_energy_density(),
                 'ao_data': ao_data,
@@ -205,7 +206,7 @@ class TrainingDataCollector(FiretaskBase):
             'calc_type': calc_type,
             'basis': mol.basis,
             'struct': struct.todict(),
-            'task_run': date.today()
+            'task_run': str(datetime.datetime.now())
         }
         if type(calc) == scf.hf.RHF:
             arrays = analyze_rhf(calc)
