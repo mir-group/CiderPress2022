@@ -5,6 +5,7 @@ from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from mldftdat.pyscf_utils import *
 import numpy as np
 
+
 class RHFAnalyzer():
 
     def __init__(self, calc):
@@ -70,6 +71,25 @@ class RHFAnalyzer():
         return get_ee_energy_density(self.mol, self.rdm2,
                                         self.ao_vele_mat, self.ao_vals)
 
+
+class RKSAnalyzer(RHFAnalyzer):
+
+    def __init__(self, calc):
+        if type(calc) != dft.rks.RKS:
+            raise ValueError('Calculation must be RKS.')
+        if calc.mo_coeff is None:
+            raise ValueError('Calculation must be complete before initializing.')
+        self.dft = calc
+        self.mol = calc.mol
+        self.post_process()
+
+    def post_process(self):
+        self.calc = scf.RHF(self.mol)
+        self.calc.mo_coeff = self.dft.mo_coeff
+        self.calc.mo_occ = self.dft.mo_occ
+        self.calc.mo_energy = self.dft.mo_energy
+
+        super(RKSAnalyzer, self).post_process()
 
 
 class UHFAnalyzer():
@@ -148,6 +168,25 @@ class UHFAnalyzer():
                                     self.ao_vele_mat, self.ao_vals)
         return euu + 2 * eud + edd
 
+
+class UKSAnalyzer(UHFAnalyzer):
+
+    def __init__(self, calc):
+        if type(calc) != dft.uks.UKS:
+            raise ValueError('Calculation must be UKS.')
+        if calc.mo_coeff is None:
+            raise ValueError('Calculation must be complete before initializing.')
+        self.dft = calc
+        self.mol = calc.mol
+        self.post_process()
+
+    def post_process(self):
+        self.calc = scf.UHF(self.mol)
+        self.calc.mo_coeff = self.dft.mo_coeff
+        self.calc.mo_occ = self.dft.mo_occ
+        self.calc.mo_energy = self.dft.mo_energy
+
+        super(UKSAnalyzer, self).post_process()
 
 
 class CCSDAnalyzer():

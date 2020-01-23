@@ -7,7 +7,8 @@ from numpy.testing import assert_almost_equal, assert_equal
 from mldftdat.pyscf_utils import get_hf_coul_ex_total, get_hf_coul_ex_total_unrestricted,\
                                 run_scf, run_cc, integrate_on_grid, get_ccsd_ee_total,\
                                 transform_basis_2e, transform_basis_1e
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer,\
+                                RKSAnalyzer, UKSAnalyzer
 import numpy as np
 
 class TestRHFAnalyzer():
@@ -22,7 +23,7 @@ class TestRHFAnalyzer():
 
     def test_post_process(self):
         # This is tested in the rest of the module
-        assert_almost_equal(self.ha_tot_ref + self.fx_tot_ref, self.mol.energy_elec()[1])
+        assert_almost_equal(self.ha_tot_ref + self.fx_tot_ref, self.rhf.energy_elec()[1])
 
     def test_get_ha_energy_density(self):
         ha_density = self.analyzer.get_ha_energy_density()
@@ -37,7 +38,7 @@ class TestRHFAnalyzer():
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
-        assert_almost_equal(ee_tot, self.mol.energy_elec()[1], 5)
+        assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
 
     def test__get_rdm2(self):
         # Tested by next test
@@ -46,7 +47,19 @@ class TestRHFAnalyzer():
     def test__get_ee_energy_density_slow(self):
         ee_density = self.analyzer._get_ee_energy_density_slow()
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
-        assert_almost_equal(ee_tot, self.mol.energy_elec()[1], 5)
+        assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
+
+
+class TestRKSAnalyzer():
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.mol.build()
+        cls.rks = run_scf(cls.mol, 'RHF')
+        cls.analyzer = RKSAnalyzer(cls.rks)
+        cls.rhf = cls.analyzer.calc
+        cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total(cls.mol, cls.rhf)
 
 
 class TestUHFAnalyzer():
@@ -61,7 +74,7 @@ class TestUHFAnalyzer():
 
     def test_post_process(self):
         # This is tested in the rest of the module
-        assert_almost_equal(self.ha_tot_ref + self.fx_tot_ref, self.mol.energy_elec()[1])
+        assert_almost_equal(self.ha_tot_ref + self.fx_tot_ref, self.uhf.energy_elec()[1])
 
     def test_get_ha_energy_density(self):
         ha_density = self.analyzer.get_ha_energy_density()
@@ -76,7 +89,7 @@ class TestUHFAnalyzer():
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
-        assert_almost_equal(ee_tot, self.mol.energy_elec()[1], 5)
+        assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
 
     def test__get_rdm2(self):
         # Tested by next test
@@ -85,7 +98,19 @@ class TestUHFAnalyzer():
     def test__get_ee_energy_density_slow(self):
         ee_density = self.analyzer._get_ee_energy_density_slow()
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
-        assert_almost_equal(ee_tot, self.mol.energy_elec()[1], 5)
+        assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
+
+
+class TestUKSAnalyzer(TestUHFAnalyzer):
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.mol.build()
+        cls.uks = run_scf(cls.mol, 'UKS')
+        cls.analyzer = UKSAnalyzer(cls.uks)
+        cls.uhf = cls.analyzer.calc
+        cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total_unrestricted(cls.mol, cls.uhf)
 
 
 class TestCCSDAnalyzer():
