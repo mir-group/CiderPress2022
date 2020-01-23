@@ -4,7 +4,7 @@ import ase.io
 
 fw_lst = []
 
-ids = [11, 12, 13, 14, 15, 16, 17, 18]
+ids = [19, 20, 31, 32, 33, 34, 35, 36]
 spins = [1, 0, 1, 2, 3, 2, 1, 0]
 elements = ['K', 'Ca', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr']
 
