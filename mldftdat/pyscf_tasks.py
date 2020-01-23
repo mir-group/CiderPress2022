@@ -16,7 +16,9 @@ from pyscf import gto, scf, dft, cc, fci
 class HFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type']
-    optional_params = ['spin', 'charge']
+    optional_params = ['spin', 'charge', 'max_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-6
 
     calc_opts = {
                 'RHF': scf.RHF,
@@ -30,17 +32,35 @@ class HFCalc(FiretaskBase):
             kwargs['spin'] = self['spin']
         if self.get('charge') is not None:
             kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
         calc = run_scf(mol, calc_type)
-        assert calc.converged, "HF calculation did not converge!"
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < DEFAULT_MAX_CONV_TOL\
+                and iter_step < max_iter:
+            iter_step += 1
+            calc.conv_tol *= 10
+            calc.kernel()
+        assert calc.converged, "SCF calculation did not converge!"
         return FWAction(update_spec={
                 'calc_type' :  calc_type,
                 'struct'    :  atoms,
                 'mol'       :  mol,
                 'calc'      :  calc,
-                'rdm1'      :  calc.make_rdm1()
+                'rdm1'      :  calc.make_rdm1(),
+                'conv_tol'  :  calc.conv_tol
             })
+
+
+@explicit_serialize
+class DFTCalc(FiretaskBase):
+
+    calc_opts = {
+                'RKS': dft.RKS,
+                'UKS': dft.UKS
+            }
 
         
 @explicit_serialize
@@ -70,63 +90,6 @@ class DFTCalc(FiretaskBase):
     }
 
 
-@explicit_serialize
-class TrainingDataCollector(FiretaskBase):
-
-    implemented_calcs = ['RHF', 'CCSD']
-
-    def run_task(self, fw_spec):
-
-        calc = fw_spec['calc']
-        calc_type = fw_spec['calc_type']
-        mol = fw_spec['mol']
-        mol_dat = {
-            'atom': mol.atom,
-            'calc_type': calc_type,
-            'basis': mol.basis,
-        }
-
-        rdm1 = fw_spec['rdm1']
-        grid = get_grid['mol']
-        ao_data = eval_ao(mol, grid.coords, deriv=3)
-        rho_data = eval_rho(mol, ao_data, rdm1, xctype='mGGA')
-        ao_vals = ao_data[0,:,:]
-        vele_mat = get_vele_mat(mol, grid.coords)
-        arrays = {
-            'rdm1': rdm1,
-            'coords': grid.coords,
-            'weights': grid.weights,
-            'ao_data': ao_data,
-            'rho_data': rho_data
-        }
-
-        eha = get_ha_energy_density(mol, rdm1, vele_mat, ao_vals)
-        if calc_type == 'RHF':
-            exc = get_fx_energy_density(mol, rdm1, vele_mat, ao_vals)
-            eee = eha + exc
-            arrays['mo_coeff'] = calc.mo_coeff
-
-        elif calc_type == 'UHF':
-            exc = get_fx_energy_density_unrestricted(mol, rdm1, vele_mat, ao_vals)
-            eee = eha + exc
-            arrays['mo_coeff'] = calc.mo_coeff
-
-        elif calc_type == 'CCSD':
-            eee = get_ee_energy_density(mol, fw_spec['rdm2'], vele_mat, ao_vals)
-            exc = eee - eha
-            arrays['rdm2'] = fw_spec['rdm2']
-            arrays['mo_coeff'] = fw_spec['hfcalc'].mo_coeff
-
-        else:
-            raise NotImplementedError(
-                'Training data collection not supported for {}'.format(calc_type))
-
-        arrays.update({'eha' : eha, 'exc' : exc, 'eee' : eee})
-
-        mol_dat['arrays'] = arrays
-
-        return FWAction(update_spec = {'mol_dat': mol_dat})
-
 def get_general_data(analyzer):
     ao_data, rho_data = get_mgga_data(analyzer.mol, analyzer.grid,
                                         analyzer.rdm1)
@@ -153,8 +116,26 @@ def analyze_rhf(calc):
     data_dict['rdm1'] = analyzer.rdm1
     return data_dict
 
+def analyze_rks(calc):
+    analyzer = RKSAnalyzer(calc)
+    data_dict = get_general_data(analyzer)
+    data_dict['mo_energy'] = analyzer.mo_energy
+    data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
+    data_dict['rdm1'] = analyzer.rdm1
+    return data_dict
+
 def analyze_uhf(calc):
     analyzer = UHFAnalyzer(calc)
+    data_dict = get_general_data(analyzer)
+    data_dict['mo_energy'] = analyzer.mo_energy
+    data_dict['rdm1'] = analyzer.rdm1
+    data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
+    data_dict['fx_energy_density_u'] = analyzer.fx_energy_density_u
+    data_dict['fx_energy_density_d'] = analyzer.fx_energy_density_d
+    return data_dict
+
+def analyze_uhf(calc):
+    analyzer = UKSAnalyzer(calc)
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
     data_dict['rdm1'] = analyzer.rdm1
@@ -188,6 +169,7 @@ def analyze_uccsd(calc):
     data_dict['ee_energy_density_dd'] = analyzer.ee_energy_density_dd
     return data_dict
 
+
 @explicit_serialize
 class TrainingDataCollector(FiretaskBase):
 
@@ -210,8 +192,12 @@ class TrainingDataCollector(FiretaskBase):
         }
         if type(calc) == scf.hf.RHF:
             arrays = analyze_rhf(calc)
+        elif type(calc) == dft.rks.RKS:
+            arrays = analyze_rks(calc)
         elif type(calc) == scf.uhf.UHF:
             arrays = analyze_uhf(calc)
+        elif type(calc) == dft.uks.UKS:
+            arrays = analyze_uks(calc)
         elif type(calc) == cc.ccsd.CCSD:
             arrays = analyze_ccsd(calc)
         elif type(calc) == cc.uccsd.UCCSD:
