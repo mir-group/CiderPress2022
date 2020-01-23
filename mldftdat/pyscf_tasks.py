@@ -13,17 +13,12 @@ from pyscf import gto, scf, dft, cc, fci
 
 
 @explicit_serialize
-class HFCalc(FiretaskBase):
+class SCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type']
     optional_params = ['spin', 'charge', 'max_conv_tol']
 
     DEFAULT_MAX_CONV_TOL = 1e-6
-
-    calc_opts = {
-                'RHF': scf.RHF,
-                'UHF': scf.UHF,
-            }
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -54,13 +49,10 @@ class HFCalc(FiretaskBase):
             })
 
 
+# old name so that Fireworks can be rerun
 @explicit_serialize
-class DFTCalc(FiretaskBase):
-
-    calc_opts = {
-                'RKS': dft.RKS,
-                'UKS': dft.UKS
-            }
+class HFCalc(SCFCalc):
+    pass
 
         
 @explicit_serialize
@@ -76,18 +68,6 @@ class CCSDCalc(FiretaskBase):
                 'hfcalc'    : hfcalc,
                 'calc_type' : calc_type,
             })
-
-
-@explicit_serialize
-class DFTCalc(FiretaskBase):
-
-    required_params = ['struct', 'basis']
-    optional_params = ['calc_type']
-
-    calc_opts = {
-        'RKS': dft.RKS,
-        'UKS': dft.UKS,
-    }
 
 
 def get_general_data(analyzer):
