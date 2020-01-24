@@ -181,12 +181,13 @@ class TrainingDataCollector(FiretaskBase):
         mol = fw_spec['mol']
         struct = fw_spec['struct']
         mol_dat = {
-            'atom': mol.atom,
+            'mol': gto.mole.pack(mol), # recover with gto.mole.unpack(dict)
             'calc_type': calc_type,
-            'basis': mol.basis,
             'struct': struct.todict(),
             'task_run': str(datetime.datetime.now()),
-            'conv_tol': calc.conv_tol
+            'conv_tol': calc.conv_tol,
+            'max_cycle': calc.max_cycle,
+            'e_tot': calc.e_tot
         }
         if type(calc) == scf.hf.RHF:
             arrays = analyze_rhf(calc)
