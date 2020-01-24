@@ -6,7 +6,7 @@ from mldftdat.pyscf_utils import *
 import json
 import datetime
 from datetime import date
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
 import os
 
 from pyscf import gto, scf, dft, cc, fci
@@ -27,7 +27,7 @@ class SCFCalc(FiretaskBase):
             kwargs['spin'] = self['spin']
         if self.get('charge') is not None:
             kwargs['charge'] = self['charge']
-        max_conv_tol = self.get('max_conv_tol') or DEFAULT_MAX_CONV_TOL
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
         calc = run_scf(mol, calc_type)
@@ -36,6 +36,7 @@ class SCFCalc(FiretaskBase):
         while not calc.converged and calc.conv_tol < max_conv_tol\
                 and iter_step < max_iter:
             iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
             calc.conv_tol *= 10
             calc.kernel()
         assert calc.converged, "SCF calculation did not converge!"
@@ -68,10 +69,11 @@ class CCSDCalc(FiretaskBase):
         calc = run_cc(hfcalc)
         max_iter = 50 # extra safety catch
         iter_step = 0
-        max_conv_tol = self.get('max_conv_tol') or DEFAULT_MAX_CONV_TOL
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         while not calc.converged and calc.conv_tol < max_conv_tol\
                 and iter_step < max_iter:
             iter_step += 1
+            print ("Did not converge CCSD, increasing conv_tol.")
             calc.conv_tol *= 10
             calc.kernel()
         assert calc.converged, "CCSD calculation did not converge!"
@@ -128,7 +130,7 @@ def analyze_uhf(calc):
     data_dict['fx_energy_density_d'] = analyzer.fx_energy_density_d
     return data_dict
 
-def analyze_uhf(calc):
+def analyze_uks(calc):
     analyzer = UKSAnalyzer(calc)
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
