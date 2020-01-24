@@ -18,7 +18,7 @@ class SCFCalc(FiretaskBase):
     required_params = ['struct', 'basis', 'calc_type']
     optional_params = ['spin', 'charge', 'max_conv_tol']
 
-    DEFAULT_MAX_CONV_TOL = 1e-6
+    DEFAULT_MAX_CONV_TOL = 1e-7
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -33,7 +33,7 @@ class SCFCalc(FiretaskBase):
         calc = run_scf(mol, calc_type)
         max_iter = 50 # extra safety catch
         iter_step = 0
-        while not calc.converged and calc.conv_tol < DEFAULT_MAX_CONV_TOL\
+        while not calc.converged and calc.conv_tol < max_conv_tol\
                 and iter_step < max_iter:
             iter_step += 1
             calc.conv_tol *= 10
@@ -58,15 +58,29 @@ class HFCalc(SCFCalc):
 @explicit_serialize
 class CCSDCalc(FiretaskBase):
 
+    optional_params = ['max_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-5
+
     def run_task(self, fw_spec):
         mol = fw_spec['mol']
         hfcalc = fw_spec['calc']
         calc = run_cc(hfcalc)
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        max_conv_tol = self.get('max_conv_tol') or DEFAULT_MAX_CONV_TOL
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            calc.conv_tol *= 10
+            calc.kernel()
+        assert calc.converged, "CCSD calculation did not converge!"
         calc_type = 'CCSD' if type(calc) == cc.ccsd.CCSD else 'UCCSD'
         return FWAction(update_spec={
                 'calc'      : calc,
                 'hfcalc'    : hfcalc,
                 'calc_type' : calc_type,
+                'conv_tol'  : calc.conv_tol
             })
 
 
@@ -160,6 +174,7 @@ class TrainingDataCollector(FiretaskBase):
     def run_task(self, fw_spec):
 
         calc = fw_spec['calc']
+        assert calc.converged, "This training data is not converged!"
         calc_type = fw_spec['calc_type']
         mol = fw_spec['mol']
         struct = fw_spec['struct']
@@ -168,7 +183,8 @@ class TrainingDataCollector(FiretaskBase):
             'calc_type': calc_type,
             'basis': mol.basis,
             'struct': struct.todict(),
-            'task_run': str(datetime.datetime.now())
+            'task_run': str(datetime.datetime.now()),
+            'conv_tol': calc.conv_tol
         }
         if type(calc) == scf.hf.RHF:
             arrays = analyze_rhf(calc)
@@ -202,3 +218,5 @@ class TrainingDataCollector(FiretaskBase):
         for dat_name, dat_arr in arrays.items():
             arr_file = os.path.join(save_dir, dat_name)
             np.save(arr_file, np.array(dat_arr, copy=False))
+
+        return FWAction(stored_data={'save_dir': save_dir})
