@@ -179,19 +179,37 @@ def get_mo_vals(ao_vals, mo_coeff):
     return np.matmul(ao_vals, mo_coeff)
 
 def get_mo_vele_mat(vele_mat, mo_coeff):
-    return np.matmul(mo_coeff.transpose(),
+    """
+    Convert the return value of get_vele_mat to the MO basis.
+    """
+    if len(mo_coeff.shape) == 2:
+        return np.matmul(mo_coeff.transpose(),
             np.matmul(vele_mat, mo_coeff))
+    else:
+        tmp = np.einsum('puv,svj->spuj', vele_mat, mo_coeff)
+        return np.einsum('sui,spuj->spij', mo_coeff, tmp)
 
-def get_mo_vele_mat_unrestricted(vele_mat, mo_coeff):
+def get_vele_mat_chunks(mol, points, num_chunks, orb_vals, mo_coeff=None):
     """
-    Args:
-        ao_vals shape (N,nao,nao)
-        mo_coeff shape (nao,nao)
-    Returns
-        shape (N,nao,nao)
+    Generate chunks of vele_mat on the fly to reduce memory load.
     """
-    tmp = np.einsum('puv,svj->spuj', vele_mat, mo_coeff)
-    return np.einsum('sui,spuj->spij', mo_coeff, tmp)
+    num_pts = points.shape[0]
+    for i in range(num_chunks):
+        start = (i * num_pts) // num_chunks
+        end = ((i+1) * num_pts) // num_chunks
+        auxmol = gto.fakemol_for_charges(points[start:end])
+        orb_vals_chunk = orb_vals[start:end]
+        vele_mat_chunk = df.incore.aux_e2(mol, auxmol)
+        vele_mat_chunk = np.ascontiguousarray(np.transpose(
+                                vele_mat_chunk, axes=(2,0,1)))
+        if mo_coeff is not None:
+            vele_mat_chunk = get_mo_vele_mat(vele_mat_chunk, mo_coeff)
+        yield vele_mat_chunk, orb_vals_chunk
+
+def get_vele_mat_generator(mol, points, num_chunks, orb_vals, mo_coeff=None):
+    get_generator = lambda: get_vele_mat_chunks(mol, points,
+                                num_chunks, orb_vals, mo_coeff)
+    return get_generator
 
 def get_ha_energy_density(mol, rdm1, vele_mat, ao_vals):
     """
@@ -248,3 +266,43 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
+
+
+# The following functions are helpers that check whether vele_mat
+# is a numpy array or a generator before passing to the methods
+# above. This allows one to integrate the memory-saving (but slower)
+# chunk-generating approach smoothly.
+
+def get_ha_energy_density2(mol, rdm1, vele_mat, ao_vals):
+    if isinstance(vele_mat, np.ndarray):
+        return get_ha_energy_density(mol, rdm1, vele_mat, ao_vals)
+    else:
+        ha_energy_density = np.array([])
+        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+            ha_energy_density = np.append(ha_energy_density,
+                                    get_ha_energy_density(mol, rdm1,
+                                        vele_mat_chunk, orb_vals_chunk))
+        return ha_energy_density
+
+def get_fx_energy_density2(mol, mo_occ, mo_vele_mat, mo_vals):
+    # make sure to test that the grids end up the same
+    if isinstance(mo_vele_mat, np.ndarray):
+        return get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals)
+    else:
+        fx_energy_density = np.array([])
+        for vele_mat_chunk, orb_vals_chunk in mo_vele_mat():
+            fx_energy_density = np.append(fx_energy_density,
+                                    get_fx_energy_density(mol, mo_occ,
+                                        vele_mat_chunk, orb_vals_chunk))
+        return fx_energy_density
+
+def get_ee_energy_density2(mol, rdm2, vele_mat, orb_vals):
+    if isinstance(vele_mat, np.ndarray):
+        return get_ee_energy_density(mol, rdm2, vele_mat, orb_vals)
+    else:
+        ee_energy_density = np.array([])
+        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+            ee_energy_density = np.append(ee_energy_density,
+                                    get_ee_energy_density(mol, rdm2,
+                                        vele_mat_chunk, orb_vals_chunk))
+        return ee_energy_density

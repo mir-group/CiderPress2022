@@ -50,6 +50,17 @@ class TestRHFAnalyzer():
         assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
 
 
+class TestRHFAnalyzerChunks(TestRHFAnalyzer):
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.mol.build()
+        cls.rhf = run_scf(cls.mol, 'RHF')
+        cls.analyzer = RHFAnalyzer(cls.rhf, max_mem=5)
+        cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total(cls.mol, cls.rhf)
+
+
 class TestRKSAnalyzer():
 
     @classmethod
@@ -101,6 +112,17 @@ class TestUHFAnalyzer():
         assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
 
 
+class TestUHFAnalyzerChunks(TestUHFAnalyzer):
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.mol.build()
+        cls.uhf = run_scf(cls.mol, 'UHF')
+        cls.analyzer = UHFAnalyzer(cls.uhf, max_mem=5)
+        cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total_unrestricted(cls.mol, cls.uhf)
+
+
 class TestUKSAnalyzer(TestUHFAnalyzer):
 
     @classmethod
@@ -108,7 +130,7 @@ class TestUKSAnalyzer(TestUHFAnalyzer):
         cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
         cls.mol.build()
         cls.uks = run_scf(cls.mol, 'UKS')
-        cls.analyzer = UKSAnalyzer(cls.uks)
+        cls.analyzer = UKSAnalyzer(cls.uks, require_converged=False)
         cls.uhf = cls.analyzer.calc
         cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total_unrestricted(cls.mol, cls.uhf)
 
@@ -145,6 +167,18 @@ class TestCCSDAnalyzer():
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
 
 
+class TestCCSDAnalyzerChunks(TestCCSDAnalyzer):
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='He 0 0 0', basis = 'cc-pvdz')
+        cls.mol.build()
+        cls.hf = run_scf(cls.mol, 'RHF')
+        cls.cc = run_cc(cls.hf)
+        cls.analyzer = CCSDAnalyzer(cls.cc, max_mem=5)
+        cls.ee_tot_ref = get_ccsd_ee_total(cls.mol, cls.cc, cls.hf)
+
+
 class TestUCCSDAnalyzer():
 
     @classmethod
@@ -176,3 +210,15 @@ class TestUCCSDAnalyzer():
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
+
+
+class TestUCCSDAnalyzerChunks(TestUCCSDAnalyzer):
+
+    @classmethod
+    def setup_class(cls):
+        cls.mol = gto.Mole(atom='Li 0 0 0', basis = 'cc-pvdz', spin=1)
+        cls.mol.build()
+        cls.hf = run_scf(cls.mol, 'UHF')
+        cls.cc = run_cc(cls.hf)
+        cls.analyzer = UCCSDAnalyzer(cls.cc, max_mem=5)
+        cls.ee_tot_ref = get_ccsd_ee_total(cls.mol, cls.cc, cls.hf)

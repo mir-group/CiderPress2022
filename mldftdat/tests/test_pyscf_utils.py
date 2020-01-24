@@ -125,6 +125,29 @@ class TestPyscfUtils(unittest.TestCase):
         # covered in setup
         pass
 
+    def test_get_vele_mat_chunks(self):
+        vele_mat = None
+        for vele_chunk, ao_chunk in get_vele_mat_chunks(self.FH, self.rhf_grid.coords,
+                                                        13, self.rhf_ao_vals):
+            if vele_mat is None:
+                vele_mat = vele_chunk
+                ao_vals = ao_chunk
+            else:
+                vele_mat = np.append(vele_mat, vele_chunk, axis=0)
+                ao_vals = np.append(ao_vals, ao_chunk, axis=0)
+        assert_almost_equal(vele_mat, self.rhf_vele_mat)
+
+        vele_mat = None
+        for vele_chunk, ao_chunk in get_vele_mat_chunks(self.He, self.He_grid.coords,
+                                        13, self.He_ao_vals, self.hf_He.mo_coeff):
+            if vele_mat is None:
+                vele_mat = vele_chunk
+                ao_vals = ao_chunk
+            else:
+                vele_mat = np.append(vele_mat, vele_chunk, axis=0)
+                ao_vals = np.append(ao_vals, ao_chunk, axis=0)
+        assert_almost_equal(vele_mat, self.He_mo_vele_mat)
+
     def test_get_ha_energy_density(self):
         rha = get_ha_energy_density(self.FH, self.rhf_rdm1,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
@@ -149,3 +172,23 @@ class TestPyscfUtils(unittest.TestCase):
                                     self.He_mo_vele_mat, self.He_mo_vals)
         rtot = integrate_on_grid(ree, self.He_grid.weights)
         assert_almost_equal(rtot, self.He_ref_ee)
+
+    def test_get_ha_energy_density2(self):
+        rha_ref = get_ha_energy_density(self.FH, self.rhf_rdm1,
+                                    self.rhf_vele_mat, self.rhf_ao_vals)
+
+        vele_mat_gen1 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
+                                               2, self.rhf_ao_vals)
+        vele_mat_gen2 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
+                                               13, self.rhf_ao_vals)
+
+        rha1 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    self.rhf_vele_mat, self.rhf_ao_vals)
+        rha2 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    vele_mat_gen1, self.rhf_ao_vals)
+        rha3 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    vele_mat_gen2, self.rhf_ao_vals)
+        assert_almost_equal(rha1, rha_ref)
+        assert_almost_equal(rha2, rha_ref)
+        assert_almost_equal(rha3, rha_ref)
+
