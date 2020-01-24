@@ -8,6 +8,7 @@ import datetime
 from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
 import os
+import psutil
 
 from pyscf import gto, scf, dft, cc, fci
 
@@ -104,8 +105,11 @@ def get_general_data(analyzer):
                 'rho_data': rho_data
             }
 
+def safe_mem_cap_mb():
+    return int(psutil.virtual_memory().available // 4e6)
+
 def analyze_rhf(calc):
-    analyzer = RHFAnalyzer(calc)
+    analyzer = RHFAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
     data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
@@ -113,7 +117,7 @@ def analyze_rhf(calc):
     return data_dict
 
 def analyze_rks(calc):
-    analyzer = RKSAnalyzer(calc)
+    analyzer = RKSAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
     data_dict['fx_energy_density'] = analyzer.get_fx_energy_density()
@@ -121,7 +125,7 @@ def analyze_rks(calc):
     return data_dict
 
 def analyze_uhf(calc):
-    analyzer = UHFAnalyzer(calc)
+    analyzer = UHFAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
     data_dict['rdm1'] = analyzer.rdm1
@@ -131,7 +135,7 @@ def analyze_uhf(calc):
     return data_dict
 
 def analyze_uks(calc):
-    analyzer = UKSAnalyzer(calc)
+    analyzer = UKSAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['mo_energy'] = analyzer.mo_energy
     data_dict['rdm1'] = analyzer.rdm1
@@ -141,7 +145,7 @@ def analyze_uks(calc):
     return data_dict
 
 def analyze_ccsd(calc):
-    analyzer = CCSDAnalyzer(calc)
+    analyzer = CCSDAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['ao_rdm1'] = analyzer.ao_rdm1
     data_dict['ao_rdm2'] = analyzer.ao_rdm2
@@ -152,7 +156,7 @@ def analyze_ccsd(calc):
     return data_dict
 
 def analyze_uccsd(calc):
-    analyzer = UCCSDAnalyzer(calc)
+    analyzer = UCCSDAnalyzer(calc, max_mem=safe_mem_cap_mb())
     data_dict = get_general_data(analyzer)
     data_dict['ao_rdm1'] = analyzer.ao_rdm1
     data_dict['ao_rdm2'] = analyzer.ao_rdm2
