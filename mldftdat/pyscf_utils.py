@@ -69,6 +69,12 @@ def get_hf_coul_ex_total(mol, hf):
     jmat, kmat = hf.get_jk(mol, rdm1)
     return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
 
+def _get_hf_coul_ex_total(rdm1, jmat, kmat):
+    if len(rdm1.shape == 2):
+        return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
+    else:
+        return np.sum(jmat * np.sum(rdm1, axis=0)) / 2, -np.sum(kmat * rdm1) / 2
+
 def get_hf_coul_ex_total_unrestricted(mol, hf):
     rdm1 = hf.make_rdm1()
     jmat, kmat = hf.get_jk(mol, rdm1)
@@ -119,6 +125,14 @@ def get_ccsd_ee_total(mol, cccalc, hfcalc):
         return np.sum(eeint * rdm2) / 2
     else:
         eeint = transform_basis_2e([eeint] * 3, hfcalc.mo_coeff)
+        return 0.5 * np.sum(eeint[0] * rdm2[0])\
+                + np.sum(eeint[1] * rdm2[1])\
+                + 0.5 * np.sum(eeint[2] * rdm2[2])
+
+def get_ccsd_ee(rdm2, eeint):
+    if len(rdm2.shape) == 2:
+        return np.sum(eeint * rdm2) / 2
+    else:
         return 0.5 * np.sum(eeint[0] * rdm2[0])\
                 + np.sum(eeint[1] * rdm2[1])\
                 + 0.5 * np.sum(eeint[2] * rdm2[2])

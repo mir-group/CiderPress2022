@@ -46,7 +46,6 @@ class SCFCalc(FiretaskBase):
                 'struct'    :  atoms,
                 'mol'       :  mol,
                 'calc'      :  calc,
-                'rdm1'      :  calc.make_rdm1(),
                 'conv_tol'  :  calc.conv_tol
             })
 

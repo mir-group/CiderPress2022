@@ -49,6 +49,32 @@ class TestRHFAnalyzer():
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
 
+    def test_as_dict_from_dict(self):
+        analyzer1 = RHFAnalyzer(self.rhf)
+        dict1 = analyzer1.as_dict()
+        analyzer1.get_ha_energy_density()
+        analyzer1.get_fx_energy_density()
+        analyzer1.get_ee_energy_density()
+        dict2 = analyzer1.as_dict()
+        analyzer2 = RHFAnalyzer.from_dict(dict1)
+        analyzer2.get_ha_energy_density()
+        analyzer2.get_fx_energy_density()
+        analyzer2.get_ee_energy_density()
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer2.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer2.fx_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer3 = RHFAnalyzer.from_dict(dict2)
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer3.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer3.fx_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer3.ee_energy_density)
+
+    def test_dump_load(self):
+        analyzer1 = RHFAnalyzer(self.rhf)
+        analyzer1.get_ee_energy_density()
+        analyzer1.dump('test_files/tmp')
+        analyzer2 = RHFAnalyzer.load('test_files/tmp')
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+
 
 class TestRHFAnalyzerChunks(TestRHFAnalyzer):
 
@@ -111,6 +137,36 @@ class TestUHFAnalyzer():
         ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
 
+    def test_as_dict_from_dict(self):
+        analyzer1 = UHFAnalyzer(self.uhf)
+        dict1 = analyzer1.as_dict()
+        analyzer1.get_ha_energy_density()
+        analyzer1.get_fx_energy_density()
+        analyzer1.get_ee_energy_density()
+        dict2 = analyzer1.as_dict()
+        analyzer2 = UHFAnalyzer.from_dict(dict1)
+        analyzer2.get_ha_energy_density()
+        analyzer2.get_fx_energy_density()
+        analyzer2.get_ee_energy_density()
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer2.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer2.fx_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density_u, analyzer2.fx_energy_density_u)
+        assert_almost_equal(analyzer1.fx_energy_density_d, analyzer2.fx_energy_density_d)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer3 = UHFAnalyzer.from_dict(dict2)
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer3.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer3.fx_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density_u, analyzer3.fx_energy_density_u)
+        assert_almost_equal(analyzer1.fx_energy_density_d, analyzer3.fx_energy_density_d)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer3.ee_energy_density)
+
+    def test_dump_load(self):
+        analyzer1 = UHFAnalyzer(self.uhf, require_converged=False)
+        analyzer1.get_ee_energy_density()
+        analyzer1.dump('test_files/tmp')
+        analyzer2 = UHFAnalyzer.load('test_files/tmp')
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+
 
 class TestUHFAnalyzerChunks(TestUHFAnalyzer):
 
@@ -133,6 +189,29 @@ class TestUKSAnalyzer(TestUHFAnalyzer):
         cls.analyzer = UKSAnalyzer(cls.uks, require_converged=False)
         cls.uhf = cls.analyzer.calc
         cls.ha_tot_ref, cls.fx_tot_ref = get_hf_coul_ex_total_unrestricted(cls.mol, cls.uhf)
+
+    def test_as_dict_from_dict(self):
+        analyzer1 = UHFAnalyzer(self.uhf, require_converged=False)
+        dict1 = analyzer1.as_dict()
+        analyzer1.get_ha_energy_density()
+        analyzer1.get_fx_energy_density()
+        analyzer1.get_ee_energy_density()
+        dict2 = analyzer1.as_dict()
+        analyzer2 = UHFAnalyzer.from_dict(dict1)
+        analyzer2.get_ha_energy_density()
+        analyzer2.get_fx_energy_density()
+        analyzer2.get_ee_energy_density()
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer2.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer2.fx_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density_u, analyzer2.fx_energy_density_u)
+        assert_almost_equal(analyzer1.fx_energy_density_d, analyzer2.fx_energy_density_d)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer3 = UHFAnalyzer.from_dict(dict2)
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer3.ha_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density, analyzer3.fx_energy_density)
+        assert_almost_equal(analyzer1.fx_energy_density_u, analyzer3.fx_energy_density_u)
+        assert_almost_equal(analyzer1.fx_energy_density_d, analyzer3.fx_energy_density_d)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer3.ee_energy_density)
 
 
 class TestCCSDAnalyzer():
@@ -165,6 +244,28 @@ class TestCCSDAnalyzer():
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
+
+    def test_as_dict_from_dict(self):
+        analyzer1 = CCSDAnalyzer(self.cc)
+        dict1 = analyzer1.as_dict()
+        analyzer1.get_ha_energy_density()
+        analyzer1.get_ee_energy_density()
+        dict2 = analyzer1.as_dict()
+        analyzer2 = CCSDAnalyzer.from_dict(dict1)
+        analyzer2.get_ha_energy_density()
+        analyzer2.get_ee_energy_density()
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer2.ha_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer3 = CCSDAnalyzer.from_dict(dict2)
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer3.ha_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer3.ee_energy_density)
+
+    def test_dump_load(self):
+        analyzer1 = CCSDAnalyzer(self.cc)
+        analyzer1.get_ee_energy_density()
+        analyzer1.dump('test_files/tmp')
+        analyzer2 = CCSDAnalyzer.load('test_files/tmp')
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
 
 
 class TestCCSDAnalyzerChunks(TestCCSDAnalyzer):
@@ -210,6 +311,34 @@ class TestUCCSDAnalyzer():
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
+
+    def test_as_dict_from_dict(self):
+        analyzer1 = UCCSDAnalyzer(self.cc)
+        dict1 = analyzer1.as_dict()
+        analyzer1.get_ha_energy_density()
+        analyzer1.get_ee_energy_density()
+        dict2 = analyzer1.as_dict()
+        analyzer2 = UCCSDAnalyzer.from_dict(dict1)
+        analyzer2.get_ha_energy_density()
+        analyzer2.get_ee_energy_density()
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer2.ha_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density_uu, analyzer2.ee_energy_density_uu)
+        assert_almost_equal(analyzer1.ee_energy_density_ud, analyzer2.ee_energy_density_ud)
+        assert_almost_equal(analyzer1.ee_energy_density_dd, analyzer2.ee_energy_density_dd)
+        analyzer3 = UCCSDAnalyzer.from_dict(dict2)
+        assert_almost_equal(analyzer1.ha_energy_density, analyzer3.ha_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer3.ee_energy_density)
+        assert_almost_equal(analyzer1.ee_energy_density_uu, analyzer3.ee_energy_density_uu)
+        assert_almost_equal(analyzer1.ee_energy_density_ud, analyzer3.ee_energy_density_ud)
+        assert_almost_equal(analyzer1.ee_energy_density_dd, analyzer3.ee_energy_density_dd)
+
+    def test_dump_load(self):
+        analyzer1 = UCCSDAnalyzer(self.cc)
+        analyzer1.get_ee_energy_density()
+        analyzer1.dump('test_files/tmp')
+        analyzer2 = UCCSDAnalyzer.load('test_files/tmp')
+        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
 
 
 class TestUCCSDAnalyzerChunks(TestUCCSDAnalyzer):
