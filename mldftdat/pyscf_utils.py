@@ -69,8 +69,8 @@ def get_hf_coul_ex_total(mol, hf):
     jmat, kmat = hf.get_jk(mol, rdm1)
     return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
 
-def _get_hf_coul_ex_total(rdm1, jmat, kmat):
-    if len(rdm1.shape == 2):
+def get_hf_coul_ex_total2(rdm1, jmat, kmat):
+    if len(rdm1.shape) == 2:
         return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
     else:
         return np.sum(jmat * np.sum(rdm1, axis=0)) / 2, -np.sum(kmat * rdm1) / 2
@@ -96,7 +96,7 @@ def transform_basis_1e(mat, coeff):
             raise ValueError('Need two sets of orbitals, two mats for unrestricted case.')
         part0 = np.matmul(coeff[0].transpose(), np.matmul(mat[0], coeff[0]))
         part1 = np.matmul(coeff[1].transpose(), np.matmul(mat[1], coeff[1]))
-        return (part0, part1)
+        return np.array([part0, part1])
 
 def transform_basis_2e(eri, coeff):
     """
@@ -115,7 +115,7 @@ def transform_basis_2e(eri, coeff):
         part00 = ao2mo.incore.general(eri[0], set00)
         part01 = ao2mo.incore.general(eri[1], set01)
         part11 = ao2mo.incore.general(eri[2], set11)
-        return (part00, part01, part11)
+        return np.array([part00, part01, part11])
 
 def get_ccsd_ee_total(mol, cccalc, hfcalc):
     rdm2 = cccalc.make_rdm2()
@@ -130,9 +130,11 @@ def get_ccsd_ee_total(mol, cccalc, hfcalc):
                 + 0.5 * np.sum(eeint[2] * rdm2[2])
 
 def get_ccsd_ee(rdm2, eeint):
-    if len(rdm2.shape) == 2:
+    if len(rdm2.shape) == 4:
         return np.sum(eeint * rdm2) / 2
     else:
+        if len(eeint.shape) == 4:
+            eeint = [eeint] * 3
         return 0.5 * np.sum(eeint[0] * rdm2[0])\
                 + np.sum(eeint[1] * rdm2[1])\
                 + 0.5 * np.sum(eeint[2] * rdm2[2])
@@ -159,7 +161,7 @@ def make_rdm2_from_rdm1_unrestricted(rdm1):
         part2 = np.einsum('lj,ki->ijkl', rdm1[s], rdm1copy[s])
         spinparts.append(part1 - part2)
     mixspinpart = np.einsum('ij,kl->ijkl', rdm1[0], rdm1copy[1])
-    return spinparts[0], mixspinpart, spinparts[1]
+    return np.array([spinparts[0], mixspinpart, spinparts[1]])
 
 def get_ao_vals(mol, points):
     return eval_ao(mol, points)

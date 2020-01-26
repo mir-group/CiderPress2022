@@ -6,7 +6,7 @@ from numpy.testing import assert_almost_equal, assert_equal
 
 from mldftdat.pyscf_utils import get_hf_coul_ex_total, get_hf_coul_ex_total_unrestricted,\
                                 run_scf, run_cc, integrate_on_grid, get_ccsd_ee_total,\
-                                transform_basis_2e, transform_basis_1e
+                                transform_basis_2e, transform_basis_1e, get_ccsd_ee
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer,\
                                 RKSAnalyzer, UKSAnalyzer
 import numpy as np
@@ -33,11 +33,13 @@ class TestRHFAnalyzer():
         ha_density = self.analyzer.get_ha_energy_density()
         ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, self.ha_tot_ref, 5)
+        assert_almost_equal(self.analyzer.ha_total, self.ha_tot_ref)
 
     def test_get_fx_energy_density(self):
         fx_density = self.analyzer.get_fx_energy_density()
         fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
         assert_almost_equal(fx_tot, self.fx_tot_ref, 5)
+        assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
@@ -45,8 +47,8 @@ class TestRHFAnalyzer():
         assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
 
     def test__get_rdm2(self):
-        # Tested by next test
-        pass
+        ee_tot = get_ccsd_ee(self.analyzer._get_rdm2(), self.analyzer.eri_ao)
+        assert_almost_equal(ee_tot, self.rhf.energy_elec()[1])
 
     def test__get_ee_energy_density_slow(self):
         ee_density = self.analyzer._get_ee_energy_density_slow()
@@ -131,11 +133,13 @@ class TestUHFAnalyzer():
         ha_density = self.analyzer.get_ha_energy_density()
         ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, self.ha_tot_ref, 5)
+        assert_almost_equal(self.analyzer.ha_total, self.ha_tot_ref)
 
     def test_get_fx_energy_density(self):
         fx_density = self.analyzer.get_fx_energy_density()
         fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
         assert_almost_equal(fx_tot, self.fx_tot_ref, 5)
+        assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
@@ -143,8 +147,8 @@ class TestUHFAnalyzer():
         assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
 
     def test__get_rdm2(self):
-        # Tested by next test
-        pass
+        ee_tot = get_ccsd_ee(self.analyzer._get_rdm2(), self.analyzer.eri_ao)
+        assert_almost_equal(ee_tot, self.uhf.energy_elec()[1])
 
     def test__get_ee_energy_density_slow(self):
         ee_density = self.analyzer._get_ee_energy_density_slow()
@@ -260,6 +264,7 @@ class TestCCSDAnalyzer():
         ha_density = self.analyzer.get_ha_energy_density()
         ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, ha_tot_ref, 5)
+        assert_almost_equal(self.analyzer.ha_total, ha_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
@@ -268,6 +273,7 @@ class TestCCSDAnalyzer():
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
+        assert_almost_equal(self.analyzer.ee_total, self.ee_tot_ref)
 
     def test_as_dict_from_dict(self):
         analyzer1 = CCSDAnalyzer(self.cc)
@@ -338,6 +344,7 @@ class TestUCCSDAnalyzer():
         ha_density = self.analyzer.get_ha_energy_density()
         ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, ha_tot_ref)
+        assert_almost_equal(self.analyzer.ha_total, ha_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
@@ -346,6 +353,7 @@ class TestUCCSDAnalyzer():
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
         assert_almost_equal(ee_tot, self.hf.energy_elec()[1], 1)
+        assert_almost_equal(self.analyzer.ee_total, self.ee_tot_ref)
 
     def test_as_dict_from_dict(self):
         analyzer1 = UCCSDAnalyzer(self.cc)

@@ -24,13 +24,6 @@ def recursive_remove_none(obj):
         return obj
 
 
-def _get_hf_coul_ex_total(rdm1, jmat, kmat):
-    if len(rdm1.shape) == 2:
-        return np.sum(jmat * rdm1) / 2, -np.sum(kmat * rdm1) / 4
-    else:
-        return np.sum(jmat * np.sum(rdm1, axis=0)) / 2, -np.sum(kmat * rdm1) / 2
-
-
 class ElectronAnalyzer(ABC):
 
     calc_class = None
@@ -118,7 +111,6 @@ class ElectronAnalyzer(ABC):
     def post_process(self):
         self.rdm1 = np.array(self.calc.make_rdm1())
         self.grid = get_grid(self.mol)
-        self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.eri_ao = self.mol.intor('int2e')
 
         self.e_tot = self.calc.e_tot
@@ -137,10 +129,10 @@ class ElectronAnalyzer(ABC):
         else:
             self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
 
-        self.ha_total, self.fx_total = _get_hf_coul_ex_total(self.rdm1,
-                                                    self.jmat, self.kmat)
-
         self.rdm2 = None
+        self.ha_total = None
+        self.fx_total = None
+        self.ee_total = None
         self.ha_energy_density = None
         self.fx_energy_density = None
         self.xc_energy_density = None
@@ -160,6 +152,9 @@ class RHFAnalyzer(ElectronAnalyzer):
     def post_process(self):
         super(RHFAnalyzer, self).post_process()
         self.mo_energy = self.calc.mo_energy
+        self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
+        self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
+                                                    self.jmat, self.kmat)
         if self.num_chunks > 1:
             self.mo_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
                                                 self.num_chunks, self.mo_vals,
@@ -217,6 +212,9 @@ class UHFAnalyzer(ElectronAnalyzer):
         self.mo_energy = self.calc.mo_energy
         self.fx_energy_density_u = None
         self.fx_energy_density_d = None
+        self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
+        self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
+                                                    self.jmat, self.kmat)
         if self.num_chunks > 1:
             self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
                                                 self.num_chunks, self.mo_vals[0],
@@ -312,7 +310,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['calc']['l1'] = self.calc.l1
         analyzer_dict['calc']['l2'] = self.calc.l2
         analyzer_dict['calc']['e_corr'] = self.calc.e_corr
-        analyzer_dict['data']['ee_rep_tot'] = self.ee_rep_tot
+        analyzer_dict['data']['ee_total'] = self.ee_total
         return analyzer_dict
 
     @classmethod
@@ -340,7 +338,11 @@ class CCSDAnalyzer(ElectronAnalyzer):
         self.eri_mo = transform_basis_2e(self.eri_ao, self.mo_coeff)
         self.rdm1 = self.ao_rdm1
         self.rdm2 = self.ao_rdm2
-        self.ee_rep_tot = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
+        self.ee_total = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
+
+        self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
+        self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
+                                                    self.jmat, self.kmat)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -371,7 +373,7 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['calc']['l2'] = self.calc.l2
         analyzer_dict['calc']['e_corr'] = self.calc.e_corr
 
-        analyzer_dict['data']['ee_rep_tot'] = self.ee_rep_tot
+        analyzer_dict['data']['ee_total'] = self.ee_total
         analyzer_dict['data']['ee_energy_density_uu'] = self.ee_energy_density_uu
         analyzer_dict['data']['ee_energy_density_ud'] = self.ee_energy_density_ud
         analyzer_dict['data']['ee_energy_density_dd'] = self.ee_energy_density_dd
@@ -406,7 +408,11 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.eri_mo = transform_basis_2e(eri_ao_lst, self.mo_coeff)
         self.rdm1 = self.ao_rdm1
         self.rdm2 = self.ao_rdm2
-        self.ee_rep_tot = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
+        self.ee_total = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
+
+        self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
+        self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
+                                                    self.jmat, self.kmat)
 
         self.ee_energy_density_uu = None
         self.ee_energy_density_ud = None
