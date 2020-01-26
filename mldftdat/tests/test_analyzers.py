@@ -15,7 +15,7 @@ class TestRHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'sto-3g')
         cls.mol.build()
         cls.rhf = run_scf(cls.mol, 'RHF')
         cls.analyzer = RHFAnalyzer(cls.rhf)
@@ -80,7 +80,7 @@ class TestRHFAnalyzerChunks(TestRHFAnalyzer):
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'sto-3g')
         cls.mol.build()
         cls.rhf = run_scf(cls.mol, 'RHF')
         cls.analyzer = RHFAnalyzer(cls.rhf, max_mem=5)
@@ -91,7 +91,7 @@ class TestRKSAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'sto-3g')
         cls.mol.build()
         cls.rks = run_scf(cls.mol, 'RHF')
         cls.analyzer = RKSAnalyzer(cls.rks)
@@ -103,7 +103,7 @@ class TestUHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'sto-3g', spin = 1)
         cls.mol.build()
         cls.uhf = run_scf(cls.mol, 'UHF')
         cls.analyzer = UHFAnalyzer(cls.uhf)
@@ -172,7 +172,7 @@ class TestUHFAnalyzerChunks(TestUHFAnalyzer):
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'sto-3g', spin = 1)
         cls.mol.build()
         cls.uhf = run_scf(cls.mol, 'UHF')
         cls.analyzer = UHFAnalyzer(cls.uhf, max_mem=5)
@@ -183,7 +183,7 @@ class TestUKSAnalyzer(TestUHFAnalyzer):
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'sto-3g', spin = 1)
         cls.mol.build()
         cls.uks = run_scf(cls.mol, 'UKS')
         cls.analyzer = UKSAnalyzer(cls.uks, require_converged=False)
