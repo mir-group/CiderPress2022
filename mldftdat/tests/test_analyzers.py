@@ -1,4 +1,4 @@
-from pyscf import scf, gto
+from pyscf import scf, gto, lib
 from nose import SkipTest
 from nose.tools import nottest
 from nose.plugins.skip import Skip
@@ -10,6 +10,10 @@ from mldftdat.pyscf_utils import get_hf_coul_ex_total, get_hf_coul_ex_total_unre
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer,\
                                 RKSAnalyzer, UKSAnalyzer
 import numpy as np
+import numbers
+import os
+
+TMP_TEST = 'test_files/tmp'
 
 class TestRHFAnalyzer():
 
@@ -71,9 +75,19 @@ class TestRHFAnalyzer():
     def test_dump_load(self):
         analyzer1 = RHFAnalyzer(self.rhf)
         analyzer1.get_ee_energy_density()
-        analyzer1.dump('test_files/tmp')
-        analyzer2 = RHFAnalyzer.load('test_files/tmp')
-        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer1.dump(TMP_TEST)
+        analyzer2 = RHFAnalyzer.load(TMP_TEST)
+        for key in analyzer1.__dict__:
+            if isinstance(analyzer1.__getattribute__(key), numbers.Number)\
+                or isinstance(analyzer1.__getattribute__(key), np.ndarray):
+                assert_equal(analyzer1.__getattribute__(key),
+                    analyzer2.__getattribute__(key))
+        data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
+        assert_equal(analyzer1.grid.coords, data_dict['coords'])
+        assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
+        assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        os.remove(TMP_TEST)
 
 
 class TestRHFAnalyzerChunks(TestRHFAnalyzer):
@@ -163,9 +177,19 @@ class TestUHFAnalyzer():
     def test_dump_load(self):
         analyzer1 = UHFAnalyzer(self.uhf, require_converged=False)
         analyzer1.get_ee_energy_density()
-        analyzer1.dump('test_files/tmp')
-        analyzer2 = UHFAnalyzer.load('test_files/tmp')
-        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer1.dump(TMP_TEST)
+        analyzer2 = UHFAnalyzer.load(TMP_TEST)
+        for key in analyzer1.__dict__:
+            if isinstance(analyzer1.__getattribute__(key), numbers.Number)\
+                or isinstance(analyzer1.__getattribute__(key), np.ndarray):
+                assert_equal(analyzer1.__getattribute__(key),
+                    analyzer2.__getattribute__(key))
+        data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
+        assert_equal(analyzer1.grid.coords, data_dict['coords'])
+        assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
+        assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        os.remove(TMP_TEST)
 
 
 class TestUHFAnalyzerChunks(TestUHFAnalyzer):
@@ -263,9 +287,20 @@ class TestCCSDAnalyzer():
     def test_dump_load(self):
         analyzer1 = CCSDAnalyzer(self.cc)
         analyzer1.get_ee_energy_density()
-        analyzer1.dump('test_files/tmp')
-        analyzer2 = CCSDAnalyzer.load('test_files/tmp')
-        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer1.get_ha_energy_density()
+        analyzer1.dump(TMP_TEST)
+        analyzer2 = CCSDAnalyzer.load(TMP_TEST)
+        for key in analyzer1.__dict__:
+            if isinstance(analyzer1.__getattribute__(key), numbers.Number)\
+                or isinstance(analyzer1.__getattribute__(key), np.ndarray):
+                assert_equal(analyzer1.__getattribute__(key),
+                    analyzer2.__getattribute__(key))
+        data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
+        assert_equal(analyzer1.grid.coords, data_dict['coords'])
+        assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
+        assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        os.remove(TMP_TEST)
 
 
 class TestCCSDAnalyzerChunks(TestCCSDAnalyzer):
@@ -336,9 +371,20 @@ class TestUCCSDAnalyzer():
     def test_dump_load(self):
         analyzer1 = UCCSDAnalyzer(self.cc)
         analyzer1.get_ee_energy_density()
-        analyzer1.dump('test_files/tmp')
-        analyzer2 = UCCSDAnalyzer.load('test_files/tmp')
-        assert_almost_equal(analyzer1.ee_energy_density, analyzer2.ee_energy_density)
+        analyzer1.get_ha_energy_density()
+        analyzer1.dump(TMP_TEST)
+        analyzer2 = UCCSDAnalyzer.load(TMP_TEST)
+        for key in analyzer1.__dict__:
+            if isinstance(analyzer1.__getattribute__(key), numbers.Number)\
+                or isinstance(analyzer1.__getattribute__(key), np.ndarray):
+                assert_equal(analyzer1.__getattribute__(key),
+                    analyzer2.__getattribute__(key))
+        data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
+        assert_equal(analyzer1.grid.coords, data_dict['coords'])
+        assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
+        assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        os.remove(TMP_TEST)
 
 
 class TestUCCSDAnalyzerChunks(TestUCCSDAnalyzer):

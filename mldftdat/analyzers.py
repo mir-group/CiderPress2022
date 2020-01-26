@@ -60,6 +60,8 @@ class ElectronAnalyzer(ABC):
             'mo_occ' : self.mo_occ,
         }
         data = {
+            'coords' : self.grid.coords,
+            'weights' : self.grid.weights,
             'ha_total' : self.ha_total,
             'fx_total' : self.fx_total,
             'ha_energy_density' : self.ha_energy_density,
@@ -88,6 +90,8 @@ class ElectronAnalyzer(ABC):
         calc = cls.calc_class(mol)
         calc.__dict__.update(analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
+        analyzer_dict['data'].pop('coords')
+        analyzer_dict['data'].pop('weights')
         analyzer.__dict__.update(analyzer_dict['data'])
         return analyzer
 
@@ -319,6 +323,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         mol = gto.mole.unpack(analyzer_dict['mol'])
         mol.build()
         hf = scf.hf.RHF(mol)
+        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
         calc = cls.calc_class(hf)
         calc.__dict__.update(analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
@@ -381,6 +386,7 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         mol = gto.mole.unpack(analyzer_dict['mol'])
         mol.build()
         hf = scf.uhf.UHF(mol)
+        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
         calc = cls.calc_class(hf)
         calc.__dict__.update(analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
