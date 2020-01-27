@@ -146,7 +146,7 @@ class TrainingDataCollector(FiretaskBase):
             'conv_tol'   : calc.conv_tol,
             'cpu_count'  : fw_spec['cpu_count'],
             'e_tot'      : calc.e_tot,
-            'functional' : fw_spec.get('functional')
+            'functional' : fw_spec.get('functional'),
             'max_cycle'  : calc.max_cycle,
             'nelectron'  : mol.nelectron,
             'spin'       : mol.spin,

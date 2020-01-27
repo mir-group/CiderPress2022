@@ -24,7 +24,7 @@ def make_hf_firework(struct, mol_id, basis, spin, charge=0, name=None):
     return Firework(get_hf_tasks(struct, mol_id, basis, spin, charge), name=name)
 
 def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0, name=None):
-    return Firework(get_dft_tasks(struct, mol_id, basis, spin, charge), name=name)
+    return Firework(get_dft_tasks(struct, mol_id, basis, spin, functional=functional, charge=charge), name=name)
 
 def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None):
     t1, t2 = get_hf_tasks(struct, mol_id, basis, spin, charge)
@@ -38,4 +38,5 @@ if __name__ == '__main__':
     fw3 = make_dft_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0, functional='b3lyp')
     fw4 = make_ccsd_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0)
     launchpad = LaunchPad.auto_load()
-    launchpad.add_wf(fw)
+    for fw in [fw1, fw2, fw3, fw4]:
+        launchpad.add_wf(fw)
