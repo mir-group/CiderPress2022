@@ -77,6 +77,7 @@ class TestRHFAnalyzer():
     def test_dump_load(self):
         analyzer1 = RHFAnalyzer(self.rhf)
         analyzer1.get_ee_energy_density()
+        analyzer1.get_ao_rho_data()
         analyzer1.dump(TMP_TEST)
         analyzer2 = RHFAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -181,6 +182,7 @@ class TestUHFAnalyzer():
     def test_dump_load(self):
         analyzer1 = UHFAnalyzer(self.uhf, require_converged=False)
         analyzer1.get_ee_energy_density()
+        analyzer1.get_ao_rho_data()
         analyzer1.dump(TMP_TEST)
         analyzer2 = UHFAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -294,6 +296,7 @@ class TestCCSDAnalyzer():
         analyzer1 = CCSDAnalyzer(self.cc)
         analyzer1.get_ee_energy_density()
         analyzer1.get_ha_energy_density()
+        analyzer1.get_ao_rho_data()
         analyzer1.dump(TMP_TEST)
         analyzer2 = CCSDAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -380,6 +383,7 @@ class TestUCCSDAnalyzer():
         analyzer1 = UCCSDAnalyzer(self.cc)
         analyzer1.get_ee_energy_density()
         analyzer1.get_ha_energy_density()
+        analyzer1.get_ao_rho_data()
         analyzer1.dump(TMP_TEST)
         analyzer2 = UCCSDAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:

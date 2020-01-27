@@ -176,6 +176,24 @@ def get_mgga_data(mol, grid, rdm1):
         rho_data = (part0, part1)
     return ao_data, rho_data
 
+def get_tau_and_grad_helper(mol, grid, rdm1, ao_data):
+    # 0 1 2 3 4  5  6  7  8  9
+    # 0 x y z xx xy xz yy yz zz
+    aox = ao_data[[1, 4, 5, 6]]
+    aoy = ao_data[[2, 5, 7, 8]]
+    aoz = ao_data[[3, 6, 8, 9]]
+    tau  = eval_rho(mol, aox, rdm1, xctype='GGA')
+    tau += eval_rho(mol, aoy, rdm1, xctype='GGA')
+    tau += eval_rho(mol, aoz, rdm1, xctype='GGA')
+    return 0.5 * tau
+
+def get_tau_and_grad(mol, grid, rdm1, ao_data):
+    if len(rdm1.shape) == 2:
+        return get_tau_and_grad_helper(mol, grid, rdm1, ao_data)
+    else:
+        return get_tau_and_grad_helper(mol, grid, rdm1[0], ao_data)\
+                + get_tau_and_grad_helper(mol, grid, rdm1[1], ao_data)
+
 def get_vele_mat(mol, points):
     """
     Return shape (N, nao, nao)

@@ -90,19 +90,19 @@ def get_general_data(analyzer):
     ao_data, rho_data = get_mgga_data(analyzer.mol, analyzer.grid,
                                         analyzer.rdm1)
     return {
-                'coords': analyzer.grid.coords,
-                'weights': analyzer.grid.weights,
-                'mo_coeff': analyzer.mo_coeff,
-                'mo_occ': analyzer.mo_occ,
-                'ao_vals': analyzer.ao_vals,
-                'mo_vals': analyzer.mo_vals,
-                #'ao_vele_mat': analyzer.ao_vele_mat,
-                #'mo_vele_mat': analyzer.mo_vele_mat,
-                'ha_energy_density': analyzer.get_ha_energy_density(),
-                'ee_energy_density': analyzer.get_ee_energy_density(),
-                'ao_data': ao_data,
-                'rho_data': rho_data
-            }
+        'coords': analyzer.grid.coords,
+        'weights': analyzer.grid.weights,
+        'mo_coeff': analyzer.mo_coeff,
+        'mo_occ': analyzer.mo_occ,
+        'ao_vals': analyzer.ao_vals,
+        'mo_vals': analyzer.mo_vals,
+        #'ao_vele_mat': analyzer.ao_vele_mat,
+        #'mo_vele_mat': analyzer.mo_vele_mat,
+        'ha_energy_density': analyzer.get_ha_energy_density(),
+        'ee_energy_density': analyzer.get_ee_energy_density(),
+        'ao_data': ao_data,
+        'rho_data': rho_data
+    }
 
 def safe_mem_cap_mb():
     return int(psutil.virtual_memory().available // 4e6)

@@ -60,7 +60,9 @@ class ElectronAnalyzer(ABC):
             'ha_energy_density' : self.ha_energy_density,
             'fx_energy_density' : self.fx_energy_density,
             'xc_energy_density' : self.xc_energy_density,
-            'ee_energy_density' : self.ee_energy_density
+            'ee_energy_density' : self.ee_energy_density,
+            'rho_data' : self.rho_data,
+            'tau_data' : self.tau_data
         }
         return {
             'mol' : gto.mole.pack(self.mol),
@@ -109,7 +111,7 @@ class ElectronAnalyzer(ABC):
         return self.num_chunks
 
     def post_process(self):
-        self.rdm1 = np.array(self.calc.make_rdm1())
+        # The child post process function must set up the RDMs
         self.grid = get_grid(self.mol)
         self.eri_ao = self.mol.intor('int2e')
 
@@ -129,7 +131,12 @@ class ElectronAnalyzer(ABC):
         else:
             self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
 
+        self.rdm1 = None
         self.rdm2 = None
+        self.ao_data = None
+        self.rho_data = None
+        self.tau_data = None
+
         self.ha_total = None
         self.fx_total = None
         self.ee_total = None
@@ -137,6 +144,14 @@ class ElectronAnalyzer(ABC):
         self.fx_energy_density = None
         self.xc_energy_density = None
         self.ee_energy_density = None
+
+    def get_ao_rho_data(self):
+        if self.rho_data is None or self.tau_Data is None:
+            ao_data, self.rho_data = get_mgga_data(
+                                        self.mol, self.grid, self.rdm1)
+            self.tau_data = get_tau_and_grad(self.mol, self.grid,
+                                            self.rdm1, ao_data)
+        return self.rho_data, self.tau_data
 
 
 class RHFAnalyzer(ElectronAnalyzer):
@@ -151,6 +166,7 @@ class RHFAnalyzer(ElectronAnalyzer):
 
     def post_process(self):
         super(RHFAnalyzer, self).post_process()
+        self.rdm1 = np.array(self.calc.make_rdm1())
         self.mo_energy = self.calc.mo_energy
         self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
@@ -209,6 +225,7 @@ class UHFAnalyzer(ElectronAnalyzer):
 
     def post_process(self):
         super(UHFAnalyzer, self).post_process()
+        self.rdm1 = np.array(self.calc.make_rdm1())
         self.mo_energy = self.calc.mo_energy
         self.fx_energy_density_u = None
         self.fx_energy_density_d = None

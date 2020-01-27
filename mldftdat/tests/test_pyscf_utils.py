@@ -99,6 +99,15 @@ class TestPyscfUtils(unittest.TestCase):
             assert_equal(spin_data.shape, desired_shape_rho)
         assert_raises(AssertionError, assert_almost_equal, rho_data[0], rho_data[1])
 
+    def test_get_tau_and_grad(self):
+        ao_data, rho_data = get_mgga_data(self.FH, self.rhf_grid, self.rhf_rdm1)
+        tau_data = get_tau_and_grad(self.FH, self.rhf_grid, self.rhf_rdm1, ao_data)
+        desired_shape = (4, self.rhf_grid.coords.shape[0])
+        assert_equal(tau_data.shape, desired_shape)
+        assert_almost_equal(tau_data[0], rho_data[5])
+        zero = integrate_on_grid(tau_data[1:], self.rhf_grid.weights)
+        assert_almost_equal(np.linalg.norm(zero), 0, 5)
+
     def test_make_rdm2_from_rdm1(self):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
         ree = get_ee_energy_density(self.FH, rhf_rdm2,
