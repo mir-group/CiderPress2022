@@ -69,6 +69,14 @@ class TestPyscfUtils(unittest.TestCase):
             assert_equal(item[1], ref[1])
         self.assertEqual(mol.basis, 'cc-pvdz')
 
+    def test_run_scf(self):
+        lda_He = run_scf(self.He, 'RKS')
+        assert_equal(lda_He.xc, 'LDA,VWN')
+        b3lyp_He = run_scf(self.He, 'RKS', functional='B3LYP')
+        assert_equal(b3lyp_He.xc, 'B3LYP')
+        assert_raises(AssertionError, assert_almost_equal, lda_He.e_tot, b3lyp_He.e_tot)
+        assert_raises(AssertionError, assert_almost_equal, self.hf_He.e_tot, b3lyp_He.e_tot)
+
     def test_get_hf_coul_ex_total(self):
         # covered in setup
         jtot, ktot = get_hf_coul_ex_total(self.FH, self.rhf)
