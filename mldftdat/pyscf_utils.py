@@ -26,14 +26,19 @@ def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     mol.build()
     return mol
 
-def run_scf(mol, calc_type):
+def run_scf(mol, calc_type, functional = None):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
     of a given calc_type in SCF_TYPES. Return the calc object.
+    Note, if RKS or UKS is the calc_type, default functional is used.
     """
     if not calc_type in SCF_TYPES:
         raise ValueError('Calculation type must be in {}'.format(list(SCF_TYPES.keys())))
+
     calc = SCF_TYPES[calc_type](mol)
+    if 'KS' in calc_type and functional is not None:
+        calc.xc = functional
+
     calc.kernel()
     return calc
 

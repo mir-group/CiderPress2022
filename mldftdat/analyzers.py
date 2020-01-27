@@ -9,12 +9,12 @@ from io import BytesIO
 
 
 CALC_TYPES = {
-    'RHF': scf.hf.RHF,
-    'UHF': scf.uhf.UHF,
-    'RKS': dft.rks.RKS,
-    'UKS': dft.uks.UKS,
-    'CCSD': cc.ccsd.CCSD,
-    'UCCSD': cc.uccsd.UCCSD
+    'RHF'   : scf.hf.RHF,
+    'UHF'   : scf.uhf.UHF,
+    'RKS'   : dft.rks.RKS,
+    'UKS'   : dft.uks.UKS,
+    'CCSD'  : cc.ccsd.CCSD,
+    'UCCSD' : cc.uccsd.UCCSD
 }
 
 def recursive_remove_none(obj):
@@ -152,6 +152,11 @@ class ElectronAnalyzer(ABC):
             self.tau_data = get_tau_and_grad(self.mol, self.grid,
                                             self.rdm1, ao_data)
         return self.rho_data, self.tau_data
+
+    def perform_full_analysis(self):
+        self.get_ao_rho_data()
+        self.get_ha_energy_density()
+        self.get_ee_energy_density()
 
 
 class RHFAnalyzer(ElectronAnalyzer):

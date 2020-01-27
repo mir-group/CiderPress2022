@@ -76,8 +76,7 @@ class TestRHFAnalyzer():
 
     def test_dump_load(self):
         analyzer1 = RHFAnalyzer(self.rhf)
-        analyzer1.get_ee_energy_density()
-        analyzer1.get_ao_rho_data()
+        analyzer1.perform_full_analysis()
         analyzer1.dump(TMP_TEST)
         analyzer2 = RHFAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -88,6 +87,8 @@ class TestRHFAnalyzer():
         data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
         assert_equal(analyzer1.grid.coords, data_dict['coords'])
         assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.rho_data, data_dict['rho_data'])
+        assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
@@ -181,8 +182,7 @@ class TestUHFAnalyzer():
 
     def test_dump_load(self):
         analyzer1 = UHFAnalyzer(self.uhf, require_converged=False)
-        analyzer1.get_ee_energy_density()
-        analyzer1.get_ao_rho_data()
+        analyzer1.perform_full_analysis()
         analyzer1.dump(TMP_TEST)
         analyzer2 = UHFAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -193,6 +193,8 @@ class TestUHFAnalyzer():
         data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
         assert_equal(analyzer1.grid.coords, data_dict['coords'])
         assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.rho_data, data_dict['rho_data'])
+        assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
@@ -294,9 +296,7 @@ class TestCCSDAnalyzer():
 
     def test_dump_load(self):
         analyzer1 = CCSDAnalyzer(self.cc)
-        analyzer1.get_ee_energy_density()
-        analyzer1.get_ha_energy_density()
-        analyzer1.get_ao_rho_data()
+        analyzer1.perform_full_analysis()
         analyzer1.dump(TMP_TEST)
         analyzer2 = CCSDAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -307,6 +307,8 @@ class TestCCSDAnalyzer():
         data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
         assert_equal(analyzer1.grid.coords, data_dict['coords'])
         assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.rho_data, data_dict['rho_data'])
+        assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
@@ -381,9 +383,7 @@ class TestUCCSDAnalyzer():
 
     def test_dump_load(self):
         analyzer1 = UCCSDAnalyzer(self.cc)
-        analyzer1.get_ee_energy_density()
-        analyzer1.get_ha_energy_density()
-        analyzer1.get_ao_rho_data()
+        analyzer1.perform_full_analysis()
         analyzer1.dump(TMP_TEST)
         analyzer2 = UCCSDAnalyzer.load(TMP_TEST)
         for key in analyzer1.__dict__:
@@ -394,6 +394,8 @@ class TestUCCSDAnalyzer():
         data_dict = lib.chkfile.load(TMP_TEST, 'analyzer/data')
         assert_equal(analyzer1.grid.coords, data_dict['coords'])
         assert_equal(analyzer1.grid.weights, data_dict['weights'])
+        assert_equal(analyzer1.rho_data, data_dict['rho_data'])
+        assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
