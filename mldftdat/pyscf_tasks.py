@@ -185,7 +185,7 @@ class TrainingDataCollector(FiretaskBase):
         analyzer.perform_full_analysis()
         analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
 
-        mol_dat['grid_size'] = analyzer.grid.shape[0]
+        mol_dat['grid_size'] = analyzer.grid.weights.shape[0]
         mol_dat['basis_size'] = analyzer.rdm1.shape[-1]
 
         info_file = os.path.join(save_dir, 'run_info.json')
