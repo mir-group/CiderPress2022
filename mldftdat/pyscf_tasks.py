@@ -158,11 +158,11 @@ class TrainingDataCollector(FiretaskBase):
         if type(calc) == scf.hf.RHF:
             Analyzer = RHFAnalyzer
         elif type(calc) == dft.rks.RKS:
-            Analyzer = RKSAnalyzer
+            Analyzer = RHFAnalyzer
         elif type(calc) == scf.uhf.UHF:
             Analyzer = UHFAnalyzer
         elif type(calc) == dft.uks.UKS:
-            Analyzer = UKSAnalyzer
+            Analyzer = UHFAnalyzer
         elif type(calc) == cc.ccsd.CCSD:
             Analyzer = CCSDAnalyzer
         elif type(calc) == cc.uccsd.UCCSD:

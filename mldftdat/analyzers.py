@@ -31,8 +31,8 @@ class ElectronAnalyzer(ABC):
 
     def __init__(self, calc, require_converged=True, max_mem=None):
         # max_mem in MB
-        if type(calc) != self.calc_class:
-            raise ValueError('Calculation must be type {}'.format(self.calc_class))
+        if not isinstance(calc, self.calc_class):
+            raise ValueError('Calculation must be instance of {}.'.format(self.calc_class))
         if calc.e_tot is None:
             raise ValueError('{} calculation must be complete.'.format(self.calc_type))
         if require_converged and not calc.converged:
