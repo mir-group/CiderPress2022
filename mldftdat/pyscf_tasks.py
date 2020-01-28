@@ -181,13 +181,16 @@ class TrainingDataCollector(FiretaskBase):
                                 mol.basis, self['mol_id'])
         os.makedirs(save_dir, exist_ok=exist_ok)
 
+        analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
+        analyzer.perform_full_analysis()
+        analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
+
+        mol_dat['grid_size'] = analyzer.grid.shape[0]
+        mol_dat['basis_size'] = analyzer.rdm1.shape[-1]
+
         info_file = os.path.join(save_dir, 'run_info.json')
         f = open(info_file, 'w')
         json.dump(recursive_dict(mol_dat), f, indent=4, sort_keys=True)
         f.close()
-
-        analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
-        analyzer.perform_full_analysis()
-        analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
 
         return FWAction(stored_data={'save_dir': save_dir})
