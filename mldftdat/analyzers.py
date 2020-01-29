@@ -6,15 +6,16 @@ from mldftdat.pyscf_utils import *
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
+import psutil
 
 
 CALC_TYPES = {
-    'RHF': scf.hf.RHF,
-    'UHF': scf.uhf.UHF,
-    'RKS': dft.rks.RKS,
-    'UKS': dft.uks.UKS,
-    'CCSD': cc.ccsd.CCSD,
-    'UCCSD': cc.uccsd.UCCSD
+    'RHF'   : scf.hf.RHF,
+    'UHF'   : scf.uhf.UHF,
+    'RKS'   : dft.rks.RKS,
+    'UKS'   : dft.uks.UKS,
+    'CCSD'  : cc.ccsd.CCSD,
+    'UCCSD' : cc.uccsd.UCCSD
 }
 
 def recursive_remove_none(obj):
@@ -31,8 +32,8 @@ class ElectronAnalyzer(ABC):
 
     def __init__(self, calc, require_converged=True, max_mem=None):
         # max_mem in MB
-        if type(calc) != self.calc_class:
-            raise ValueError('Calculation must be type {}'.format(self.calc_class))
+        if not isinstance(calc, self.calc_class):
+            raise ValueError('Calculation must be instance of {}.'.format(self.calc_class))
         if calc.e_tot is None:
             raise ValueError('{} calculation must be complete.'.format(self.calc_type))
         if require_converged and not calc.converged:
@@ -42,7 +43,9 @@ class ElectronAnalyzer(ABC):
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
+        print('PRIOR TO POST PROCESS', psutil.virtual_memory().available // 1e6)
         self.post_process()
+        print('FINISHED POST PROCESS', psutil.virtual_memory().available // 1e6)
 
     def as_dict(self):
         calc_props = {
@@ -123,13 +126,16 @@ class ElectronAnalyzer(ABC):
         self.mo_vals = get_mo_vals(self.ao_vals, self.mo_coeff)
 
         self.assign_num_chunks(self.ao_vals.shape, self.ao_vals.dtype)
-        print("NUMBER OF CHUNKS", self.num_chunks, self.ao_vals.dtype)
+        print("NUMBER OF CHUNKS", self.num_chunks, self.ao_vals.dtype, psutil.virtual_memory().available // 1e6)
 
         if self.num_chunks > 1:
             self.ao_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
                                                 self.num_chunks, self.ao_vals)
         else:
             self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
+            print('AO VELE MAT', self.ao_vele_mat.nbytes, self.ao_vele_mat.shape)
+
+        print("MEM NOW", psutil.virtual_memory().available // 1e6)
 
         self.rdm1 = None
         self.rdm2 = None
@@ -146,12 +152,17 @@ class ElectronAnalyzer(ABC):
         self.ee_energy_density = None
 
     def get_ao_rho_data(self):
-        if self.rho_data is None or self.tau_Data is None:
+        if self.rho_data is None or self.tau_data is None:
             ao_data, self.rho_data = get_mgga_data(
                                         self.mol, self.grid, self.rdm1)
             self.tau_data = get_tau_and_grad(self.mol, self.grid,
                                             self.rdm1, ao_data)
         return self.rho_data, self.tau_data
+
+    def perform_full_analysis(self):
+        self.get_ao_rho_data()
+        self.get_ha_energy_density()
+        self.get_ee_energy_density()
 
 
 class RHFAnalyzer(ElectronAnalyzer):
@@ -177,6 +188,7 @@ class RHFAnalyzer(ElectronAnalyzer):
                                                 self.mo_coeff)
         else:
             self.mo_vele_mat = get_mo_vele_mat(self.ao_vele_mat, self.mo_coeff)
+            print("MO VELE MAT", self.mo_vele_mat.nbytes, psutil.virtual_memory().available // 1e6)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
