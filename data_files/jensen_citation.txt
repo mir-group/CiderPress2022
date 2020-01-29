@@ -1,0 +1,9 @@
+@data{0EM0EL_2017,
+author = {Jensen, Stig Rune and Saha, Santanu and Flores-Livas, José Abdenago and Huhn, William and Blum, Volker and Goedecker, Stefan and Frediani, Luca},
+publisher = {DataverseNO},
+title = "{GGA-PBE and hybrid-PBE0 energies and dipole moments with MRChem, FHI-aims, NWChem and ELK}",
+year = {2017},
+version = {V3},
+doi = {10.18710/0EM0EL},
+url = {https://doi.org/10.18710/0EM0EL}
+}
