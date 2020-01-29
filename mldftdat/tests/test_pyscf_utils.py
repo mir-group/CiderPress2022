@@ -69,6 +69,14 @@ class TestPyscfUtils(unittest.TestCase):
             assert_equal(item[1], ref[1])
         self.assertEqual(mol.basis, 'cc-pvdz')
 
+    def test_run_scf(self):
+        lda_He = run_scf(self.He, 'RKS')
+        assert_equal(lda_He.xc, 'LDA,VWN')
+        b3lyp_He = run_scf(self.He, 'RKS', functional='B3LYP')
+        assert_equal(b3lyp_He.xc, 'B3LYP')
+        assert_raises(AssertionError, assert_almost_equal, lda_He.e_tot, b3lyp_He.e_tot)
+        assert_raises(AssertionError, assert_almost_equal, self.hf_He.e_tot, b3lyp_He.e_tot)
+
     def test_get_hf_coul_ex_total(self):
         # covered in setup
         jtot, ktot = get_hf_coul_ex_total(self.FH, self.rhf)
@@ -99,6 +107,15 @@ class TestPyscfUtils(unittest.TestCase):
             assert_equal(spin_data.shape, desired_shape_rho)
         assert_raises(AssertionError, assert_almost_equal, rho_data[0], rho_data[1])
 
+    def test_get_tau_and_grad(self):
+        ao_data, rho_data = get_mgga_data(self.FH, self.rhf_grid, self.rhf_rdm1)
+        tau_data = get_tau_and_grad(self.FH, self.rhf_grid, self.rhf_rdm1, ao_data)
+        desired_shape = (4, self.rhf_grid.coords.shape[0])
+        assert_equal(tau_data.shape, desired_shape)
+        assert_almost_equal(tau_data[0], rho_data[5])
+        zero = integrate_on_grid(tau_data[1:], self.rhf_grid.weights)
+        assert_almost_equal(np.linalg.norm(zero), 0, 5)
+
     def test_make_rdm2_from_rdm1(self):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
         ree = get_ee_energy_density(self.FH, rhf_rdm2,
@@ -125,6 +142,29 @@ class TestPyscfUtils(unittest.TestCase):
         # covered in setup
         pass
 
+    def test_get_vele_mat_chunks(self):
+        vele_mat = None
+        for vele_chunk, ao_chunk in get_vele_mat_chunks(self.FH, self.rhf_grid.coords,
+                                                        13, self.rhf_ao_vals):
+            if vele_mat is None:
+                vele_mat = vele_chunk
+                ao_vals = ao_chunk
+            else:
+                vele_mat = np.append(vele_mat, vele_chunk, axis=0)
+                ao_vals = np.append(ao_vals, ao_chunk, axis=0)
+        assert_almost_equal(vele_mat, self.rhf_vele_mat)
+
+        vele_mat = None
+        for vele_chunk, ao_chunk in get_vele_mat_chunks(self.He, self.He_grid.coords,
+                                        13, self.He_ao_vals, self.hf_He.mo_coeff):
+            if vele_mat is None:
+                vele_mat = vele_chunk
+                ao_vals = ao_chunk
+            else:
+                vele_mat = np.append(vele_mat, vele_chunk, axis=0)
+                ao_vals = np.append(ao_vals, ao_chunk, axis=0)
+        assert_almost_equal(vele_mat, self.He_mo_vele_mat)
+
     def test_get_ha_energy_density(self):
         rha = get_ha_energy_density(self.FH, self.rhf_rdm1,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
@@ -149,3 +189,23 @@ class TestPyscfUtils(unittest.TestCase):
                                     self.He_mo_vele_mat, self.He_mo_vals)
         rtot = integrate_on_grid(ree, self.He_grid.weights)
         assert_almost_equal(rtot, self.He_ref_ee)
+
+    def test_get_ha_energy_density2(self):
+        rha_ref = get_ha_energy_density(self.FH, self.rhf_rdm1,
+                                    self.rhf_vele_mat, self.rhf_ao_vals)
+
+        vele_mat_gen1 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
+                                               2, self.rhf_ao_vals)
+        vele_mat_gen2 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
+                                               13, self.rhf_ao_vals)
+
+        rha1 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    self.rhf_vele_mat, self.rhf_ao_vals)
+        rha2 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    vele_mat_gen1, self.rhf_ao_vals)
+        rha3 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
+                                    vele_mat_gen2, self.rhf_ao_vals)
+        assert_almost_equal(rha1, rha_ref)
+        assert_almost_equal(rha2, rha_ref)
+        assert_almost_equal(rha3, rha_ref)
+
