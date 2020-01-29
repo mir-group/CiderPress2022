@@ -13,7 +13,7 @@ from pyscf import gto, scf, dft, cc, fci
 
 
 def safe_mem_cap_mb():
-    return int(psutil.virtual_memory().available // 4e6)
+    return int(psutil.virtual_memory().available // 16e6)
 
 def time_func(func, *args):
     start_time = time.monotonic()
@@ -135,6 +135,7 @@ class TrainingDataCollector(FiretaskBase):
 
     def run_task(self, fw_spec):
 
+        print('STARTING TRAINING DATA TASK', psutil.virtual_memory().available // 1e6)
         calc = fw_spec['calc']
         assert calc.converged, "This training data is not converged!"
         calc_type = fw_spec['calc_type']
@@ -182,10 +183,13 @@ class TrainingDataCollector(FiretaskBase):
         os.makedirs(save_dir, exist_ok=exist_ok)
 
         analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
+        print('MADE ANALYZER', psutil.virtual_memory().available // 1e6)
         analyzer.perform_full_analysis()
+        print('FINISHED ANALYSIS', psutil.virtual_memory().available // 1e6)
         analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
+        print('DUMP ANALYSIS', psutil.virtual_memory().available // 1e6)
 
-        mol_dat['grid_size'] = analyzer.grid.shape[0]
+        mol_dat['grid_size'] = analyzer.grid.weights.shape[0]
         mol_dat['basis_size'] = analyzer.rdm1.shape[-1]
 
         info_file = os.path.join(save_dir, 'run_info.json')

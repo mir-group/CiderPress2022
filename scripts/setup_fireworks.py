@@ -37,6 +37,7 @@ if __name__ == '__main__':
     fw2 = make_dft_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0)
     fw3 = make_dft_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0, functional='b3lyp')
     fw4 = make_ccsd_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0)
+    fw5 = make_ccsd_firework(Atoms('Li', positions=[(0,0,0)]), 'test/Li', 'cc-pvdz', 1)
     launchpad = LaunchPad.auto_load()
-    for fw in [fw1, fw2, fw3, fw4]:
+    for fw in [fw1, fw2, fw3, fw4, fw5]:
         launchpad.add_wf(fw)
