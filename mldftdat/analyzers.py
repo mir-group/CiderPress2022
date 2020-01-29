@@ -146,7 +146,7 @@ class ElectronAnalyzer(ABC):
         self.ee_energy_density = None
 
     def get_ao_rho_data(self):
-        if self.rho_data is None or self.tau_Data is None:
+        if self.rho_data is None or self.tau_data is None:
             ao_data, self.rho_data = get_mgga_data(
                                         self.mol, self.grid, self.rdm1)
             self.tau_data = get_tau_and_grad(self.mol, self.grid,
