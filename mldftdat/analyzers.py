@@ -6,6 +6,7 @@ from mldftdat.pyscf_utils import *
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
+import psutil
 
 
 CALC_TYPES = {
@@ -42,7 +43,9 @@ class ElectronAnalyzer(ABC):
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
+        print('PRIOR TO POST PROCESS', psutil.virtual_memory().available // 1e6)
         self.post_process()
+        print('FINISHED POST PROCESS', psutil.virtual_memory().available // 1e6)
 
     def as_dict(self):
         calc_props = {
@@ -123,13 +126,16 @@ class ElectronAnalyzer(ABC):
         self.mo_vals = get_mo_vals(self.ao_vals, self.mo_coeff)
 
         self.assign_num_chunks(self.ao_vals.shape, self.ao_vals.dtype)
-        print("NUMBER OF CHUNKS", self.num_chunks, self.ao_vals.dtype)
+        print("NUMBER OF CHUNKS", self.num_chunks, self.ao_vals.dtype, psutil.virtual_memory().available // 1e6)
 
         if self.num_chunks > 1:
             self.ao_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
                                                 self.num_chunks, self.ao_vals)
         else:
             self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
+            print('AO VELE MAT', self.ao_vele_mat.nbytes, self.ao_vele_mat.shape)
+
+        print("MEM NOW", psutil.virtual_memory().available // 1e6)
 
         self.rdm1 = None
         self.rdm2 = None
@@ -182,6 +188,7 @@ class RHFAnalyzer(ElectronAnalyzer):
                                                 self.mo_coeff)
         else:
             self.mo_vele_mat = get_mo_vele_mat(self.ao_vele_mat, self.mo_coeff)
+            print("MO VELE MAT", self.mo_vele_mat.nbytes, psutil.virtual_memory().available // 1e6)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
