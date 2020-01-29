@@ -26,14 +26,19 @@ def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     mol.build()
     return mol
 
-def run_scf(mol, calc_type):
+def run_scf(mol, calc_type, functional = None):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
     of a given calc_type in SCF_TYPES. Return the calc object.
+    Note, if RKS or UKS is the calc_type, default functional is used.
     """
     if not calc_type in SCF_TYPES:
         raise ValueError('Calculation type must be in {}'.format(list(SCF_TYPES.keys())))
+
     calc = SCF_TYPES[calc_type](mol)
+    if 'KS' in calc_type and functional is not None:
+        calc.xc = functional
+
     calc.kernel()
     return calc
 
@@ -118,6 +123,9 @@ def transform_basis_2e(eri, coeff):
         return np.array([part00, part01, part11])
 
 def get_ccsd_ee_total(mol, cccalc, hfcalc):
+    """
+    Get the total CCSD electron-electron repulsion energy.
+    """
     rdm2 = cccalc.make_rdm2()
     eeint = mol.intor('int2e', aosym='s1')
     if len(hfcalc.mo_coeff.shape) == 2:
@@ -130,6 +138,9 @@ def get_ccsd_ee_total(mol, cccalc, hfcalc):
                 + 0.5 * np.sum(eeint[2] * rdm2[2])
 
 def get_ccsd_ee(rdm2, eeint):
+    """
+    Get the total CCSD electron-electron repulsion energy.
+    """
     if len(rdm2.shape) == 4:
         return np.sum(eeint * rdm2) / 2
     else:
@@ -154,6 +165,14 @@ def make_rdm2_from_rdm1(rdm1):
     return part1 - 0.5 * part2
 
 def make_rdm2_from_rdm1_unrestricted(rdm1):
+    """
+    For a UHF calculation, return the 2-RDM from
+    a given 1-RDM. Given D2(ijkl)=<psi| i+ k+ l j |psi>,
+    and D(ij)=<psi| i+ j |psi>, then:
+    For like spin, D2(ijkl) = D(ij) * D(kl) - D(lj) * D(ki).
+    For opposite spin, D2(ijkl) = D(ij) * D(kl)
+    Return D(uu,ijkl), D(ud,ijkl), D(dd,ijkl)
+    """
     spinparts = []
     rdm1copy = rdm1.copy()
     for s in [0,1]:
@@ -167,6 +186,15 @@ def get_ao_vals(mol, points):
     return eval_ao(mol, points)
 
 def get_mgga_data(mol, grid, rdm1):
+    """
+    Get atomic orbital and density data.
+    See eval_ao and eval_rho docs for details.
+    Briefly, returns 0-3 derivatives of the atomic orbitals
+    in ao_data;
+    and the density, first derivatives of density,
+    Laplacian of density, and kinetic energy density
+    in rho_data.
+    """
     ao_data = eval_ao(mol, grid.coords, deriv=3)
     if len(rdm1.shape) == 2:
         rho_data = eval_rho(mol, ao_data, rdm1, xctype='mGGA')
@@ -177,6 +205,11 @@ def get_mgga_data(mol, grid, rdm1):
     return ao_data, rho_data
 
 def get_tau_and_grad_helper(mol, grid, rdm1, ao_data):
+    """
+    Passes the derivatives of the atomic orbitals
+    to eval_rho to get the kinetic energy density and its
+    derivatives. Not sure if this works.
+    """
     # 0 1 2 3 4  5  6  7  8  9
     # 0 x y z xx xy xz yy yz zz
     aox = ao_data[[1, 4, 5, 6]]
