@@ -29,7 +29,7 @@ for struct_str in struct_strs[:10]:
     structio = StringIO(struct_str)
     struct = ase.io.read(structio, format='xyz')
     print(name, spin, struct)
-    mol_id = name
+    mol_id = 'augG2/' + name
     for basis in ['aug-cc-pvtz', 'cc-pcvtz']:
         fw_lst.append(make_dft_firework(struct, mol_id, basis,
                                         spin, charge = 0,
