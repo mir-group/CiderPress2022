@@ -116,7 +116,6 @@ class ElectronAnalyzer(ABC):
     def post_process(self):
         # The child post process function must set up the RDMs
         self.grid = get_grid(self.mol)
-        self.eri_ao = self.mol.intor('int2e')
 
         self.e_tot = self.calc.e_tot
         self.mo_coeff = self.calc.mo_coeff
@@ -214,6 +213,7 @@ class RHFAnalyzer(ElectronAnalyzer):
 
     def _get_rdm2(self):
         if self.rdm2 is None:
+            self.eri_ao = self.mol.intor('int2e')
             self.rdm2 = make_rdm2_from_rdm1(self.rdm1)
         return self.rdm2
 
@@ -283,6 +283,7 @@ class UHFAnalyzer(ElectronAnalyzer):
 
     def _get_rdm2(self):
         if self.rdm2 is None:
+            self.eri_ao = self.mol.intor('int2e')
             self.rdm2 = make_rdm2_from_rdm1_unrestricted(self.rdm1)
         return self.rdm2
 
@@ -359,6 +360,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
 
     def post_process(self):
         super(CCSDAnalyzer, self).post_process()
+        self.eri_ao = self.mol.intor('int2e')
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
         self.mo_rdm2 = np.array(self.calc.make_rdm2())
 
@@ -426,6 +428,7 @@ class UCCSDAnalyzer(ElectronAnalyzer):
 
     def post_process(self):
         super(UCCSDAnalyzer, self).post_process()
+        self.eri_ao = self.mol.intor('int2e')
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
         self.mo_rdm2 = np.array(self.calc.make_rdm2())
 
