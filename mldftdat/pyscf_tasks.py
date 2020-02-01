@@ -198,3 +198,73 @@ class TrainingDataCollector(FiretaskBase):
         f.close()
 
         return FWAction(stored_data={'save_dir': save_dir})
+
+
+@explicit_serialize
+class SCFCalcConvergenceFixer(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'calc_type']
+    optional_params = ['spin', 'charge', 'max_conv_tol', 'functional']
+
+    DEFAULT_MAX_CONV_TOL = 1e-7
+
+    def run_task(self, fw_spec):
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = self['calc_type']
+
+        start_time = time.monotonic()
+        calc = run_scf(mol, calc_type, self.get('functional'))
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, changing params.")
+            
+            calc.max_iter = 200
+            for DIIS in [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]:
+                if DIIS is None:
+                    calc.diis = False
+                else:
+                    calc.DIIS = DIIIS
+
+                start_time = time.monotonic()
+                calc.kernel()
+                stop_time = time.monotonic()
+
+                if calc.converged:
+                    break
+
+            else:
+                calc.conv_tol *= 10
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        if 'KS' in calc_type:
+            functional = self.get('functional')
+            if functional is None:
+                update_spec['functional'] = 'LDA_VWN'
+            else:
+                functional = functional.replace(',', '_')
+                functional = functional.replace(' ', '_')
+                functional = functional.upper()
+                update_spec['functional'] = functional
+
+        return FWAction(update_spec = update_spec)
