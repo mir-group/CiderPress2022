@@ -230,12 +230,15 @@ class SCFCalcConvergenceFixer(FiretaskBase):
             iter_step += 1
             print ("Did not converge SCF, changing params.")
             
-            calc.max_iter = 200
+            calc.max_cycle = 200
+            calc.direct_scf = False
             for DIIS in [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]:
+              for init_guess in ['minao', 'atom', '1e']:
+                calc.init_guess = init_guess
                 if DIIS is None:
                     calc.diis = False
                 else:
-                    calc.DIIS = DIIIS
+                    calc.DIIS = DIIS
 
                 start_time = time.monotonic()
                 calc.kernel()
