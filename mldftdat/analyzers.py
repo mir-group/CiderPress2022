@@ -39,7 +39,7 @@ class ElectronAnalyzer(ABC):
         if require_converged and not calc.converged:
             raise ValueError('{} calculation must be converged.'.format(self.calc_type))
         self.calc = calc
-        self.mol = calc.mol
+        self.mol = calc.mol.build()
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
