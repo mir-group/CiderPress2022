@@ -7,7 +7,7 @@ fw_ids = lpad.get_fw_ids(query = {'state' : 'FIZZLED'})
 new_fws = []
 unknown_fail_reasons = []
 num_fws_added = 0
-MAX_NUM_FWS_ADDED = 1
+MAX_NUM_FWS_ADDED = 1000
 
 for fw_id in fw_ids:
     fw = lpad.get_fw_by_id(fw_id)
@@ -17,7 +17,8 @@ for fw_id in fw_ids:
     else:
         exception = fw.launches[-1].action.stored_data['_exception']['_stacktrace']
     if isinstance(task, SCFCalc) and\
-            ('did not converge' in exception):
+            ('did not converge' in exception)\
+            and ('SCF' in exception):
         print(fw_id, 'did not converge')
         task.pop('_fw_name')
         new_task = SCFCalcConvergenceFixer(**task)
@@ -39,3 +40,5 @@ for fw_id in fw_ids:
 
 print('The following fw_ids failed for unknown reasons:')
 print(unknown_fail_reasons)
+print('Added this many new fws')
+print(num_fws_added)
