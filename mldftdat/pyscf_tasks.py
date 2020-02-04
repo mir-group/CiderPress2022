@@ -241,7 +241,7 @@ class SCFCalcConvergenceFixer(FiretaskBase):
             iter_step += 1
             print ("Did not converge SCF, changing params.")
             
-            calc.max_cycle = 100
+            calc.max_cycle = 200
             calc.direct_scf = False
             for DIIS, init_guess, diis_opts in product(diis_types,
                                                        init_guess_types,
@@ -264,7 +264,7 @@ class SCFCalcConvergenceFixer(FiretaskBase):
                             init_guess, diis_opts, DIIS))
                     break
             else:
-                print("Increasing convergence tolerance to %f" % calc.conv_tol * 10)
+                print("Increasing convergence tolerance to %e" % (calc.conv_tol * 10))
                 calc.conv_tol *= 10
 
         assert calc.converged, "SCF calculation did not converge!"
