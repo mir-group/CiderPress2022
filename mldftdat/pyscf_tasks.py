@@ -8,6 +8,7 @@ import datetime
 from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
 import os, psutil, multiprocessing, time
+from itertools import product
 
 from pyscf import gto, scf, dft, cc, fci
 
@@ -100,6 +101,12 @@ class CCSDCalc(FiretaskBase):
         start_time = time.monotonic()
         calc = run_cc(hfcalc)
         stop_time = time.monotonic()
+        if not calc.converged:
+            calc.diis_start_cycle = 4
+            calc.diis_space = 10
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
 
         max_iter = 50 # extra safety catch
         iter_step = 0
@@ -210,6 +217,7 @@ class SCFCalcConvergenceFixer(FiretaskBase):
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
+        print('Running SCF for {}'.format(atoms.get_chemical_formula()))
         kwargs = {}
         if self.get('spin') is not None:
             kwargs['spin'] = self['spin']
@@ -220,34 +228,43 @@ class SCFCalcConvergenceFixer(FiretaskBase):
         calc_type = self['calc_type']
 
         start_time = time.monotonic()
-        calc = run_scf(mol, calc_type, self.get('functional'))
+        calc = run_scf(mol, calc_type, self.get('functional'), remove_ld=True)
         stop_time = time.monotonic()
 
         max_iter = 50 # extra safety catch
         iter_step = 0
+        diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        init_guess_types = ['minao', 'atom', '1e']
+        diis_options_list = [(8, 1), (14, 4)]
         while not calc.converged and calc.conv_tol <= max_conv_tol\
                 and iter_step < max_iter:
             iter_step += 1
             print ("Did not converge SCF, changing params.")
             
-            calc.max_cycle = 200
+            calc.max_cycle = 100
             calc.direct_scf = False
-            for DIIS in [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]:
-              for init_guess in ['minao', 'atom', '1e']:
-                calc.init_guess = init_guess
+            for DIIS, init_guess, diis_opts in product(diis_types,
+                                                       init_guess_types,
+                                                       diis_options_list):
+
                 if DIIS is None:
                     calc.diis = False
                 else:
                     calc.DIIS = DIIS
+                calc.init_guess = init_guess
+                calc.diis_space = diis_opts[0]
+                calc.diis_start_cycle = diis_opts[1]
 
                 start_time = time.monotonic()
                 calc.kernel()
                 stop_time = time.monotonic()
 
                 if calc.converged:
+                    print('Fixed convergence issues! {} {} {}'.format(
+                            init_guess, diis_opts, DIIS))
                     break
-
             else:
+                print("Increasing convergence tolerance to %f" % calc.conv_tol * 10)
                 calc.conv_tol *= 10
 
         assert calc.converged, "SCF calculation did not converge!"
