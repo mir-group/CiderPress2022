@@ -36,7 +36,7 @@ for struct_str in struct_strs[:10]:
         for functional in functional_list:
             fw_lst.append(make_dft_firework(struct, mol_id, basis,
                                         spin, functional = functional, charge = 0,
-                                        name = mol_id + '_' + basis + '_dft'))
+                                        name = mol_id + '_' + basis + '_' + functional))
 
 launchpad = LaunchPad.auto_load()
 for fw in fw_lst:
