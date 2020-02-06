@@ -116,6 +116,13 @@ class TestPyscfUtils(unittest.TestCase):
         zero = integrate_on_grid(tau_data[1:], self.rhf_grid.weights)
         assert_almost_equal(np.linalg.norm(zero), 0, 5)
 
+        ao_data, rho_data = get_mgga_data(self.NO, self.uhf_grid, self.uhf_rdm1)
+        tau_data = get_tau_and_grad(self.NO, self.uhf_grid, self.uhf_rdm1, ao_data)
+        desired_shape = (2, 4, self.uhf_grid.coords.shape[0])
+        assert_almost_equal(tau_data[:,0,:], rho_data[:,5,:])
+        zero = integrate_on_grid(tau_data[:,1:,:], self.uhf_grid.weights)
+        assert_almost_equal(np.linalg.norm(zero), 0, 4)
+
     def test_make_rdm2_from_rdm1(self):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
         ree = get_ee_energy_density(self.FH, rhf_rdm2,

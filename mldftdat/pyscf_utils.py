@@ -6,10 +6,11 @@ from scipy.linalg.blas import dgemm
 import numpy as np
 
 SCF_TYPES = {
-    'RHF': scf.hf.RHF,
-    'UHF': scf.uhf.UHF,
-    'RKS': dft.RKS,
-    'UKS': dft.UKS
+    'RHF'  : scf.hf.RHF,
+    'ROHF' : scf.rohf.ROHF,
+    'UHF'  : scf.uhf.UHF,
+    'RKS'  : dft.RKS,
+    'UKS'  : dft.UKS
 }
 
 def mol_from_ase(atoms, basis, spin = 0, charge = 0):
@@ -26,7 +27,7 @@ def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     mol.build()
     return mol
 
-def run_scf(mol, calc_type, functional = None):
+def run_scf(mol, calc_type, functional = None, remove_ld = False):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
     of a given calc_type in SCF_TYPES. Return the calc object.
@@ -36,6 +37,9 @@ def run_scf(mol, calc_type, functional = None):
         raise ValueError('Calculation type must be in {}'.format(list(SCF_TYPES.keys())))
 
     calc = SCF_TYPES[calc_type](mol)
+    if remove_ld:
+        print("Removing linear dependence from overlap matrix")
+        calc = scf.addons.remove_linear_dep_(calc)
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
 

@@ -13,7 +13,9 @@ struct_strs = txt.split('\n\n')
 
 fw_lst = []
 
-for struct_str in struct_strs:
+functional_list = ['pbe', 'scan', 'b3lyp']
+
+for struct_str in struct_strs[:10]:
     name, struct_str = struct_str.split('\n', 1)
     name = name[:-4]
     if name.endswith('_s'):
@@ -31,12 +33,10 @@ for struct_str in struct_strs:
     print(name, spin, struct)
     mol_id = 'augG2/' + name
     for basis in ['aug-cc-pvtz', 'cc-pcvtz']:
-        fw_lst.append(make_dft_firework(struct, mol_id, basis,
-                                        spin, charge = 0,
-                                        name = mol_id + '_' + basis + '_dft'))
-        fw_lst.append(make_hf_firework(struct, mol_id, basis,
-                                        spin, charge = 0,
-                                        name = mol_id + '_' + basis + '_hf'))
+        for functional in functional_list:
+            fw_lst.append(make_dft_firework(struct, mol_id, basis,
+                                        spin, functional = functional, charge = 0,
+                                        name = mol_id + '_' + basis + '_' + functional))
 
 launchpad = LaunchPad.auto_load()
 for fw in fw_lst:
