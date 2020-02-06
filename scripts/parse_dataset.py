@@ -2,6 +2,8 @@ import os
 import json
 import pandas as pd
 
+MLDFTDB = os.environ['MLDFTDB']
+
 def get_energies(calcdir):
     energies = {}
     mol_ids = list(filter(lambda x: os.path.isdir(os.path.join(calcdir, x)),
@@ -44,22 +46,21 @@ def parse_pandas(dataset, basis, methods):
             calc_type = method
             functional = ''
             name = calc_type
-        method_data = parse_calc_type(CALC_TYPE, basis, functional, dataset)
+        method_data = parse_calc_type(calc_type, basis, functional, dataset)
         if df is None:
             df = pd.DataFrame.from_dict(method_data,
                         orient='index', columns=[name])
         else:
-            df[name]= pd.series(method_data)
+            df[name]= pd.Series(method_data)
     return df
 
 
 if __name__ == '__main__':
-    MLDFTDB = os.environ['MLDFTDB']
     CALC_TYPE = 'DFT'
     BASIS = 'aug-cc-pvtz'
     FUNCTIONAL = 'PBE'
     DATASET = 'augG2'
-    print(parse_calc_type(CALC_TYPE, BASIS, FUNCTIONAL, DATASET))
+    #print(parse_calc_type(CALC_TYPE, BASIS, FUNCTIONAL, DATASET))
 
     print('Make pandas df')
     df = parse_pandas(DATASET, BASIS, [('DFT', 'PBE'), 'HF', ('DFT', 'B3LYP')])
