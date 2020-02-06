@@ -39,7 +39,7 @@ class ElectronAnalyzer(ABC):
         if require_converged and not calc.converged:
             raise ValueError('{} calculation must be converged.'.format(self.calc_type))
         self.calc = calc
-        self.mol = calc.mol
+        self.mol = calc.mol.build()
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
@@ -94,9 +94,9 @@ class ElectronAnalyzer(ABC):
         return analyzer
 
     @classmethod
-    def load(cls, fname):
+    def load(cls, fname, max_mem = None):
         analyzer_dict = lib.chkfile.load(fname, 'analyzer')
-        return cls.from_dict(analyzer_dict)
+        return cls.from_dict(analyzer_dict, max_mem)
 
     def assign_num_chunks(self, ao_vals_shape, ao_vals_dtype):
         if self.max_mem == None:
