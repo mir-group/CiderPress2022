@@ -7,7 +7,7 @@ fw_ids = lpad.get_fw_ids(query = {'state' : 'FIZZLED'})
 new_fws = []
 unknown_fail_reasons = []
 num_fws_added = 0
-MAX_NUM_FWS_ADDED = 1
+MAX_NUM_FWS_ADDED = 100
 
 for fw_id in fw_ids:
     fw = lpad.get_fw_by_id(fw_id)
@@ -29,8 +29,11 @@ for fw_id in fw_ids:
             lpad.defuse_fw(fw_id)
             lpad.add_wf(new_fw)
     elif isinstance(task, SCFCalcConvergenceFixer) and\
-            ('did not converge' in exception):
-        lpad.rerun_fw(fw_id)
+            ('did not converge' in exception)\
+            and ('SCF' in exception): # condition no in original script
+        print ('Defusing fw', fw_id)
+        lpad.defuse_fw(fw_id)
+        #lpad.rerun_fw(fw_id)
     elif exception == 'MEMORY ERROR':
         print(fw_id, 'ran out of memory')
     elif isinstance(task, SCFCalc) and\

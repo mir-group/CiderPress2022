@@ -137,7 +137,7 @@ class CCSDCalc(FiretaskBase):
 class TrainingDataCollector(FiretaskBase):
 
     required_params = ['save_root_dir', 'mol_id']
-    optional_params = ['no_overwrite']
+    optional_params = ['no_overwrite', 'skip_analysis']
     implemented_calcs = ['RHF', 'UHF', 'RKS', 'UKS', 'CCSD', 'UCCSD']
 
     def run_task(self, fw_spec):
