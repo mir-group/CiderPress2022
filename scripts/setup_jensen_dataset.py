@@ -13,7 +13,7 @@ struct_strs = txt.split('\n\n')
 
 fw_lst = []
 
-for struct_str in struct_strs[:10]:
+for struct_str in struct_strs:
     name, struct_str = struct_str.split('\n', 1)
     name = name[:-4]
     if name.endswith('_s'):

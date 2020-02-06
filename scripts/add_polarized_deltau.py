@@ -1,10 +1,14 @@
 import os
+from mldftdat.analyzers import UHFAnalyzer, UCCSDAnalyzer
 
 for root, dirs, files in os.walk(os.environ['MLDFTDB']):
-    if ('UHF' in root or 'UKS' in root) and 'data.hdf5' in files:
+    if ('UHF' in root or 'UKS' in root or 'UCCSD' in root) and 'data.hdf5' in files:
         fname = os.path.join(root, 'data.hdf5')
         old_size = os.path.getsize(fname)
-        analyzer = UHFAnalyzer.load(fname, max_mem = 10)
+        if 'UCCSD' in root:
+            analyzer = UCCSDAnalyzer.load(fname, max_mem = 10)
+        else:
+            analyzer = UHFAnalyzer.load(fname, max_mem = 10)
         print(analyzer.tau_data.shape)
         analyzer.tau_data = None
         analyzer.get_ao_rho_data()
@@ -13,4 +17,3 @@ for root, dirs, files in os.walk(os.environ['MLDFTDB']):
         new_size = os.path.getsize(fname)
         assert new_size > old_size
         print(root)
-        break
