@@ -32,7 +32,7 @@ def make_dft_from_hf_firework(functional, hf_type, basis, mol_id):
     t1 = LoadCalcFromDB(directory = save_dir)
     t2 = DFTFromHF(functional = functional)
     t3 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
-    name  = directory + '_DFTfromHF_' + functional
+    name  = mol_id + '_' + basis + '_' + '_DFTfromHF_' + functional
     return Firework([t1, t2, t3], name=name)
 
 def make_hf_firework(struct, mol_id, basis, spin, charge=0, name=None):
