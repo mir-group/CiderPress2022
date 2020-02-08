@@ -81,6 +81,108 @@ class SCFCalc(FiretaskBase):
         return FWAction(update_spec = update_spec)
 
 
+def load_calc(fname):
+    analyzer_dict = lib.chkfile.load(fname, 'analyzer')
+    mol = gto.mol.unpack(analyzer_dict['mol'])
+    mol.build()
+    calc_type = analyzer_dict['class_type']
+    calc = CALC_TYPES[calc_type](mol)
+    calc.__dict__.update(analyzer_dict['calc'])
+    coords = analyzer_dict.pop('coords')
+    weights = analyzer_dict.pop('weights')
+    return calc, calc_type
+
+
+@explicit_serialize
+class LoadCalcFromDB(FiretaskBase):
+
+    required_params = ['directory']
+
+    def run_task(self, fw_spec):
+
+        with open(os.path.join(self['directory'], 'run_info.json'), 'r') as f:
+            info_dict = json.load(f)
+        atoms = atoms.fromdict(info_dict['struct'])
+        data_file = os.path.join(self['directory'], 'data.hdf5')
+        calc, calc_type = load_calc(data_file)
+
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'load_dir'  : self['directory'],
+            'mol'       : calc.mol,
+            'struct'    : atoms,
+            'wall_time' : 'NA'
+        }
+        if 'KS' in calc_type:
+            functional = calc.xc
+            functional = functional.replace(',', '_')
+            functional = functional.replace(' ', '_')
+            functional = functional.upper()
+            update_spec['functional'] = functional
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
+class DFTFromHF(FiretaskBase):
+    # can run this after loading HF with LoadCalcFromDB
+
+    required_params = ['functional']
+
+    def run_task(self, fw_spec):
+        data_file = os.path.join(self['directory'], 'data.hdf5')
+        hf_calc_type = fw_spec['calc_type']
+        hf_calc = fw_spec['calc']
+        if hf_calc_type == 'RHF':
+            dft_type = 'RKS'
+        elif hf_calc_type == 'UHF':
+            dft_type = 'UKS'
+        else:
+            raise ValueError('HF calc_type {} not supported.'.format(hf_calc_type))
+
+        print("RUNNING A DFT FROM HF OF TYPE", dft_type)
+
+        init_rdm1 = hf_calc.make_rdm1()
+        calc = run_scf(hf_calc.mol, dft_type, functional = self.get('functional'),
+                        dm0 = init_rdm1)
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            calc.conv_tol *= 10
+
+            start_time = time.monotonic()
+            calc.kernel(dm0 = init_rdm1)
+            stop_time = time.monotonic()
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : dft_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : calc.mol,
+            'wall_time' : stop_time - start_time
+        }
+        if 'KS' in calc_type:
+            functional = self.get('functional')
+            if functional is None:
+                update_spec['functional'] = 'LDA_VWN'
+            else:
+                functional = functional.replace(',', '_')
+                functional = functional.replace(' ', '_')
+                functional = functional.upper()
+                update_spec['functional'] = functional
+
+        return FWAction(update_spec = update_spec)
+
+
 # old name so that Fireworks can be rerun
 @explicit_serialize
 class HFCalc(SCFCalc):
