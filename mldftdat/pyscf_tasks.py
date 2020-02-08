@@ -6,21 +6,14 @@ from mldftdat.pyscf_utils import *
 import json
 import datetime
 from datetime import date
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer,\
+        CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
 import os, psutil, multiprocessing, time
 from itertools import product
+from mldftdat.workflow_utils import safe_mem_cap_mb, time_func,\
+                                    get_functional_db_name, get_save_dir
 
 from pyscf import gto, scf, dft, cc, fci
-
-
-def safe_mem_cap_mb():
-    return int(psutil.virtual_memory().available // 16e6)
-
-def time_func(func, *args):
-    start_time = time.monotonic()
-    res = func(*args)
-    finish_time = time.monotonic()
-    return res, finish_time - start_time
 
 
 @explicit_serialize
@@ -73,10 +66,7 @@ class SCFCalc(FiretaskBase):
             if functional is None:
                 update_spec['functional'] = 'LDA_VWN'
             else:
-                functional = functional.replace(',', '_')
-                functional = functional.replace(' ', '_')
-                functional = functional.upper()
-                update_spec['functional'] = functional
+                update_spec['functional'] = get_functional_db_name(functional)
 
         return FWAction(update_spec = update_spec)
 
@@ -118,10 +108,7 @@ class LoadCalcFromDB(FiretaskBase):
         }
         if 'KS' in calc_type:
             functional = calc.xc
-            functional = functional.replace(',', '_')
-            functional = functional.replace(' ', '_')
-            functional = functional.upper()
-            update_spec['functional'] = functional
+            update_spec['functional'] = get_functional_db_name(functional)
 
         return FWAction(update_spec = update_spec)
 
@@ -175,10 +162,7 @@ class DFTFromHF(FiretaskBase):
             if functional is None:
                 update_spec['functional'] = 'LDA_VWN'
             else:
-                functional = functional.replace(',', '_')
-                functional = functional.replace(' ', '_')
-                functional = functional.upper()
-                update_spec['functional'] = functional
+                update_spec['functional'] = get_functional_db_name(functional)
 
         return FWAction(update_spec = update_spec)
 
@@ -285,10 +269,9 @@ class TrainingDataCollector(FiretaskBase):
             exist_ok = False
         else:
             exist_ok = True
-        if fw_spec.get('functional') is not None:
-            calc_type = calc_type + '/' + fw_spec['functional']
-        save_dir = os.path.join(self['save_root_dir'], calc_type,
-                                mol.basis, self['mol_id'])
+        save_dir = get_save_dir(self['save_root_dir'], calc_type,
+                                mol.basis, self['mol_id'],
+                                functional = self.get('functional'))
         os.makedirs(save_dir, exist_ok=exist_ok)
 
         analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
@@ -384,9 +367,6 @@ class SCFCalcConvergenceFixer(FiretaskBase):
             if functional is None:
                 update_spec['functional'] = 'LDA_VWN'
             else:
-                functional = functional.replace(',', '_')
-                functional = functional.replace(' ', '_')
-                functional = functional.upper()
-                update_spec['functional'] = functional
+                update_spec['functional'] = get_functional_db_name(functional)
 
         return FWAction(update_spec = update_spec)
