@@ -20,11 +20,18 @@ def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0):
     t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
     return t1, t2
 
+def make_hf_from_dft_firework(functional, directory):
+    t1 = LoadCalcFromDB(directory = directory)
+    t2 = DFTFromHF(functional = functional)
+    name  = directory + '_DODFT_' + functional
+    return Firework([t1, t2], name=name)
+
 def make_hf_firework(struct, mol_id, basis, spin, charge=0, name=None):
     return Firework(get_hf_tasks(struct, mol_id, basis, spin, charge), name=name)
 
 def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0, name=None):
-    return Firework(get_dft_tasks(struct, mol_id, basis, spin, functional=functional, charge=charge), name=name)
+    return Firework(get_dft_tasks(struct, mol_id, basis, spin,
+                    functional=functional, charge=charge), name=name)
 
 def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None):
     t1, t2 = get_hf_tasks(struct, mol_id, basis, spin, charge)
