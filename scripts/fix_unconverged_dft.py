@@ -8,7 +8,7 @@ fw_ids = lpad.get_fw_ids(query = {'state' : 'FIZZLED'})
 new_fws = []
 unknown_fail_reasons = []
 num_fws_added = 0
-MAX_NUM_FWS_ADDED = 1
+MAX_NUM_FWS_ADDED = 100
 
 for fw_id in fw_ids:
     fw = lpad.get_fw_by_id(fw_id)
@@ -29,8 +29,7 @@ for fw_id in fw_ids:
         else:
             continue
         new_fw = make_dft_from_hf_firework(task['functional'], hf_type,
-                                    task['basis'], task['mol_id'])
-        new_fw = Firework([new_task] + fw.tasks[1:], name=fw.name + '_CONVFIX')
+                                    task['basis'], fw.tasks[-1]['mol_id'])
         if num_fws_added < MAX_NUM_FWS_ADDED:
             print('ADDING NEW FW', fw_id)
             num_fws_added += 1
