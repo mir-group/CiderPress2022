@@ -7,7 +7,7 @@ import json
 import datetime
 from datetime import date
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer,\
-        CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer
+        CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer, CALC_TYPES
 import os, psutil, multiprocessing, time
 from itertools import product
 from mldftdat.workflow_utils import safe_mem_cap_mb, time_func,\
@@ -71,15 +71,20 @@ class SCFCalc(FiretaskBase):
         return FWAction(update_spec = update_spec)
 
 
+def mol_from_dict(mol_dict):
+    for item in ['charge', 'spin', 'symmetry', 'verbose']:
+        if type(mol_dict[item]).__module__ == np.__name__:
+            mol_dict[item] = mol_dict[item].item()
+    mol = gto.mole.unpack(mol_dict)
+    mol.build()
+    return mol
+
 def load_calc(fname):
     analyzer_dict = lib.chkfile.load(fname, 'analyzer')
-    mol = gto.mol.unpack(analyzer_dict['mol'])
-    mol.build()
-    calc_type = analyzer_dict['class_type']
+    mol = mol_from_dict(analyzer_dict['mol'])
+    calc_type = analyzer_dict['calc_type']
     calc = CALC_TYPES[calc_type](mol)
     calc.__dict__.update(analyzer_dict['calc'])
-    coords = analyzer_dict.pop('coords')
-    weights = analyzer_dict.pop('weights')
     return calc, calc_type
 
 
@@ -92,7 +97,7 @@ class LoadCalcFromDB(FiretaskBase):
 
         with open(os.path.join(self['directory'], 'run_info.json'), 'r') as f:
             info_dict = json.load(f)
-        atoms = atoms.fromdict(info_dict['struct'])
+        atoms = Atoms.fromdict(info_dict['struct'])
         data_file = os.path.join(self['directory'], 'data.hdf5')
         calc, calc_type = load_calc(data_file)
 
@@ -120,7 +125,6 @@ class DFTFromHF(FiretaskBase):
     required_params = ['functional']
 
     def run_task(self, fw_spec):
-        data_file = os.path.join(self['directory'], 'data.hdf5')
         hf_calc_type = fw_spec['calc_type']
         hf_calc = fw_spec['calc']
         if hf_calc_type == 'RHF':
@@ -138,7 +142,7 @@ class DFTFromHF(FiretaskBase):
 
         max_iter = 50 # extra safety catch
         iter_step = 0
-        while not calc.converged and calc.conv_tol < max_conv_tol\
+        while not calc.converged and calc.conv_tol < 1e-7\
                 and iter_step < max_iter:
             iter_step += 1
             print ("Did not converge SCF, increasing conv_tol.")
