@@ -1,19 +1,21 @@
 from fireworks import FiretaskBase, FWAction
 from fireworks.utilities.fw_utilities import explicit_serialize
 from fireworks.utilities.fw_serializers import recursive_dict
+
 from ase import Atoms
-from mldftdat.pyscf_utils import *
+from pyscf import scf, dft, cc
+
 import json
-import datetime
-from datetime import date
+
+from mldftdat.pyscf_utils import *
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer,\
         CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer, CALC_TYPES
-import os, psutil, multiprocessing, time
+
+import os, psutil, multiprocessing, time, datetime
 from itertools import product
 from mldftdat.workflow_utils import safe_mem_cap_mb, time_func,\
-                                    get_functional_db_name, get_save_dir
-
-from pyscf import gto, scf, dft, cc, fci
+                                    get_functional_db_name, get_save_dir,\
+                                    load_calc
 
 
 @explicit_serialize
@@ -69,23 +71,6 @@ class SCFCalc(FiretaskBase):
                 update_spec['functional'] = get_functional_db_name(functional)
 
         return FWAction(update_spec = update_spec)
-
-
-def mol_from_dict(mol_dict):
-    for item in ['charge', 'spin', 'symmetry', 'verbose']:
-        if type(mol_dict[item]).__module__ == np.__name__:
-            mol_dict[item] = mol_dict[item].item()
-    mol = gto.mole.unpack(mol_dict)
-    mol.build()
-    return mol
-
-def load_calc(fname):
-    analyzer_dict = lib.chkfile.load(fname, 'analyzer')
-    mol = mol_from_dict(analyzer_dict['mol'])
-    calc_type = analyzer_dict['calc_type']
-    calc = CALC_TYPES[calc_type](mol)
-    calc.__dict__.update(analyzer_dict['calc'])
-    return calc, calc_type
 
 
 @explicit_serialize
