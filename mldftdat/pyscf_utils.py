@@ -5,6 +5,15 @@ from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
 
+CALC_TYPES = {
+    'RHF'   : scf.hf.RHF,
+    'UHF'   : scf.uhf.UHF,
+    'RKS'   : dft.rks.RKS,
+    'UKS'   : dft.uks.UKS,
+    'CCSD'  : cc.ccsd.CCSD,
+    'UCCSD' : cc.uccsd.UCCSD
+}
+
 SCF_TYPES = {
     'RHF'  : scf.hf.RHF,
     'ROHF' : scf.rohf.ROHF,
@@ -377,3 +386,40 @@ def get_ee_energy_density2(mol, rdm2, vele_mat, orb_vals):
                                     get_ee_energy_density(mol, rdm2,
                                         vele_mat_chunk, orb_vals_chunk))
         return ee_energy_density
+
+
+def mol_from_dict(mol_dict):
+    for item in ['charge', 'spin', 'symmetry', 'verbose']:
+        if type(mol_dict[item]).__module__ == np.__name__:
+            mol_dict[item] = mol_dict[item].item()
+    mol = gto.mole.unpack(mol_dict)
+    mol.build()
+    return mol
+
+def get_scf(calc_type, mol, calc_data = None):
+    calc = CALC_TYPES[calc_type](mol)
+    calc.__dict__.update(calc_data)
+    return calc
+
+def get_ccsd(calc_type, mol, calc_data = None):
+    if calc_type == 'CCSD':
+        hf = scf.hf.RHF(mol)
+    else:
+        hf = scf.uhf.UHF(mol)
+    hf.e_tot = calc_data.pop('e_tot') - calc_data['e_corr']
+    calc = CALC_TYPES[calc_type](hf)
+    calc.__dict__.update(calc_data)
+    return calc
+
+def load_calc(fname):
+    analyzer_dict = lib.chkfile.load(fname, 'analyzer')
+    mol = mol_from_dict(analyzer_dict['mol'])
+    calc_type = analyzer_dict['calc_type']
+    if 'CCSD' in calc_type:
+        return get_ccsd(calc_type, mol, analyzer_dict['calc']), calc_type
+    else:
+        return get_scf(calc_type, mol, analyzer_dict['calc']), calc_type
+
+def load_analyzer_data(fname):
+    data_file = os.path.join(dirname, fname)
+    return lib.chkfile.load(data_file, 'analyzer/data')

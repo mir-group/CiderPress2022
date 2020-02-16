@@ -5,7 +5,8 @@ import unittest
 from nose import SkipTest
 from nose.tools import nottest
 from nose.plugins.skip import Skip
-from numpy.testing import assert_almost_equal, assert_equal, assert_raises
+from numpy.testing import assert_almost_equal, assert_equal, assert_raises,\
+                        assert_array_almost_equal
 
 
 class TestPyscfUtils(unittest.TestCase):
@@ -13,7 +14,7 @@ class TestPyscfUtils(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
 
-        cls.FH = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = '631g')
+        cls.FH = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'sto-3g')
         cls.FH.build()
         cls.rhf = run_scf(cls.FH, 'RHF')
         cls.rhf_grid = get_grid(cls.FH)
@@ -21,7 +22,7 @@ class TestPyscfUtils(unittest.TestCase):
         cls.rhf_rdm1 = cls.rhf.make_rdm1()
         cls.rhf_vele_mat = get_vele_mat(cls.FH, cls.rhf_grid.coords)
 
-        cls.NO = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = '631g', spin = 1)
+        cls.NO = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'sto-3g', spin = 1)
         cls.NO.build()
         cls.uhf = run_scf(cls.NO, 'UHF')
         cls.uhf_grid = get_grid(cls.NO)
@@ -43,6 +44,11 @@ class TestPyscfUtils(unittest.TestCase):
         cls.rtot_ref_h, cls.rtot_ref_x = get_hf_coul_ex_total(cls.FH, cls.rhf)
         cls.utot_ref_h, cls.utot_ref_x = get_hf_coul_ex_total_unrestricted(cls.NO, cls.uhf)
         cls.He_ref_ee = get_ccsd_ee_total(cls.He, cls.cc_He, cls.hf_He)
+
+        cls.Li = gto.Mole(atom='Li 0 0 0', basis = 'cc-pvdz', spin=1)
+        cls.Li.build()
+        cls.hf_Li = run_scf(cls.Li, 'UHF')
+        cls.cc_Li = run_cc(cls.hf_Li)
 
     def test_matrix_understanding(self):
         b = self.FH.get_ovlp()
@@ -114,7 +120,7 @@ class TestPyscfUtils(unittest.TestCase):
         assert_equal(tau_data.shape, desired_shape)
         assert_almost_equal(tau_data[0], rho_data[5])
         zero = integrate_on_grid(tau_data[1:], self.rhf_grid.weights)
-        assert_almost_equal(np.linalg.norm(zero), 0, 5)
+        assert_almost_equal(np.linalg.norm(zero), 0, 4)
 
         ao_data, rho_data = get_mgga_data(self.NO, self.uhf_grid, self.uhf_rdm1)
         tau_data = get_tau_and_grad(self.NO, self.uhf_grid, self.uhf_rdm1, ao_data)
@@ -215,4 +221,35 @@ class TestPyscfUtils(unittest.TestCase):
         assert_almost_equal(rha1, rha_ref)
         assert_almost_equal(rha2, rha_ref)
         assert_almost_equal(rha3, rha_ref)
+
+    def test_load_calc(self):
+        # also tests get_scf and get_ccsd
+        rhf_test, calc_type = load_calc('test_files/RHF_HF.hdf5')
+        assert calc_type == 'RHF'
+        assert_almost_equal(rhf_test.e_tot, self.rhf.e_tot)
+        assert_almost_equal(rhf_test.mo_energy, self.rhf.mo_energy)
+        assert_almost_equal(rhf_test.mo_coeff, self.rhf.mo_coeff)
+
+        uhf_test, calc_type = load_calc('test_files/UHF_NO.hdf5')
+        assert calc_type == 'UHF'
+        assert_almost_equal(uhf_test.e_tot, self.uhf.e_tot)
+        assert_almost_equal(uhf_test.mo_energy, self.uhf.mo_energy)
+        assert_almost_equal(uhf_test.mo_coeff, self.uhf.mo_coeff)
+
+        ccsd_test, calc_type = load_calc('test_files/CCSD_He.hdf5')
+        assert calc_type == 'CCSD'
+        assert_almost_equal(ccsd_test.e_tot, self.cc_He.e_tot)
+        assert_almost_equal(ccsd_test.t1, self.cc_He.t1)
+        assert_almost_equal(ccsd_test.t2, self.cc_He.t2)
+        assert_almost_equal(ccsd_test.l1, self.cc_He.l1)
+        assert_almost_equal(ccsd_test.l2, self.cc_He.l2)
+
+        uccsd_test, calc_type = load_calc('test_files/UCCSD_Li.hdf5')
+        assert calc_type == 'UCCSD'
+        assert_array_almost_equal(uccsd_test.e_tot, self.cc_Li.e_tot)
+        assert_array_almost_equal(uccsd_test.t1[0], self.cc_Li.t1[0])
+        assert_array_almost_equal(uccsd_test.t1[1], self.cc_Li.t1[1])
+        assert_array_almost_equal(uccsd_test.t2[0], self.cc_Li.t2[0])
+        assert_array_almost_equal(uccsd_test.t2[1], self.cc_Li.t2[1])
+        assert_array_almost_equal(uccsd_test.t2[2], self.cc_Li.t2[2])
 
