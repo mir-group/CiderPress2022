@@ -16,4 +16,5 @@ class ElectronDataset(Dataset):
         self.samples = get_mol_ids(dataset_directory)
 
     def __getitem__(self, idx):
-        return load_analyzer_data(self.samples[idx])
+        fname = os.path.join(self.samples[idx], 'data.hdf5')
+        return load_analyzer_data(fname)
