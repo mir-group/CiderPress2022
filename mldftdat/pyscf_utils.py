@@ -463,23 +463,20 @@ def get_dvh(drho, rs, weights):
 
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
     vals = []
-
-    indexes = np.arange(weights.shape[0])
     for i in range(weights.shape[0]):
         ws_radius = ws_radii[i]
-        weightsp = weights[indexes != i]
         vecs = coords - coords[i]
-        vecsp = vecs[indexes != i]
-        rs = np.linalg.norm(vecsp, axis=1)
+        rs = np.linalg.norm(vecs, axis=1)
+        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
         exp_weights = np.exp(- rs / ws_radius)
-        drho = rho_data[1:4,indexes != i]
-        dvh = get_dvh(drho, rs, weightsp)
+        drho = rho_data[1:4,:]
+        dvh = get_dvh(drho, rs, weights)
         # r dot nabla rho
-        rddrho = np.dot(vecsp, drho)
+        rddrho = np.dot(vecs, drho)
         # r dot nabla v_ha
-        rddvh = np.dot(vecsp, dvh)
-        rddvh_int = np.dot(weightsp, rddvh)
-        rddrho_int = np.dot(weightsp, rddrho)
+        rddvh = np.dot(vecs, dvh)
+        rddvh_int = np.dot(weights, rddvh)
+        rddrho_int = np.dot(weights, rddrho)
         dtau = tau_data[1:4,:]
         # r dot nabla tau
         rddtau = np.dot(vecs, dtau)
