@@ -50,6 +50,14 @@ class TestPyscfUtils(unittest.TestCase):
         cls.hf_Li = run_scf(cls.Li, 'UHF')
         cls.cc_Li = run_cc(cls.hf_Li)
 
+        #zs, wts = np.polynomial.legendre.leggauss(5)
+        #NUMPHI = 8
+        #phis = np.linspace(0, 2*np.pi, num=NUMPHI, endpoint=False)
+        #dphi = 2 * np.pi / NUMPHI
+        #cls.tst_grid = np.linspace(0, 7, 50)
+        #cls.tst_dens = np.exp(-cls.test_grid)
+        #cls.tst_weights = 4 * np.pi * cls.tst_grid**2
+
     def test_matrix_understanding(self):
         b = self.FH.get_ovlp()
         v = self.rhf.mo_coeff
@@ -253,3 +261,54 @@ class TestPyscfUtils(unittest.TestCase):
         assert_array_almost_equal(uccsd_test.t2[1], self.cc_Li.t2[1])
         assert_array_almost_equal(uccsd_test.t2[2], self.cc_Li.t2[2])
 
+    def test_squish_density(self):
+        # just check that the method is nondestructive
+        ALPHA = 1.2
+        coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
+        rhf_ao_data = eval_ao(self.FH, coords, deriv=2)
+        rho_data = dft.numint.eval_rho(self.FH, rhf_ao_data, self.rhf_rdm1,
+                                        xctype='mGGA')
+        old_coords, old_weights, old_rho_data = coords.copy(), weights.copy(), rho_data.copy()
+        new_coords, new_weights, new_rho_data = squish_density(rho_data, coords, weights, ALPHA)
+        assert_equal(old_coords, coords)
+        assert_equal(old_rho_data, rho_data)
+        assert_almost_equal(new_coords, coords / ALPHA)
+        assert_almost_equal(new_rho_data[0], rho_data[0] * ALPHA**3)
+        assert_almost_equal(new_rho_data[1:4], rho_data[1:4] * ALPHA**4)
+        assert_almost_equal(new_rho_data[4:6], rho_data[4:6] * ALPHA**5)
+
+    def test_get_dft_input(self):
+        # NOTE: might need to work on the precision here, though
+        # not certain how to accomplish that.
+        # At the very least, I need to att some controls for the uncertainty
+        # at low densities.
+        ALPHA = 1.2
+        MAX_R = 2
+        coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
+        rs = np.linalg.norm(coords, axis=1)
+        coords = coords[rs<MAX_R,:]
+        weights = weights[rs<MAX_R]
+        rhf_ao_data = eval_ao(self.FH, coords, deriv=2)
+        rho_data = dft.numint.eval_rho(self.FH, rhf_ao_data, self.rhf_rdm1,
+                                        xctype='mGGA')
+        coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
+        rho, s, alpha, tau_w, tau_unif = get_dft_input(rho_data)
+        squish_coords, squish_weights, squish_rho_data = \
+            squish_density(rho_data, coords, weights, ALPHA)
+        squish_rho, squish_s, squish_alpha, squish_tau_w, squish_tau_unif = \
+            get_dft_input(squish_rho_data)
+
+        print(np.flip(np.sort(alpha)))
+        assert (alpha >= -1e-16).all()
+
+        assert_almost_equal(rho * ALPHA**3, squish_rho)
+        assert_almost_equal(s, squish_s, 4)
+        assert_almost_equal(alpha, squish_alpha, 2)
+        assert_almost_equal(tau_w * ALPHA**5, squish_tau_w, 4)
+        assert_almost_equal(tau_unif * ALPHA**5, squish_tau_unif, 4)
+
+    def test_get_nonlocal_data(self):
+        pass
+
+    def test_regularize_nonlocal_data(self):
+        pass
