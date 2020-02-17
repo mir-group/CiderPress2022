@@ -79,14 +79,15 @@ class TestPyscfUtils(unittest.TestCase):
         Hatom.spin = 1
         Hatom.build()
         grid = Grids(Hatom)
-        grid.level = 0
+        grid.level = 1
         grid.kernel()
         coords = grid.coords
 
         rs = np.linalg.norm(coords, axis=1)
-        coords = coords[rs < 6, :]
-        weights = grid.weights[rs < 6]
-        rs = rs[rs < 6]
+        MAXR = 4.5
+        coords = coords[rs < MAXR, :]
+        weights = grid.weights[rs < MAXR]
+        rs = rs[rs < MAXR]
         func = (1 / (4*np.pi)) * np.exp(-rs**2)
         cls.tst_rs = rs
         cls.tst_dens = func
@@ -356,13 +357,12 @@ class TestPyscfUtils(unittest.TestCase):
 
     def test_get_vh(self):
         i = 200
-        coordsp = self.tst_coords - self.tst_coords[i]
-        coordsp = np.append(coordsp[:i], coordsp[i+1:], axis=0)
-        rs = np.linalg.norm(coordsp, axis=1)
-        rhop = np.append(self.tst_dens[:i], self.tst_dens[i+1:])
-        weightsp = np.append(self.tst_weights[:i], self.tst_weights[i+1:])
-        vh = get_vh(rhop, rs, weightsp)
-        assert_almost_equal(vh, self.tst_vh[i])
+        coords = self.tst_coords - self.tst_coords[i]
+        weights = self.tst_weights
+        rs = np.linalg.norm(coords, axis=1)
+        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
+        vh = get_vh(self.tst_dens, rs, weights)
+        assert_almost_equal(vh, self.tst_vh[i], 6)
 
     
     def test_get_nonlocal_data(self):
@@ -380,7 +380,7 @@ class TestPyscfUtils(unittest.TestCase):
         plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
         plt.scatter(self.tst_rs, nldat[0])
         plt.show()
-        assert_almost_equal(nldat[0], self.tst_grad_vh, 4)
+        assert_almost_equal(nldat[0], np.abs(self.tst_grad_vh), 2)
     
 
     def test_regularize_nonlocal_data(self):
