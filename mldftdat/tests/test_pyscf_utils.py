@@ -2,6 +2,8 @@ from mldftdat.pyscf_utils import *
 
 import ase.io
 import unittest
+from scipy.special import erf
+from pyscf.dft.gen_grid import Grids
 from nose import SkipTest
 from nose.tools import nottest
 from nose.plugins.skip import Skip
@@ -50,13 +52,58 @@ class TestPyscfUtils(unittest.TestCase):
         cls.hf_Li = run_scf(cls.Li, 'UHF')
         cls.cc_Li = run_cc(cls.hf_Li)
 
-        #zs, wts = np.polynomial.legendre.leggauss(5)
-        #NUMPHI = 8
-        #phis = np.linspace(0, 2*np.pi, num=NUMPHI, endpoint=False)
-        #dphi = 2 * np.pi / NUMPHI
-        #cls.tst_grid = np.linspace(0, 7, 50)
-        #cls.tst_dens = np.exp(-cls.test_grid)
-        #cls.tst_weights = 4 * np.pi * cls.tst_grid**2
+        """
+        zs, wts = np.polynomial.legendre.leggauss(12)
+        NUMPHI = 24
+        phis = np.linspace(0, 2*np.pi, num=NUMPHI, endpoint=False)
+        dphi = 2 * np.pi / NUMPHI
+        dphi_lst = dphi * np.ones(phis.shape)
+
+        rs = np.linspace(0.001, 5, 10)
+        rsw0 = np.append([0], rs)
+        drs = rsw0[1:] - rsw0[:-1]
+        rwts = rs**2 * drs
+
+        points = np.vstack(np.meshgrid(rs, zs, phis, indexing='ij')).reshape(3,-1)
+        weights3d = np.vstack(np.meshgrid(rwts, wts, dphi_lst, indexing='ij')).reshape(3,-1)
+        rhos = weights3d[1]
+        weights = np.cumprod(weights3d, axis=0)[-1,:]
+        xs = points[0] * np.sqrt(1-points[1]**2) * np.cos(points[2])
+        ys = points[0] * np.sqrt(1-points[1]**2) * np.sin(points[2])
+        zs = points[0] * points[1]
+        coords = np.array([xs, ys, zs]).T
+        """
+
+        Hatom = gto.Mole(atom='H')
+        Hatom.basis = 'sto-3g'
+        Hatom.spin = 1
+        Hatom.build()
+        grid = Grids(Hatom)
+        grid.level = 0
+        grid.kernel()
+        coords = grid.coords
+
+        rs = np.linalg.norm(coords, axis=1)
+        coords = coords[rs < 6, :]
+        weights = grid.weights[rs < 6]
+        rs = rs[rs < 6]
+        func = (1 / (4*np.pi)) * np.exp(-rs**2)
+        cls.tst_rs = rs
+        cls.tst_dens = func
+        cls.tst_weights = weights
+        cls.tst_coords = coords
+        cls.tst_grad = (-2 * coords.T * func)
+        cls.tst_grad2 = -2 * func + 4 * rs**2 * func
+        cls.tst_tau = rs**2/2 * func
+        cls.tst_grad_tau = (coords.T * func * (1 - rs**2))
+        #cls.tst_tau = get_single_orbital_tau(rho, np.linalg.norm(cls.tst_grad))
+        cls.tst_vh = np.sqrt(np.pi) * erf(rs) / (4 * rs)
+        cls.tst_grad_vh = - np.sqrt(np.pi) * erf(rs) / (4 * rs**2) \
+                     + np.exp(-rs**2) / (2 * rs) 
+
+    def test_tst_grid_setup(self):
+        N = np.sqrt(np.pi) / (4)
+        assert_almost_equal(np.dot(self.tst_dens, self.tst_weights), N, 5)
 
     def test_matrix_understanding(self):
         b = self.FH.get_ovlp()
@@ -307,8 +354,36 @@ class TestPyscfUtils(unittest.TestCase):
         assert_almost_equal(tau_w * ALPHA**5, squish_tau_w, 4)
         assert_almost_equal(tau_unif * ALPHA**5, squish_tau_unif, 4)
 
+    def test_get_vh(self):
+        i = 200
+        coordsp = self.tst_coords - self.tst_coords[i]
+        coordsp = np.append(coordsp[:i], coordsp[i+1:], axis=0)
+        rs = np.linalg.norm(coordsp, axis=1)
+        rhop = np.append(self.tst_dens[:i], self.tst_dens[i+1:])
+        weightsp = np.append(self.tst_weights[:i], self.tst_weights[i+1:])
+        vh = get_vh(rhop, rs, weightsp)
+        assert_almost_equal(vh, self.tst_vh[i])
+
+    
     def test_get_nonlocal_data(self):
-        pass
+        # should check that the values make sense when passed
+        # the dummy density
+        rho_data = np.append(self.tst_dens.reshape((1, self.tst_dens.shape[0])),
+                                self.tst_grad, axis=0)
+        tau_data = np.append(self.tst_tau.reshape((1, self.tst_dens.shape[0])),
+                                self.tst_grad_tau, axis=0)
+        ws_radii = get_ws_radii(rho_data[0])
+        nldat = get_nonlocal_data(rho_data, tau_data, ws_radii,
+                                self.tst_coords, self.tst_weights)
+
+        import matplotlib.pyplot as plt
+        plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
+        plt.scatter(self.tst_rs, nldat[0])
+        plt.show()
+        assert_almost_equal(nldat[0], self.tst_grad_vh, 4)
+    
 
     def test_regularize_nonlocal_data(self):
+        # should just test that the resulting values
+        # obey density scaling relations
         pass
