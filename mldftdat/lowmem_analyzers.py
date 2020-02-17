@@ -24,6 +24,47 @@ def recursive_remove_none(obj):
     else:
         return obj
 
+def get_vele_mat_outcore(mol, points):
+    """
+    Return shape (N, nao, nao)
+    """
+    auxmol = gto.fakemol_for_charges(points)
+    vele_mat_file = df.outcore.cholesky_eri(mol, 'vele_mat_tmp.hdf5' auxmol=auxmol)
+    return vele_mat_file
+
+def get_ee_energy_density_ouctore(mol, rdm2_file, vele_mat_file, mo_vals,
+                                    mo_coeff, mem_chunk_size = 100):
+    """
+    Get the electron-electron repulsion energy density for a system and basis set (mol),
+    for a given molecular structure with basis set (mol).
+    Returns the electron-electron repulsion energy.
+    NOTE: vele_mat, rdm2, and orb_vals must be in the same basis! (AO or MO)
+    Args:
+        mol (gto.Mole)
+        rdm2 (4-dimensional array shape (nao, nao, nao, nao))
+        vele_mat (3-dimensional array shape (nao, nao, N))
+        orb_vals (2D array shape (N, nao))
+
+    The following script is equivalent and easier to read (but slower):
+
+    Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
+    tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
+    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
+    return 0.5 * Vele
+    """
+    #mu,nu,lambda,sigma->i,j,k,l; r->p
+    import dask.array as da 
+    mb_div_rdm1_size = mem_chunk_size*1e6 // (8*mo_coeff.shape[0]**2)
+    ao_vele_mat = da.from_array(vele_mat_file, chunks=(-1,-1,mb_div_rdm1_size))
+    mo_vele_mat = da.einsum('ij,jkp->pik', mo_coeff, ao_vele_mat)
+    sqrt_mb_div_rdm1_size = int(np.sqrt(mb_div_rdm1_size))
+    mo_rdm2 = da.from_array(rdm2_file,
+        chunks=(-1,-1,sqrt_mb_div_rdm1_size,sqrt_mb_div_rdm1_size))
+    vele_tmp = da.einsum('ijkl,pkl->pij', mo_rdm2, mo_vele_mat)
+    tmp = da.einsum('pij,pj->pi', vele_tmp, mo_vals)
+    Vele = da.einsum('pi,pi->p', tmp, mo_vals)
+    return 0.5 * np.asarray(Vele)
+
 
 class ElectronAnalyzer(ABC):
 
@@ -352,11 +393,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         self.mo_rdm2 = np.array(self.calc.make_rdm2())
 
         self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, self.mo_coeff.transpose())
-        self.ao_rdm2 = transform_basis_2e(self.mo_rdm2, self.mo_coeff.transpose())
-        self.eri_mo = transform_basis_2e(self.eri_ao, self.mo_coeff)
         self.rdm1 = self.ao_rdm1
-        self.rdm2 = self.ao_rdm2
-        self.ee_total = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
 
         self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
@@ -372,10 +409,14 @@ class CCSDAnalyzer(ElectronAnalyzer):
 
     def get_ee_energy_density(self):
         if self.ee_energy_density is None:
-            self.ee_energy_density = get_ee_energy_density2(
-                                    self.mol, self.ao_rdm2,
-                                    self.ao_vele_mat, self.ao_vals)
+            self.ee_energy_density = get_ee_energy_density_outcore(
+                                    self.mol, self.mo_rdm2_file,
+                                    self.ao_vele_mat_file, self.mo_vals,
+                                    self.mo_coeff)
         return self.ee_energy_density
+
+#get_ee_energy_density_ouctore(mol, rdm2_file, vele_mat_file, mo_vals,
+#                                    mo_coeff, mem_chunk_size = 100)
 
 
 class UCCSDAnalyzer(ElectronAnalyzer):
