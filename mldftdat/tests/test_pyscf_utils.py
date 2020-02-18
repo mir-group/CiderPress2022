@@ -313,6 +313,10 @@ class TestPyscfUtils(unittest.TestCase):
         assert_array_almost_equal(uccsd_test.t2[1], self.cc_Li.t2[1])
         assert_array_almost_equal(uccsd_test.t2[2], self.cc_Li.t2[2])
 
+    def test_load_analyzer_data(self):
+        # TODO
+        pass
+
     def test_squish_density(self):
         # just check that the method is nondestructive
         ALPHA = 1.2
@@ -384,8 +388,10 @@ class TestPyscfUtils(unittest.TestCase):
         #plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
         #plt.scatter(self.tst_rs, nldat[0])
         #plt.show()
-        assert_almost_equal(nldat[0], np.abs(self.tst_grad_vh), 2)
-    
+        assert_almost_equal(nldat[0], np.abs(self.tst_grad_vh), 4)
+        # TODO should try to add tests for the other items in the list
+        # here, but not sure how to verify them because the integrals
+        # are not analytical
 
     def test_regularize_nonlocal_data(self):
         # should just test that the resulting values
@@ -410,13 +416,13 @@ class TestPyscfUtils(unittest.TestCase):
         print(nlc_data_reg.shape, squish_nlc_data_reg.shape)
         nlc_data_reg = nlc_data_reg[:,self.tst_rs < 2]
         squish_nlc_data_reg = squish_nlc_data_reg[:,self.tst_rs < 2]
-        import matplotlib.pyplot as plt
+        #import matplotlib.pyplot as plt
         for i in range(5):
             print(i, nlc_data_reg[i].shape, squish_nlc_data_reg[i].shape,
                 type(nlc_data_reg[i]), type(squish_nlc_data_reg[i]))
-            plt.scatter(self.tst_rs[self.tst_rs < 2], nlc_data_reg[i])
-            plt.scatter(self.tst_rs[self.tst_rs < 2], squish_nlc_data_reg[i])
-            plt.show()
+            #plt.scatter(self.tst_rs[self.tst_rs < 2], nlc_data_reg[i])
+            #plt.scatter(self.tst_rs[self.tst_rs < 2], squish_nlc_data_reg[i])
+            #plt.show()
             if i == 3:
                 assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-2)
             else:
