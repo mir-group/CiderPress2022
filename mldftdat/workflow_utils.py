@@ -22,4 +22,3 @@ def get_save_dir(root, calc_type, basis, mol_id, functional=None):
     if functional is not None:
         calc_type = calc_type + '/' + get_functional_db_name(functional)
     return os.path.join(root, calc_type, basis, mol_id)
-
