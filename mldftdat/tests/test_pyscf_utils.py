@@ -8,7 +8,7 @@ from nose import SkipTest
 from nose.tools import nottest
 from nose.plugins.skip import Skip
 from numpy.testing import assert_almost_equal, assert_equal, assert_raises,\
-                        assert_array_almost_equal
+                        assert_array_almost_equal, assert_allclose
 
 
 class TestPyscfUtils(unittest.TestCase):
@@ -82,11 +82,15 @@ class TestPyscfUtils(unittest.TestCase):
         grid.level = 1
         grid.kernel()
         coords = grid.coords
+        weights = grid.weights
+        GRID_SCALE = 2
+        coords *= GRID_SCALE
+        weights *= GRID_SCALE**3
 
         rs = np.linalg.norm(coords, axis=1)
         MAXR = 4.5
         coords = coords[rs < MAXR, :]
-        weights = grid.weights[rs < MAXR]
+        weights = weights[rs < MAXR]
         rs = rs[rs < MAXR]
         func = (1 / (4*np.pi)) * np.exp(-rs**2)
         cls.tst_rs = rs
@@ -364,7 +368,7 @@ class TestPyscfUtils(unittest.TestCase):
         vh = get_vh(self.tst_dens, rs, weights)
         assert_almost_equal(vh, self.tst_vh[i], 6)
 
-    
+    @nottest
     def test_get_nonlocal_data(self):
         # should check that the values make sense when passed
         # the dummy density
@@ -376,14 +380,44 @@ class TestPyscfUtils(unittest.TestCase):
         nldat = get_nonlocal_data(rho_data, tau_data, ws_radii,
                                 self.tst_coords, self.tst_weights)
 
-        import matplotlib.pyplot as plt
-        plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
-        plt.scatter(self.tst_rs, nldat[0])
-        plt.show()
+        #import matplotlib.pyplot as plt
+        #plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
+        #plt.scatter(self.tst_rs, nldat[0])
+        #plt.show()
         assert_almost_equal(nldat[0], np.abs(self.tst_grad_vh), 2)
     
 
     def test_regularize_nonlocal_data(self):
         # should just test that the resulting values
         # obey density scaling relations
-        pass
+        ALPHA = 1.2
+        rho_data = np.append(self.tst_dens.reshape((1, self.tst_dens.shape[0])),
+                                self.tst_grad, axis=0)
+        tau_data = np.append(self.tst_tau.reshape((1, self.tst_dens.shape[0])),
+                                self.tst_grad_tau, axis=0)
+        coords = self.tst_coords
+        weights = self.tst_weights
+        ws_radii = get_ws_radii(rho_data[0])
+        squish_coords, squish_weights, squish_rho_data = squish_density(rho_data,
+                                                            coords, weights, ALPHA)
+        squish_ws_radii = get_ws_radii(squish_rho_data[0])
+        squish_tau_data = squish_tau(tau_data, ALPHA)
+        nlc_data = get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights)
+        squish_nlc_data = get_nonlocal_data(squish_rho_data, squish_tau_data,
+                                            squish_ws_radii, squish_coords, squish_weights)
+        nlc_data_reg = get_regularized_nonlocal_data(nlc_data, rho_data)
+        squish_nlc_data_reg = get_regularized_nonlocal_data(squish_nlc_data, squish_rho_data)
+        print(nlc_data_reg.shape, squish_nlc_data_reg.shape)
+        nlc_data_reg = nlc_data_reg[:,self.tst_rs < 2]
+        squish_nlc_data_reg = squish_nlc_data_reg[:,self.tst_rs < 2]
+        import matplotlib.pyplot as plt
+        for i in range(5):
+            print(i, nlc_data_reg[i].shape, squish_nlc_data_reg[i].shape,
+                type(nlc_data_reg[i]), type(squish_nlc_data_reg[i]))
+            plt.scatter(self.tst_rs[self.tst_rs < 2], nlc_data_reg[i])
+            plt.scatter(self.tst_rs[self.tst_rs < 2], squish_nlc_data_reg[i])
+            plt.show()
+            if i == 3:
+                assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-2)
+            else:
+                assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-3)

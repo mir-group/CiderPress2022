@@ -463,28 +463,36 @@ def get_dvh(drho, rs, weights):
 
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
     vals = []
+    rho = rho_data[0,:]
+    drho = rho_data[1:4,:]
+    vals = np.zeros((5, rho.shape[0]))
+    dvh = np.zeros((rho.shape[0], 3))
+    for i in range(weights.shape[0]):
+        vecs = coords - coords[i]
+        rs = np.linalg.norm(vecs, axis=1)
+        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
+        dvh[i,:] = get_dvh(drho, rs, weights)
     for i in range(weights.shape[0]):
         ws_radius = ws_radii[i]
         vecs = coords - coords[i]
         rs = np.linalg.norm(vecs, axis=1)
-        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
-        exp_weights = np.exp(- rs / ws_radius)
-        drho = rho_data[1:4,:]
-        dvh = get_dvh(drho, rs, weights)
+        exp_weights = np.exp(- rs / ws_radius) * weights
         # r dot nabla rho
-        rddrho = np.dot(vecs, drho)
+        rddrho = np.einsum('pu,up->p', vecs, drho)
         # r dot nabla v_ha
-        rddvh = np.dot(vecs, dvh)
-        rddvh_int = np.dot(weights, rddvh)
-        rddrho_int = np.dot(weights, rddrho)
+        rddvh = np.einsum('pu,pu->p', vecs, dvh)
+        rddvh_int = np.dot(exp_weights, rho * rddvh)
+        rddrho_int = np.dot(exp_weights, rho * rddrho)
         dtau = tau_data[1:4,:]
         # r dot nabla tau
-        rddtau = np.dot(vecs, dtau)
-        rddtau_int = np.dot(weights, rddtau)
+        rddtau = np.einsum('pu,up->p', vecs, dtau)
+        rddtau_int = np.dot(exp_weights, rho * rddtau)
+        rho_int = np.dot(exp_weights, rho)
 
-        vals.append([np.linalg.norm(dvh, axis=0), rddvh_int, rddrho_int, rddtau_int])
+        vals[:,i] = np.array([np.linalg.norm(dvh[i,:]), rddvh_int, rddrho_int,\
+                              rddtau_int, rho_int])
 
-    return np.array(vals).transpose()
+    return vals
 
 def squish_density(rho_data, coords, weights, alpha):
     new_coords = coords / alpha
@@ -495,10 +503,23 @@ def squish_density(rho_data, coords, weights, alpha):
     rho_data[4:6,:] *= alpha**5
     return new_coords, new_weights, rho_data
 
-def regularize_nonlocal_data(nonlocal_data, rho, s, alpha):
+def squish_tau(tau_data, alpha):
+    tau_data = tau_data.copy()
+    tau_data[0,:] *= alpha**5
+    tau_data[1:4] *= alpha**6
+    return tau_data
+
+def get_regularized_nonlocal_data(nonlocal_data, rho_data):
+    nonlocal_data = nonlocal_data.copy()
+    rho = rho_data[0,:]
+    ws_radii = get_ws_radii(rho)
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho**(4.0/3)
-    nonlocal_data[0,:] /= tau_unif
-    nonlocal_data[1,:] /= (sprefac * n43)
-    nonlocal_data[3,:] /= tau_unif
+    tau_unif = get_uniform_tau(rho)
+    mag_grad = get_gradient_magnitude(rho_data)
+    tau_w = get_single_orbital_tau(rho, mag_grad)
+    nonlocal_data[0,:] /= np.sqrt(n43) + 1e-6
+    nonlocal_data[1,:] *= ws_radii
+    nonlocal_data[2,:] /= rho + 1e-6
+    nonlocal_data[3,:] /= tau_unif + 1e-6
     return nonlocal_data
