@@ -260,6 +260,31 @@ class TestCCSDAnalyzer():
     def test_post_process(self):
         pass
 
+    def test_expected_values(self):
+        rdm1 = self.analyzer.rdm1
+        rdm2 = self.analyzer.rdm2
+        mo_rdm1 = self.analyzer.mo_rdm1
+        mo_rdm2 = self.analyzer.mo_rdm2
+        nelec = self.mol.nelectron
+        ntot = 0
+        for i in range(mo_rdm2.shape[0]):
+            for j in range(mo_rdm2.shape[1]):
+                ntot += mo_rdm2[i,i,j,j]
+        #shape = mo_rdm2.shape
+        #mo_rdm2 = np.reshape(mo_rdm2, (shape[0]*shape[1], shape[2]*shape[3]))
+        assert_almost_equal(np.einsum('ii', mo_rdm1), nelec)
+        assert_almost_equal(np.einsum('iijj', mo_rdm2), nelec*(nelec-1))
+        esum = np.dot(self.hf.mo_occ, self.hf.mo_energy)
+        hcore = scf.hf.get_hcore(self.mol)
+        e_tot = np.einsum('ij,ij', hcore, rdm1) \
+                + 0.5 * np.einsum('ijkl,ijkl', self.analyzer.eri_ao, rdm2)
+        assert_almost_equal(e_tot, self.analyzer.e_tot)
+
+    def test_get_corr_energy_density(self):
+        ecorr_dens = self.analyzer.get_corr_energy_density()
+        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
+
     def test_get_ha_energy_density(self):
         eri = self.mol.intor('int2e')
         eri = transform_basis_2e(eri, self.hf.mo_coeff)
@@ -339,6 +364,11 @@ class TestUCCSDAnalyzer():
 
     def test_post_process(self):
         pass
+
+    def test_get_corr_energy_density(self):
+        ecorr_dens = self.analyzer.get_corr_energy_density()
+        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
 
     def test_get_ha_energy_density(self):
         eri = self.mol.intor('int2e')
