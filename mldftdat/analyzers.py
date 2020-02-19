@@ -114,11 +114,11 @@ class ElectronAnalyzer(ABC):
         self.mo_vals = get_mo_vals(self.ao_vals, self.mo_coeff)
 
         self.assign_num_chunks(self.ao_vals.shape, self.ao_vals.dtype)
-        print("NUMBER OF CHUNKS", self.num_chunks, self.ao_vals.dtype, psutil.virtual_memory().available // 1e6)
+        print("NUMBER OF CHUNKS", self.calc_type, self.num_chunks, self.ao_vals.dtype, psutil.virtual_memory().available // 1e6)
 
         if self.num_chunks > 1:
             self.ao_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.ao_vals)
+                                                self.num_chunks)
         else:
             self.ao_vele_mat = get_vele_mat(self.mol, self.grid.coords)
             print('AO VELE MAT', self.ao_vele_mat.nbytes, self.ao_vele_mat.shape)
@@ -172,8 +172,7 @@ class RHFAnalyzer(ElectronAnalyzer):
                                                     self.jmat, self.kmat)
         if self.num_chunks > 1:
             self.mo_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.mo_vals,
-                                                self.mo_coeff)
+                                                self.num_chunks, self.mo_coeff)
         else:
             self.mo_vele_mat = get_mo_vele_mat(self.ao_vele_mat, self.mo_coeff)
             print("MO VELE MAT", self.mo_vele_mat.nbytes, psutil.virtual_memory().available // 1e6)
@@ -235,11 +234,9 @@ class UHFAnalyzer(ElectronAnalyzer):
                                                     self.jmat, self.kmat)
         if self.num_chunks > 1:
             self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.mo_vals[0],
-                                                self.mo_coeff[0]),\
+                                                self.num_chunks, self.mo_coeff[0]),\
                                 get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.mo_vals[1],
-                                                self.mo_coeff[1])]
+                                                self.num_chunks, self.mo_coeff[1])]
         else:
             self.mo_vele_mat = get_mo_vele_mat(self.ao_vele_mat, self.mo_coeff)
 
