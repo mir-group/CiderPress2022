@@ -8,8 +8,9 @@ from pyscf import scf, dft, cc
 import json
 
 from mldftdat.pyscf_utils import *
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer,\
-        CCSDAnalyzer, UCCSDAnalyzer, RKSAnalyzer, UKSAnalyzer, CALC_TYPES
+from mldftdat.analyzers import CALC_TYPES
+import mldftdat.analyzers
+import mldftdat.lowmem_analyzers
 
 import os, psutil, multiprocessing, time, datetime
 from itertools import product
@@ -237,18 +238,25 @@ class TrainingDataCollector(FiretaskBase):
             'wall_time'  : fw_spec['wall_time']
         }
 
+        if calc.mo_coeff.shape[-1] < 200:
+            print ("USING STD ANALYZER MODULE")
+            analyzer_module = mldftdat.analyzers
+        else:
+            print("USING LOWMEM ANALYZER MODULE")
+            analyzer_module = mldftdat.lowmem_analyzers
+
         if type(calc) == scf.hf.RHF:
-            Analyzer = RHFAnalyzer
+            Analyzer = analyzer_module.RHFAnalyzer
         elif type(calc) == dft.rks.RKS:
-            Analyzer = RHFAnalyzer
+            Analyzer = analyzer_module.RHFAnalyzer
         elif type(calc) == scf.uhf.UHF:
-            Analyzer = UHFAnalyzer
+            Analyzer = analyzer_module.UHFAnalyzer
         elif type(calc) == dft.uks.UKS:
-            Analyzer = UHFAnalyzer
+            Analyzer = analyzer_module.UHFAnalyzer
         elif type(calc) == cc.ccsd.CCSD:
-            Analyzer = CCSDAnalyzer
+            Analyzer = analyzer_module.CCSDAnalyzer
         elif type(calc) == cc.uccsd.UCCSD:
-            Analyzer = UCCSDAnalyzer
+            Analyzer = analyzer_module.UCCSDAnalyzer
         else:
             raise NotImplementedError(
                 'Training data collection not supported for {}'.format(type(calc)))
