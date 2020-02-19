@@ -9,15 +9,6 @@ from io import BytesIO
 import psutil
 
 
-CALC_TYPES = {
-    'RHF'   : scf.hf.RHF,
-    'UHF'   : scf.uhf.UHF,
-    'RKS'   : dft.rks.RKS,
-    'UKS'   : dft.uks.UKS,
-    'CCSD'  : cc.ccsd.CCSD,
-    'UCCSD' : cc.uccsd.UCCSD
-}
-
 def recursive_remove_none(obj):
     if type(obj) == dict:
         return {k: recursive_remove_none(v) for k, v in obj.items() if v is not None}
@@ -83,10 +74,8 @@ class ElectronAnalyzer(ABC):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        calc = cls.calc_class(mol)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_scf(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer_dict['data'].pop('coords')
         analyzer_dict['data'].pop('weights')
@@ -348,12 +337,8 @@ class CCSDAnalyzer(ElectronAnalyzer):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        hf = scf.hf.RHF(mol)
-        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
-        calc = cls.calc_class(hf)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_ccsd(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer.__dict__.update(analyzer_dict['data'])
         return analyzer
@@ -416,12 +401,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        hf = scf.uhf.UHF(mol)
-        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
-        calc = cls.calc_class(hf)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_ccsd(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer.__dict__.update(analyzer_dict['data'])
         return analyzer
