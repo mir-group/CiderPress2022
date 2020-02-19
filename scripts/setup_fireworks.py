@@ -1,4 +1,5 @@
-from mldftdat.pyscf_tasks import SCFCalc, CCSDCalc, TrainingDataCollector
+from mldftdat.pyscf_tasks import SCFCalc, CCSDCalc, TrainingDataCollector,\
+                                LoadCalcFromDB, DFTFromHF
 from mldftdat.workflow_utils import get_save_dir
 from ase import Atoms
 from fireworks import Firework, LaunchPad
