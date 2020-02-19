@@ -286,8 +286,8 @@ def get_vele_mat_chunks(mol, points, num_chunks, orb_vals, mo_coeff=None):
             vele_mat_chunk = get_mo_vele_mat(vele_mat_chunk, mo_coeff)
         yield vele_mat_chunk, orb_vals_chunk
 
-def get_vele_mat_generator(mol, points, num_chunks, orb_vals, mo_coeff=None):
-    get_generator = lambda: get_vele_mat_chunks(mol, points,
+def get_vele_mat_generator(mol, points, num_chunks, mo_coeff=None):
+    get_generator = lambda orb_vals: get_vele_mat_chunks(mol, points,
                                 num_chunks, orb_vals, mo_coeff)
     return get_generator
 
@@ -342,7 +342,7 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     vele_mat, shape = vele_mat.view(), vele_mat.shape
     vele_mat.shape = (shape[0], shape[1] * shape[2])
     vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
-    vele_tmp.shape = (shape[0], shape[1], shape[2])
+    vele_tmp.shape = (shape[0], orb_vals.shape[1], orb_vals.shape[1])
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
@@ -358,7 +358,7 @@ def get_ha_energy_density2(mol, rdm1, vele_mat, ao_vals):
         return get_ha_energy_density(mol, rdm1, vele_mat, ao_vals)
     else:
         ha_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in vele_mat(ao_vals):
             ha_energy_density = np.append(ha_energy_density,
                                     get_ha_energy_density(mol, rdm1,
                                         vele_mat_chunk, orb_vals_chunk))
@@ -370,7 +370,7 @@ def get_fx_energy_density2(mol, mo_occ, mo_vele_mat, mo_vals):
         return get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals)
     else:
         fx_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in mo_vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in mo_vele_mat(mo_vals):
             fx_energy_density = np.append(fx_energy_density,
                                     get_fx_energy_density(mol, mo_occ,
                                         vele_mat_chunk, orb_vals_chunk))
@@ -381,7 +381,7 @@ def get_ee_energy_density2(mol, rdm2, vele_mat, orb_vals):
         return get_ee_energy_density(mol, rdm2, vele_mat, orb_vals)
     else:
         ee_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in vele_mat(orb_vals):
             ee_energy_density = np.append(ee_energy_density,
                                     get_ee_energy_density(mol, rdm2,
                                         vele_mat_chunk, orb_vals_chunk))
