@@ -267,10 +267,8 @@ class TestPyscfUtils(unittest.TestCase):
         rha_ref = get_ha_energy_density(self.FH, self.rhf_rdm1,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
 
-        vele_mat_gen1 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
-                                               2, self.rhf_ao_vals)
-        vele_mat_gen2 = get_vele_mat_generator(self.FH, self.rhf_grid.coords,
-                                               13, self.rhf_ao_vals)
+        vele_mat_gen1 = get_vele_mat_generator(self.FH, self.rhf_grid.coords, 2)
+        vele_mat_gen2 = get_vele_mat_generator(self.FH, self.rhf_grid.coords, 13)
 
         rha1 = get_ha_energy_density2(self.FH, self.rhf_rdm1,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
