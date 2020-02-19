@@ -9,15 +9,6 @@ from io import BytesIO
 import psutil
 
 
-CALC_TYPES = {
-    'RHF'   : scf.hf.RHF,
-    'UHF'   : scf.uhf.UHF,
-    'RKS'   : dft.rks.RKS,
-    'UKS'   : dft.uks.UKS,
-    'CCSD'  : cc.ccsd.CCSD,
-    'UCCSD' : cc.uccsd.UCCSD
-}
-
 def recursive_remove_none(obj):
     if type(obj) == dict:
         return {k: recursive_remove_none(v) for k, v in obj.items() if v is not None}
@@ -39,7 +30,7 @@ class ElectronAnalyzer(ABC):
         if require_converged and not calc.converged:
             raise ValueError('{} calculation must be converged.'.format(self.calc_type))
         self.calc = calc
-        self.mol = calc.mol
+        self.mol = calc.mol.build()
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
@@ -83,10 +74,8 @@ class ElectronAnalyzer(ABC):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        calc = cls.calc_class(mol)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_scf(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer_dict['data'].pop('coords')
         analyzer_dict['data'].pop('weights')
@@ -94,9 +83,9 @@ class ElectronAnalyzer(ABC):
         return analyzer
 
     @classmethod
-    def load(cls, fname):
+    def load(cls, fname, max_mem = None):
         analyzer_dict = lib.chkfile.load(fname, 'analyzer')
-        return cls.from_dict(analyzer_dict)
+        return cls.from_dict(analyzer_dict, max_mem)
 
     def assign_num_chunks(self, ao_vals_shape, ao_vals_dtype):
         if self.max_mem == None:
@@ -116,7 +105,6 @@ class ElectronAnalyzer(ABC):
     def post_process(self):
         # The child post process function must set up the RDMs
         self.grid = get_grid(self.mol)
-        self.eri_ao = self.mol.intor('int2e')
 
         self.e_tot = self.calc.e_tot
         self.mo_coeff = self.calc.mo_coeff
@@ -214,6 +202,7 @@ class RHFAnalyzer(ElectronAnalyzer):
 
     def _get_rdm2(self):
         if self.rdm2 is None:
+            self.eri_ao = self.mol.intor('int2e')
             self.rdm2 = make_rdm2_from_rdm1(self.rdm1)
         return self.rdm2
 
@@ -283,6 +272,7 @@ class UHFAnalyzer(ElectronAnalyzer):
 
     def _get_rdm2(self):
         if self.rdm2 is None:
+            self.eri_ao = self.mol.intor('int2e')
             self.rdm2 = make_rdm2_from_rdm1_unrestricted(self.rdm1)
         return self.rdm2
 
@@ -347,18 +337,15 @@ class CCSDAnalyzer(ElectronAnalyzer):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        hf = scf.hf.RHF(mol)
-        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
-        calc = cls.calc_class(hf)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_ccsd(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer.__dict__.update(analyzer_dict['data'])
         return analyzer
 
     def post_process(self):
         super(CCSDAnalyzer, self).post_process()
+        self.eri_ao = self.mol.intor('int2e')
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
         self.mo_rdm2 = np.array(self.calc.make_rdm2())
 
@@ -414,18 +401,15 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         if analyzer_dict['calc_type'] != cls.calc_type:
             raise ValueError('Dict is from wrong type of calc, {} vs {}!'.format(
                                 analyzer_dict['calc_type'], cls.calc_type))
-        mol = gto.mole.unpack(analyzer_dict['mol'])
-        mol.build()
-        hf = scf.uhf.UHF(mol)
-        hf.e_tot = analyzer_dict['calc'].pop('e_tot') - analyzer_dict['calc']['e_corr']
-        calc = cls.calc_class(hf)
-        calc.__dict__.update(analyzer_dict['calc'])
+        mol = mol_from_dict(analyzer_dict['mol'])
+        calc = get_ccsd(analyzer_dict['calc_type'], mol, analyzer_dict['calc'])
         analyzer = cls(calc, require_converged = False, max_mem = max_mem)
         analyzer.__dict__.update(analyzer_dict['data'])
         return analyzer
 
     def post_process(self):
         super(UCCSDAnalyzer, self).post_process()
+        self.eri_ao = self.mol.intor('int2e')
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
         self.mo_rdm2 = np.array(self.calc.make_rdm2())
 
