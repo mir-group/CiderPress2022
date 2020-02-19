@@ -358,7 +358,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
                                                     self.jmat, self.kmat)
 
         self.mo_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
-                                            self.num_chunks, self.mo_vals, self.mo_coeff)
+                                            self.num_chunks, self.mo_coeff)
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -380,7 +380,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         tau = t2 + np.einsum('ia,jb->ijab', t1, t1)
         nocc, nvir = t1.shape
         ecorr_dens = []
-        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat(self.mo_vals):
             vele_mat_ov = vele_mat_chunk[:,:nocc,nocc:]
             orbvals_occ = orb_vals_chunk[:,:nocc]
             orbvals_vir = orb_vals_chunk[:,nocc:]
@@ -445,6 +445,11 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
                                                     self.jmat, self.kmat)
 
+        self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_coeff[0]),\
+                            get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_coeff[1])]
+
         self.ee_energy_density_uu = None
         self.ee_energy_density_ud = None
         self.ee_energy_density_dd = None
@@ -473,22 +478,50 @@ class UCCSDAnalyzer(ElectronAnalyzer):
                                     + self.ee_energy_density_dd
         return self.ee_energy_density
 
-    """
+    
     def get_corr_energy_density(self):
         t1, t2 = self.calc.t1, self.calc.t2
         tauaa, tauab, taubb = cc.uccsd.make_tau(t2, t1, t1)
-        nocc, nvir = t1[0].shape
-        ecorr_dens = []
-        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat[0]():
-            vele_mat_ov = vele_mat_chunk[:,:nocc,nocc:]
-            orbvals_occ = orb_vals_chunk[:,:nocc]
-            orbvals_vir = orb_vals_chunk[:,nocc:]
-            ecorr_tmp = 2 * get_corr_energy_density(self.mol,
-                                tau, vele_mat_ov, orbvals_occ,
+        
+        nocca, nvira = t1[0].shape
+        noccb, nvirb = t1[1].shape
+
+        ecorr_dens_uu = []
+        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat[0](self.mo_vals[0]):
+            vele_mat_ov = vele_mat_chunk[:,:nocca,nocca:]
+            orbvals_occ = orb_vals_chunk[:,:nocca]
+            orbvals_vir = orb_vals_chunk[:,nocca:]
+            ecorr_tmp = get_corr_energy_density(self.mol,
+                                tauaa, vele_mat_ov, orbvals_occ,
                                 orbvals_vir, direct = True)\
                         - get_corr_energy_density(self.mol,
-                                tau, vele_mat_ov, orbvals_occ,
+                                tauaa, vele_mat_ov, orbvals_occ,
                                 orbvals_vir, direct = False)
-            ecorr_dens = np.append(ecorr_dens, ecorr_tmp)
-        return ecorr_dens
-    """
+            ecorr_dens_uu = np.append(ecorr_dens_uu, ecorr_tmp)
+
+        ecorr_dens_dd = []
+        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat[1](self.mo_vals[1]):
+            vele_mat_ov = vele_mat_chunk[:,:noccb,noccb:]
+            orbvals_occ = orb_vals_chunk[:,:noccb]
+            orbvals_vir = orb_vals_chunk[:,noccb:]
+            ecorr_tmp = get_corr_energy_density(self.mol,
+                                taubb, vele_mat_ov, orbvals_occ,
+                                orbvals_vir, direct = True)\
+                        - get_corr_energy_density(self.mol,
+                                taubb, vele_mat_ov, orbvals_occ,
+                                orbvals_vir, direct = False)
+            ecorr_dens_dd = np.append(ecorr_dens_dd, ecorr_tmp)
+
+        ecorr_dens_ud = []
+        for vele_mat_chunk, orb_vals_chunk in self.mo_vele_mat[1](self.mo_vals[0]):
+            vele_mat_ov = vele_mat_chunk[:,:noccb,noccb:]
+            orbvals_occ = orb_vals_chunk[:,:nocca]
+            orbvals_vir = orb_vals_chunk[:,nocca:]
+            ecorr_tmp = get_corr_energy_density(self.mol,
+                                tauab, vele_mat_ov, orbvals_occ,
+                                orbvals_vir, direct = True)
+            ecorr_dens_ud = np.append(ecorr_dens_ud, ecorr_tmp)
+
+        return 0.25 * ecorr_dens_uu + 0.25 * ecorr_dens_dd \
+                +  ecorr_dens_ud
+    
