@@ -338,6 +338,30 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
 
+def get_corr_energy_density(mol, tau, vele_mat_ov, orbvals_occ,
+                            orbvals_vir, direct = True):
+    """
+    Get the coupled-cluster correlation energy density for a system
+    and basis set(mol), for a given molecular structu with basis set (mol).
+    Args:
+        tau (nocc,nocc,nvir,nvir)
+        vele_mat_ov(gridsize,nocc,nvir)
+        orbvals_occ (gridsize,nocc)
+        orbvals_occ (gridsize,nvir)
+    """
+    if direct:
+        vele_tmp = np.einsum('ijab,pia->pjb', tau, vele_mat_ov)
+    else:
+        vele_tmp = np.einsum('jiab,pia->pjb', tau, vele_mat_ov)
+    vele_tmp = np.einsum('pjb,pb->pj', vele_tmp, orbvals_vir)
+    vele = np.einsum('pj,pj->p', vele_tmp, orbvals_occ)
+
+    return vele
+
+    #e += 2 * numpy.einsum('ijab,iabj', tau, eris_ovvo)
+    #e -=     numpy.einsum('jiab,iabj', tau, eris_ovvo)
+
+
 
 # The following functions are helpers that check whether vele_mat
 # is a numpy array or a generator before passing to the methods
