@@ -4,6 +4,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from mldftdat.pyscf_utils import *
 from mldftdat.external import pyscf_ccsd_rdm as ext_ccsd_rdm
+from mldftdat.external import pyscf_uccsd_rdm as ext_uccsd_rdm
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
@@ -33,7 +34,7 @@ def get_vele_mat_outcore(mol, points):
     vele_mat_file = df.outcore.cholesky_eri(mol, 'vele_mat_tmp.hdf5', auxmol=auxmol)
     return vele_mat_file
 
-def get_ee_energy_density_ouctore(mol, rdm2_file, vele_mat_file, mo_vals,
+def get_ee_energy_density_outcore(mol, rdm2_file, vele_mat_file, mo_vals,
                                     mo_coeff, mem_chunk_size = 100):
     """
     Get the electron-electron repulsion energy density for a system and basis set (mol),
@@ -280,15 +281,12 @@ class UHFAnalyzer(ElectronAnalyzer):
         self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
                                                     self.jmat, self.kmat)
-        if self.num_chunks > 1:
-            self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.mo_vals[0],
-                                                self.mo_coeff[0]),\
-                                get_vele_mat_generator(self.mol, self.grid.coords,
-                                                self.num_chunks, self.mo_vals[1],
-                                                self.mo_coeff[1])]
-        else:
-            self.mo_vele_mat = get_mo_vele_mat(self.ao_vele_mat, self.mo_coeff)
+        self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_vals[0],
+                                            self.mo_coeff[0]),\
+                            get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_vals[1],
+                                            self.mo_coeff[1])]
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -390,6 +388,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         self.mo_vele_mat = get_vele_mat_generator(self.mol, self.grid.coords,
                                             self.num_chunks, self.mo_vals,
                                             self.mo_coeff)
+        self.ee_total = None
 
         self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
@@ -408,6 +407,8 @@ class CCSDAnalyzer(ElectronAnalyzer):
             self.ee_energy_density = get_ee_energy_density_outcore2(
                                     self.mol, self.mo_rdm2_file['dm2'],
                                     self.mo_vele_mat, self.mo_vals)
+            self.ee_total = integrate_on_grid(self.ee_energy_density,
+                                                self.grid.weights)
         return self.ee_energy_density
 
 #get_ee_energy_density_ouctore(mol, rdm2_file, vele_mat_file, mo_vals,
@@ -452,21 +453,36 @@ class UCCSDAnalyzer(ElectronAnalyzer):
     def post_process(self):
         super(UCCSDAnalyzer, self).post_process()
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
-        self.mo_rdm2 = np.array(self.calc.make_rdm2())
+        # PySCF does not currently do outcore RDM stuff,
+        # so this would not be very helpful for saving memory
+        #self.mo_rdm2_file = ext_uccsd_rdm.make_rdm2(self.calc, self.calc.t1,
+        #                                    self.calc.t2, self.calc.l1,
+        #                                    self.calc.l2)
+        self.mo_rdm2 = self.calc.make_rdm2()
+        self.mo_rdm2_file = lib.H5TmpFile()
+        for i, name in enumerate(['dm2aa', 'dm2ab', 'dm2bb']):
+            dm2 = self.mo_rdm2_file.create_dataset(name,
+                                            self.mo_rdm2[i].shape,
+                                            dtype=self.mo_rdm2[i].dtype)
+            dm2[:,:,:,:] = self.mo_rdm2[i].transpose(1,0,3,2)
+        self.mo_rdm2 = None
 
         # These are all three-tuples
         trans_mo_coeff = np.transpose(self.mo_coeff, axes=(0,2,1))
         self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, trans_mo_coeff)
-        self.ao_rdm2 = transform_basis_2e(self.mo_rdm2, trans_mo_coeff)
-        eri_ao_lst = [self.eri_ao] * 3
-        self.eri_mo = transform_basis_2e(eri_ao_lst, self.mo_coeff)
         self.rdm1 = self.ao_rdm1
-        self.rdm2 = self.ao_rdm2
-        self.ee_total = get_ccsd_ee(self.mo_rdm2, self.eri_mo)
+        self.ee_total = None
 
         self.jmat, self.kmat = scf.hf.get_jk(self.mol, self.rdm1)
         self.ha_total, self.fx_total = get_hf_coul_ex_total2(self.rdm1,
                                                     self.jmat, self.kmat)
+
+        self.mo_vele_mat = [get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_vals[0],
+                                            self.mo_coeff[0]),\
+                            get_vele_mat_generator(self.mol, self.grid.coords,
+                                            self.num_chunks, self.mo_vals[1],
+                                            self.mo_coeff[1])]
 
         self.ee_energy_density_uu = None
         self.ee_energy_density_ud = None
@@ -482,16 +498,18 @@ class UCCSDAnalyzer(ElectronAnalyzer):
 
     def get_ee_energy_density(self):
         if self.ee_energy_density is None:
-            self.ee_energy_density_uu = get_ee_energy_density2(
-                                    self.mol, self.ao_rdm2[0],
-                                    self.ao_vele_mat, self.ao_vals)
-            self.ee_energy_density_ud = get_ee_energy_density2(
-                                    self.mol, self.ao_rdm2[1],
-                                    self.ao_vele_mat, self.ao_vals)
-            self.ee_energy_density_dd = get_ee_energy_density2(
-                                    self.mol, self.ao_rdm2[2],
-                                    self.ao_vele_mat, self.ao_vals)
+            self.ee_energy_density_uu = get_ee_energy_density_outcore2(
+                                    self.mol, self.mo_rdm2_file['dm2aa'],
+                                    self.mo_vele_mat[0], self.mo_vals[0])
+            self.ee_energy_density_ud = get_ee_energy_density_outcore2(
+                                    self.mol, self.mo_rdm2_file['dm2ab'],
+                                    self.mo_vele_mat[0], self.mo_vals[1])
+            self.ee_energy_density_dd = get_ee_energy_density_outcore2(
+                                    self.mol, self.mo_rdm2_file['dm2bb'],
+                                    self.mo_vele_mat[1], self.mo_vals[1])
             self.ee_energy_density = self.ee_energy_density_uu\
                                     + 2 * self.ee_energy_density_ud\
                                     + self.ee_energy_density_dd
+            self.ee_total = integrate_on_grid(self.ee_energy_density,
+                                                self.grid.weights)
         return self.ee_energy_density
