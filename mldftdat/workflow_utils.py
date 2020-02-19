@@ -1,4 +1,7 @@
 import time, psutil, os
+from pyscf import gto, lib
+import numpy as np
+from mldftdat.pyscf_utils import CALC_TYPES
 
 def safe_mem_cap_mb():
     return int(psutil.virtual_memory().available // 16e6)
@@ -19,7 +22,3 @@ def get_save_dir(root, calc_type, basis, mol_id, functional=None):
     if functional is not None:
         calc_type = calc_type + '/' + get_functional_db_name(functional)
     return os.path.join(root, calc_type, basis, mol_id)
-
-def load_analyzer_data(dirname):
-    data_file = os.path.join(dirname, 'data.hdf5')
-    return lib.chkfile.load(data_file, 'analyzer/data')
