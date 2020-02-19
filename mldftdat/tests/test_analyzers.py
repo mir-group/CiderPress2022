@@ -365,6 +365,11 @@ class TestUCCSDAnalyzer():
     def test_post_process(self):
         pass
 
+    def test_get_corr_energy_density(self):
+        ecorr_dens = self.analyzer.get_corr_energy_density()
+        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
+
     def test_get_ha_energy_density(self):
         eri = self.mol.intor('int2e')
         rdm1 = self.cc.make_rdm1()
