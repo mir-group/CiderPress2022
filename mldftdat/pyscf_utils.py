@@ -341,7 +341,6 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
     vele_mat, shape = vele_mat.view(), vele_mat.shape
     vele_mat.shape = (shape[0], shape[1] * shape[2])
-    print(vele_mat.shape, rdm2.shape)
     vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
     vele_tmp.shape = (shape[0], orb_vals.shape[1], orb_vals.shape[1])
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
