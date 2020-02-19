@@ -5,6 +5,15 @@ from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
 
+CALC_TYPES = {
+    'RHF'   : scf.hf.RHF,
+    'UHF'   : scf.uhf.UHF,
+    'RKS'   : dft.rks.RKS,
+    'UKS'   : dft.uks.UKS,
+    'CCSD'  : cc.ccsd.CCSD,
+    'UCCSD' : cc.uccsd.UCCSD
+}
+
 SCF_TYPES = {
     'RHF'  : scf.hf.RHF,
     'ROHF' : scf.rohf.ROHF,
@@ -27,7 +36,7 @@ def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     mol.build()
     return mol
 
-def run_scf(mol, calc_type, functional = None, remove_ld = False):
+def run_scf(mol, calc_type, functional = None, remove_ld = False, dm0 = None):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
     of a given calc_type in SCF_TYPES. Return the calc object.
@@ -43,7 +52,7 @@ def run_scf(mol, calc_type, functional = None, remove_ld = False):
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
 
-    calc.kernel()
+    calc.kernel(dm0 = dm0)
     return calc
 
 def run_cc(hf):
@@ -277,8 +286,8 @@ def get_vele_mat_chunks(mol, points, num_chunks, orb_vals, mo_coeff=None):
             vele_mat_chunk = get_mo_vele_mat(vele_mat_chunk, mo_coeff)
         yield vele_mat_chunk, orb_vals_chunk
 
-def get_vele_mat_generator(mol, points, num_chunks, orb_vals, mo_coeff=None):
-    get_generator = lambda: get_vele_mat_chunks(mol, points,
+def get_vele_mat_generator(mol, points, num_chunks, mo_coeff=None):
+    get_generator = lambda orb_vals: get_vele_mat_chunks(mol, points,
                                 num_chunks, orb_vals, mo_coeff)
     return get_generator
 
@@ -333,7 +342,7 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     vele_mat, shape = vele_mat.view(), vele_mat.shape
     vele_mat.shape = (shape[0], shape[1] * shape[2])
     vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
-    vele_tmp.shape = (shape[0], shape[1], shape[2])
+    vele_tmp.shape = (shape[0], orb_vals.shape[1], orb_vals.shape[1])
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
@@ -373,7 +382,7 @@ def get_ha_energy_density2(mol, rdm1, vele_mat, ao_vals):
         return get_ha_energy_density(mol, rdm1, vele_mat, ao_vals)
     else:
         ha_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in vele_mat(ao_vals):
             ha_energy_density = np.append(ha_energy_density,
                                     get_ha_energy_density(mol, rdm1,
                                         vele_mat_chunk, orb_vals_chunk))
@@ -385,7 +394,7 @@ def get_fx_energy_density2(mol, mo_occ, mo_vele_mat, mo_vals):
         return get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals)
     else:
         fx_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in mo_vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in mo_vele_mat(mo_vals):
             fx_energy_density = np.append(fx_energy_density,
                                     get_fx_energy_density(mol, mo_occ,
                                         vele_mat_chunk, orb_vals_chunk))
@@ -396,8 +405,145 @@ def get_ee_energy_density2(mol, rdm2, vele_mat, orb_vals):
         return get_ee_energy_density(mol, rdm2, vele_mat, orb_vals)
     else:
         ee_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in vele_mat():
+        for vele_mat_chunk, orb_vals_chunk in vele_mat(orb_vals):
             ee_energy_density = np.append(ee_energy_density,
                                     get_ee_energy_density(mol, rdm2,
                                         vele_mat_chunk, orb_vals_chunk))
         return ee_energy_density
+
+
+def mol_from_dict(mol_dict):
+    for item in ['charge', 'spin', 'symmetry', 'verbose']:
+        if type(mol_dict[item]).__module__ == np.__name__:
+            mol_dict[item] = mol_dict[item].item()
+    mol = gto.mole.unpack(mol_dict)
+    mol.build()
+    return mol
+
+def get_scf(calc_type, mol, calc_data = None):
+    calc = CALC_TYPES[calc_type](mol)
+    calc.__dict__.update(calc_data)
+    return calc
+
+def get_ccsd(calc_type, mol, calc_data = None):
+    if calc_type == 'CCSD':
+        hf = scf.hf.RHF(mol)
+    else:
+        hf = scf.uhf.UHF(mol)
+    hf.e_tot = calc_data.pop('e_tot') - calc_data['e_corr']
+    calc = CALC_TYPES[calc_type](hf)
+    calc.__dict__.update(calc_data)
+    return calc
+
+def load_calc(fname):
+    analyzer_dict = lib.chkfile.load(fname, 'analyzer')
+    mol = mol_from_dict(analyzer_dict['mol'])
+    calc_type = analyzer_dict['calc_type']
+    if 'CCSD' in calc_type:
+        return get_ccsd(calc_type, mol, analyzer_dict['calc']), calc_type
+    else:
+        return get_scf(calc_type, mol, analyzer_dict['calc']), calc_type
+
+def load_analyzer_data(fname):
+    data_file = os.path.join(dirname, fname)
+    return lib.chkfile.load(data_file, 'analyzer/data')
+
+def get_ws_radii(rho):
+    return (3.0 / (4 * np.pi * rho + 1e-7))**(1.0/3)
+
+def get_gradient_magnitude(rho_data):
+    return np.linalg.norm(rho_data[1:4,:], axis=0)
+
+def get_normalized_grad(rho, mag_grad):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    n43 = rho**(4.0/3)
+    s = mag_grad / (sprefac * n43 + 1e-7)
+    return s
+
+def get_single_orbital_tau(rho, mag_grad):
+    return mag_grad**2 / (8 * rho + 1e-7)
+
+def get_uniform_tau(rho):
+    return (3.0/10) * (3*np.pi**2)**(2.0/3) * rho**(5.0/3)
+
+def get_normalized_tau(tau, tau_w, tau_unif):
+    return (tau - tau_w) / (tau_unif + 1e-6)
+
+def get_dft_input(rho_data):
+    rho = rho_data[0,:]
+    r_s = get_ws_radii(rho)
+    mag_grad = get_gradient_magnitude(rho_data)
+    s = get_normalized_grad(rho, mag_grad)
+    tau_w = get_single_orbital_tau(rho, mag_grad)
+    tau_unif = get_uniform_tau(rho)
+    alpha = get_normalized_tau(rho_data[5], tau_w, tau_unif)
+    return rho, s, alpha, tau_w, tau_unif
+
+def get_vh(rho, rs, weights):
+    return np.dot(rho / rs, weights)
+
+def get_dvh(drho, rs, weights):
+    return np.dot(drho / rs, weights)
+
+def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
+    vals = []
+    rho = rho_data[0,:]
+    drho = rho_data[1:4,:]
+    vals = np.zeros((5, rho.shape[0]))
+    dvh = np.zeros((rho.shape[0], 3))
+    for i in range(weights.shape[0]):
+        vecs = coords - coords[i]
+        rs = np.linalg.norm(vecs, axis=1)
+        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
+        dvh[i,:] = get_dvh(drho, rs, weights)
+    for i in range(weights.shape[0]):
+        ws_radius = ws_radii[i]
+        vecs = coords - coords[i]
+        rs = np.linalg.norm(vecs, axis=1)
+        exp_weights = np.exp(- rs / ws_radius) * weights
+        # r dot nabla rho
+        rddrho = np.einsum('pu,up->p', vecs, drho)
+        # r dot nabla v_ha
+        rddvh = np.einsum('pu,pu->p', vecs, dvh)
+        rddvh_int = np.dot(exp_weights, rho * rddvh)
+        rddrho_int = np.dot(exp_weights, rho * rddrho)
+        dtau = tau_data[1:4,:]
+        # r dot nabla tau
+        rddtau = np.einsum('pu,up->p', vecs, dtau)
+        rddtau_int = np.dot(exp_weights, rho * rddtau)
+        rho_int = np.dot(exp_weights, rho)
+
+        vals[:,i] = np.array([np.linalg.norm(dvh[i,:]), rddvh_int, rddrho_int,\
+                              rddtau_int, rho_int])
+
+    return vals
+
+def squish_density(rho_data, coords, weights, alpha):
+    new_coords = coords / alpha
+    new_weights = weights / alpha**3
+    rho_data = rho_data.copy()
+    rho_data[0,:] *= alpha**3
+    rho_data[1:4,:] *= alpha**4
+    rho_data[4:6,:] *= alpha**5
+    return new_coords, new_weights, rho_data
+
+def squish_tau(tau_data, alpha):
+    tau_data = tau_data.copy()
+    tau_data[0,:] *= alpha**5
+    tau_data[1:4] *= alpha**6
+    return tau_data
+
+def get_regularized_nonlocal_data(nonlocal_data, rho_data):
+    nonlocal_data = nonlocal_data.copy()
+    rho = rho_data[0,:]
+    ws_radii = get_ws_radii(rho)
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    n43 = rho**(4.0/3)
+    tau_unif = get_uniform_tau(rho)
+    mag_grad = get_gradient_magnitude(rho_data)
+    tau_w = get_single_orbital_tau(rho, mag_grad)
+    nonlocal_data[0,:] /= np.sqrt(n43) + 1e-6
+    nonlocal_data[1,:] *= ws_radii
+    nonlocal_data[2,:] /= rho + 1e-6
+    nonlocal_data[3,:] /= tau_unif + 1e-6
+    return nonlocal_data

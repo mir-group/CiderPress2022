@@ -9,6 +9,8 @@ def get_mol_ids(calcdir):
                             os.listdir(calcdir)))
 
 def get_energies(calcdir):
+    if not os.path.isdir(calcdir):
+        return {}
     energies = {}
     mol_ids = get_mol_ids(calcdir)
     for mol_id in mol_ids:
@@ -62,9 +64,9 @@ if __name__ == '__main__':
     CALC_TYPE = 'DFT'
     BASIS = 'aug-cc-pvtz'
     FUNCTIONAL = 'PBE'
-    DATASET = 'augG2'
+    DATASET = 'qm9'
     #print(parse_calc_type(CALC_TYPE, BASIS, FUNCTIONAL, DATASET))
 
     print('Make pandas df')
-    df = parse_pandas(DATASET, BASIS, [('DFT', 'PBE'), 'HF', ('DFT', 'B3LYP')])
+    df = parse_pandas(DATASET, BASIS, [('DFT', 'LDA_VWN'), 'HF', ('DFT', 'LDA_VWN'), 'CCSD'])
     print (df)
