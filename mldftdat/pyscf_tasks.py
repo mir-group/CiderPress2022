@@ -14,8 +14,7 @@ from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer,\
 import os, psutil, multiprocessing, time, datetime
 from itertools import product
 from mldftdat.workflow_utils import safe_mem_cap_mb, time_func,\
-                                    get_functional_db_name, get_save_dir,\
-                                    load_calc
+                                    get_functional_db_name, get_save_dir
 
 
 @explicit_serialize
