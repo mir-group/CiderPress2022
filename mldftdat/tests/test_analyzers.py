@@ -336,6 +336,8 @@ class TestCCSDAnalyzer():
         assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        assert_equal(analyzer1.ecorr_dens, data_dict['ecorr_dens'])
+        assert analyzer1.ecorr_dens is not None
         os.remove(TMP_TEST)
 
 
@@ -428,6 +430,8 @@ class TestUCCSDAnalyzer():
         assert_equal(analyzer1.tau_data, data_dict['tau_data'])
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
+        assert_equal(analyzer1.ecorr_dens, data_dict['ecorr_dens'])
+        assert analyzer1.ecorr_dens is not None
         os.remove(TMP_TEST)
 
 
