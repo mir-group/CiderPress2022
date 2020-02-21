@@ -79,7 +79,7 @@ class TestPyscfUtils(unittest.TestCase):
         Hatom.spin = 1
         Hatom.build()
         grid = Grids(Hatom)
-        grid.level = 1
+        grid.level = 3
         grid.kernel()
         coords = grid.coords
         weights = grid.weights
@@ -88,7 +88,7 @@ class TestPyscfUtils(unittest.TestCase):
         weights *= GRID_SCALE**3
 
         rs = np.linalg.norm(coords, axis=1)
-        MAXR = 4.5
+        MAXR = 6
         coords = coords[rs < MAXR, :]
         weights = weights[rs < MAXR]
         rs = rs[rs < MAXR]
@@ -108,7 +108,7 @@ class TestPyscfUtils(unittest.TestCase):
 
     def test_tst_grid_setup(self):
         N = np.sqrt(np.pi) / (4)
-        assert_almost_equal(np.dot(self.tst_dens, self.tst_weights), N, 5)
+        assert_almost_equal(np.dot(self.tst_dens, self.tst_weights), N, 7)
 
     def test_matrix_understanding(self):
         b = self.FH.get_ovlp()
@@ -361,14 +361,21 @@ class TestPyscfUtils(unittest.TestCase):
         assert_almost_equal(tau_w * ALPHA**5, squish_tau_w, 4)
         assert_almost_equal(tau_unif * ALPHA**5, squish_tau_unif, 4)
 
+    """
     def test_get_vh(self):
-        i = 200
-        coords = self.tst_coords - self.tst_coords[i]
-        weights = self.tst_weights
-        rs = np.linalg.norm(coords, axis=1)
-        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
-        vh = get_vh(self.tst_dens, rs, weights)
-        assert_almost_equal(vh, self.tst_vh[i], 6)
+        vh = []
+        for i in range(self.tst_weights.shape[0]):
+            coords = self.tst_coords - self.tst_coords[i]
+            weights = self.tst_weights
+            rs = np.linalg.norm(coords, axis=1)
+            rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
+            vh.append(get_vh(self.tst_dens, rs, weights))
+        assert_almost_equal(np.array(vh), self.tst_vh, 6)
+    """
+
+    def test_get_hartree_potential(self):
+        vh = get_hartree_potential(self.tst_dens, self.tst_coords, self.tst_weights)
+        assert_almost_equal(vh[self.tst_weights>0], self.tst_vh[self.tst_weights>0], 3)
 
     @nottest
     def test_get_nonlocal_data(self):
@@ -381,6 +388,9 @@ class TestPyscfUtils(unittest.TestCase):
         ws_radii = get_ws_radii(rho_data[0])
         nldat = get_nonlocal_data(rho_data, tau_data, ws_radii,
                                 self.tst_coords, self.tst_weights)
+        #nldat_slow = get_nonlocal_data_slow(rho_data, tau_data, ws_radii,
+        #                        self.tst_coords, self.tst_weights)
+        #assert_almost_equal(nldat, nldat_slow)
 
         #import matplotlib.pyplot as plt
         #plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
@@ -391,7 +401,7 @@ class TestPyscfUtils(unittest.TestCase):
         # here, but not sure how to verify them because the integrals
         # are not analytical
 
-    def test_regularize_nonlocal_data(self):
+    def test_get_regularized_nonlocal_data(self):
         # should just test that the resulting values
         # obey density scaling relations
         ALPHA = 1.2

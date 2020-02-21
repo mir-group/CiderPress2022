@@ -4,6 +4,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
+from mldftdat import utilf
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
@@ -485,7 +486,21 @@ def get_vh(rho, rs, weights):
 def get_dvh(drho, rs, weights):
     return np.dot(drho / rs, weights)
 
+def get_hartree_potential(rho_data, coords, weights):
+    init_shape = rho_data.shape
+    if len(init_shape) == 1:
+        rho_data = rho_data.reshape((1, rho_data.shape[0]))
+    return utilf.hartree_potential(rho_data[:4], coords.transpose(),
+                                   weights)[1].reshape(init_shape)
+
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
+    coords = coords.transpose()
+    vh_data = utilf.hartree_potential(rho_data, coords, weights)[1]
+    return utilf.nonlocal_dft_data(rho_data[:4], tau_data[1:4],
+                                   vh_data[1:4], ws_radii,
+                                   coords, weights)[1]
+
+def get_nonlocal_data_slow(rho_data, tau_data, ws_radii, coords, weights):
     vals = []
     rho = rho_data[0,:]
     drho = rho_data[1:4,:]
