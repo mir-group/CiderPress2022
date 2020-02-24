@@ -327,7 +327,7 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     Args:
         mol (gto.Mole)
         rdm2 (4-dimensional array shape (nao, nao, nao, nao))
-        vele_mat (3-dimensional array shape (nao, nao, N))
+        vele_mat (3-dimensional array shape (N, nao, nao))
         orb_vals (2D array shape (N, nao))
 
     The following script is equivalent and easier to read (but slower):
