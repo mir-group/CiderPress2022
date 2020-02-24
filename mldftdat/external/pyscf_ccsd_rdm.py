@@ -387,6 +387,184 @@ def _rdm2_mo2ao(dm2, mo):
     return lib.einsum('ijkl,pi,qj,rk,sl->pqrs', dm2, mo, mo_C, mo, mo_C)
 
 
+def lowmem_ee_energy(mycc, t1, t2, l1, l2, h5fobj, compress_vvvv=False):
+    log = logger.Logger(mycc.stdout, mycc.verbose)
+    nocc, nvir = t1.shape
+    nov = nocc * nvir
+    nvir_pair = nvir * (nvir+1) // 2
+    dtype = numpy.result_type(t1, t2, l1, l2).char
+    if compress_vvvv:
+        dvvvv = h5fobj.create_dataset('dvvvv', (nvir_pair,nvir_pair), dtype)
+    else:
+        dvvvv = h5fobj.create_dataset('dvvvv', (nvir,nvir,nvir,nvir), dtype)
+    dovvo = h5fobj.create_dataset('dovvo', (nocc,nvir,nvir,nocc), dtype,
+                                  chunks=(nocc,1,nvir,nocc))
+    fswap = lib.H5TmpFile()
+
+    time1 = time.clock(), time.time()
+    pvOOv = lib.einsum('ikca,jkcb->aijb', l2, t2)
+    moo = numpy.einsum('dljd->jl', pvOOv) * 2
+    mvv = numpy.einsum('blld->db', pvOOv) * 2
+    gooov = lib.einsum('kc,cija->jkia', t1, pvOOv)
+    fswap['mvOOv'] = pvOOv
+    pvOOv = None
+
+    pvoOV = -lib.einsum('ikca,jkbc->aijb', l2, t2)
+    theta = t2 * 2 - t2.transpose(0,1,3,2)
+    pvoOV += lib.einsum('ikac,jkbc->aijb', l2, theta)
+    moo += numpy.einsum('dljd->jl', pvoOV)
+    mvv += numpy.einsum('blld->db', pvoOV)
+    gooov -= lib.einsum('jc,cika->jkia', t1, pvoOV)
+    fswap['mvoOV'] = pvoOV
+    pvoOV = None
+
+    mia =(numpy.einsum('kc,ikac->ia', l1, t2) * 2
+        - numpy.einsum('kc,ikca->ia', l1, t2))
+    mab = numpy.einsum('kc,kb->cb', l1, t1)
+    mij = numpy.einsum('kc,jc->jk', l1, t1) + moo*.5
+
+    tau = numpy.einsum('ia,jb->ijab', t1, t1)
+    tau += t2
+    goooo = lib.einsum('ijab,klab->ijkl', tau, l2)*.5
+    h5fobj['doooo'] = (goooo.transpose(0,2,1,3)*2 -
+                       goooo.transpose(0,3,1,2)).conj()
+    dm2tmp = doooo.copy()
+    dm2tmp+= doooo.transpose(1,0,3,2).conj()
+    dm2tmp*= 2
+    #dm2[:nocc,:nocc,:nocc,:nocc] = doooo
+    #dm2[:nocc,:nocc,:nocc,:nocc]+= doooo.transpose(1,0,3,2).conj()
+    #dm2[:nocc,:nocc,:nocc,:nocc]*= 2
+    eed = get_ee_energy_density(dm2tmp, vele_mat[:,:nocc,:nocc],
+                                orbvals[:nocc], orb_vals[:nocc])
+
+    gooov += numpy.einsum('ji,ka->jkia', -.5*moo, t1)
+    gooov += lib.einsum('la,jkil->jkia', 2*t1, goooo)
+    gooov -= lib.einsum('ib,jkba->jkia', l1, tau)
+    gooov = gooov.conj()
+    gooov -= lib.einsum('jkba,ib->jkia', l2, t1)
+    h5fobj['dooov'] = gooov.transpose(0,2,1,3)*2 - gooov.transpose(1,2,0,3)
+    tau = goovo = None
+    time1 = log.timer_debug1('rdm intermediates pass1', *time1)
+    #dm2[:nocc,:nocc,:nocc,nocc:] = dooov
+    #dm2[:nocc,nocc:,:nocc,:nocc] = dooov.transpose(2,3,0,1)
+    #dm2[:nocc,:nocc,nocc:,:nocc] = dooov.transpose(1,0,3,2).conj()
+    #dm2[nocc:,:nocc,:nocc,:nocc] = dooov.transpose(3,2,1,0).conj()
+    eed += get_ee_energy_density(dm2tmp, vele_mat[:,:nocc,:nocc],
+                                orbvals[:nocc], orb_vals[:nocc])
+
+    goovv = numpy.einsum('ia,jb->ijab', mia.conj(), t1.conj())
+    max_memory = max(0, mycc.max_memory - lib.current_memory()[0])
+    unit = nocc**2*nvir*6
+    blksize = min(nocc, nvir, max(ccsd.BLKMIN, int(max_memory*.95e6/8/unit)))
+    doovv = h5fobj.create_dataset('doovv', (nocc,nocc,nvir,nvir), dtype,
+                                  chunks=(nocc,nocc,1,nvir))
+
+    log.debug1('rdm intermediates pass 2: block size = %d, nvir = %d in %d blocks',
+               blksize, nvir, int((nvir+blksize-1)/blksize))
+    for p0, p1 in lib.prange(0, nvir, blksize):
+        tau = numpy.einsum('ia,jb->ijab', t1[:,p0:p1], t1)
+        tau += t2[:,:,p0:p1]
+        tmpoovv  = lib.einsum('ijkl,klab->ijab', goooo, tau)
+        tmpoovv -= lib.einsum('jk,ikab->ijab', mij, tau)
+        tmpoovv -= lib.einsum('cb,ijac->ijab', mab, t2[:,:,p0:p1])
+        tmpoovv -= lib.einsum('bd,ijad->ijab', mvv*.5, tau)
+        tmpoovv += .5 * tau
+        tmpoovv = tmpoovv.conj()
+        tmpoovv += .5 * l2[:,:,p0:p1]
+        goovv[:,:,p0:p1] += tmpoovv
+
+        pvOOv = fswap['mvOOv'][p0:p1]
+        pvoOV = fswap['mvoOV'][p0:p1]
+        gOvvO = lib.einsum('kiac,jc,kb->iabj', l2[:,:,p0:p1], t1, t1)
+        gOvvO += numpy.einsum('aijb->iabj', pvOOv)
+        govVO = numpy.einsum('ia,jb->iabj', l1[:,p0:p1], t1)
+        govVO -= lib.einsum('ikac,jc,kb->iabj', l2[:,:,p0:p1], t1, t1)
+        govVO += numpy.einsum('aijb->iabj', pvoOV)
+        dovvo[:,p0:p1] = 2*govVO + gOvvO
+        doovv[:,:,p0:p1] = (-2*gOvvO - govVO).transpose(3,0,1,2).conj()
+        gOvvO = govVO = None
+
+        tau -= t2[:,:,p0:p1] * .5
+        for q0, q1 in lib.prange(0, nvir, blksize):
+            goovv[:,:,q0:q1,:] += lib.einsum('dlib,jlda->ijab', pvOOv, tau[:,:,:,q0:q1]).conj()
+            goovv[:,:,:,q0:q1] -= lib.einsum('dlia,jldb->ijab', pvoOV, tau[:,:,:,q0:q1]).conj()
+            tmp = pvoOV[:,:,:,q0:q1] + pvOOv[:,:,:,q0:q1]*.5
+            goovv[:,:,q0:q1,:] += lib.einsum('dlia,jlbd->ijab', tmp, t2[:,:,:,p0:p1]).conj()
+        pvOOv = pvoOV = tau = None
+        time1 = log.timer_debug1('rdm intermediates pass2 [%d:%d]'%(p0, p1), *time1)
+    h5fobj['dovov'] = goovv.transpose(0,2,1,3) * 2 - goovv.transpose(1,2,0,3)
+    goovv = goooo = None
+
+    max_memory = max(0, mycc.max_memory - lib.current_memory()[0])
+    unit = max(nocc**2*nvir*2+nocc*nvir**2*3,
+               nvir**3*2+nocc*nvir**2*2+nocc**2*nvir*2)
+    blksize = min(nvir, max(ccsd.BLKMIN, int(max_memory*.9e6/8/unit)))
+    iobuflen = int(256e6/8/blksize)
+    log.debug1('rdm intermediates pass 3: block size = %d, nvir = %d in %d blocks',
+               blksize, nocc, int((nvir+blksize-1)/blksize))
+    dovvv = h5fobj.create_dataset('dovvv', (nocc,nvir,nvir,nvir), dtype,
+                                  chunks=(nocc,min(nocc,nvir),1,nvir))
+    time1 = time.clock(), time.time()
+    for istep, (p0, p1) in enumerate(lib.prange(0, nvir, blksize)):
+        l2tmp = l2[:,:,p0:p1]
+        gvvvv = lib.einsum('ijab,ijcd->abcd', l2tmp, t2)
+        jabc = lib.einsum('ijab,ic->jabc', l2tmp, t1)
+        gvvvv += lib.einsum('jabc,jd->abcd', jabc, t1)
+        l2tmp = jabc = None
+
+        if compress_vvvv:
+# symmetrize dvvvv because it does not affect the results of ccsd_grad
+# dvvvv = gvvvv.transpose(0,2,1,3)-gvvvv.transpose(0,3,1,2)*.5
+# dvvvv = (dvvvv+dvvvv.transpose(0,1,3,2)) * .5
+# dvvvv = (dvvvv+dvvvv.transpose(1,0,2,3)) * .5
+# now dvvvv == dvvvv.transpose(0,1,3,2) == dvvvv.transpose(1,0,3,2)
+            tmp = numpy.empty((nvir,nvir,nvir))
+            tmpvvvv = numpy.empty((p1-p0,nvir,nvir_pair))
+            for i in range(p1-p0):
+                vvv = gvvvv[i].conj().transpose(1,0,2)
+                tmp[:] = vvv - vvv.transpose(2,1,0)*.5
+                lib.pack_tril(tmp+tmp.transpose(0,2,1), out=tmpvvvv[i])
+            # tril of (dvvvv[p0:p1,p0:p1]+dvvvv[p0:p1,p0:p1].T)
+            for i in range(p0, p1):
+                for j in range(p0, i):
+                    tmpvvvv[i-p0,j] += tmpvvvv[j-p0,i]
+                tmpvvvv[i-p0,i] *= 2
+            for i in range(p1, nvir):
+                off = i * (i+1) // 2
+                dvvvv[off+p0:off+p1] = tmpvvvv[:,i]
+            for i in range(p0, p1):
+                off = i * (i+1) // 2
+                if p0 > 0:
+                    tmpvvvv[i-p0,:p0] += dvvvv[off:off+p0]
+                dvvvv[off:off+i+1] = tmpvvvv[i-p0,:i+1] * .25
+            tmp = tmpvvvv = None
+        else:
+            for i in range(p0, p1):
+                vvv = gvvvv[i-p0].conj().transpose(1,0,2)
+                dvvvv[i] = vvv - vvv.transpose(2,1,0)*.5
+
+        gvovv = lib.einsum('adbc,id->aibc', gvvvv, -t1)
+        gvvvv = None
+
+        gvovv += lib.einsum('akic,kb->aibc', fswap['mvoOV'][p0:p1], t1)
+        gvovv -= lib.einsum('akib,kc->aibc', fswap['mvOOv'][p0:p1], t1)
+
+        gvovv += lib.einsum('ja,jibc->aibc', l1[:,p0:p1], t2)
+        gvovv += lib.einsum('ja,jb,ic->aibc', l1[:,p0:p1], t1, t1)
+        gvovv += numpy.einsum('ba,ic->aibc', mvv[:,p0:p1]*.5, t1)
+        gvovv = gvovv.conj()
+        gvovv += lib.einsum('ja,jibc->aibc', t1[:,p0:p1], l2)
+
+        dovvv[:,:,p0:p1] = gvovv.transpose(1,3,0,2)*2 - gvovv.transpose(1,2,0,3)
+        gvvov = None
+        time1 = log.timer_debug1('rdm intermediates pass3 [%d:%d]'%(p0, p1), *time1)
+
+    fswap = None
+    dvvov = None
+    return (h5fobj['dovov'], h5fobj['dvvvv'], h5fobj['doooo'], h5fobj['doovv'],
+            h5fobj['dovvo'], dvvov          , h5fobj['dovvv'], h5fobj['dooov'])
+
+
 if __name__ == '__main__':
     from functools import reduce
     from pyscf import gto
