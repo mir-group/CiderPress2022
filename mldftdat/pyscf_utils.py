@@ -348,6 +348,54 @@ def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
 
+def get_ee_energy_density_split(rdm2, vele_mat, orb_vals1, orb_vals2):
+    """
+    Get the electron-electron repulsion energy density for a system.
+    Returns the electron-electron repulsion energy.
+    NOTE: vele_mat, rdm2, and orb_vals must be in the same basis! (AO or MO)
+    This variant allows one to split the calculation into pieces to save
+    memory
+    Args:
+        rdm2 (d1,d2,d3,d4)
+        vele_mat (N,d3,d4)
+        orb_vals1 (N,d1)
+        orb_vals2 (N,d2)
+
+    The following script is equivalent and easier to read (but slower):
+
+    Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
+    tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
+    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
+    return 0.5 * Vele
+    """
+    #mu,nu,lambda,sigma->i,j,k,l; r->p
+    rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
+    rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
+    print(shape)
+    vele_mat, shape = np.ascontiguousarray(vele_mat).view(), vele_mat.shape
+    print(shape)
+    vele_mat.shape = (shape[0], shape[1] * shape[2])
+    vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
+    vele_tmp.shape = (shape[0], orb_vals1.shape[1], orb_vals2.shape[1])
+    tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals2)
+    Vele = np.einsum('pi,pi->p', tmp, orb_vals1)
+    return 0.5 * Vele
+
+def get_lowmem_ee_energy(mycc, vele_mat, mo_vals, dm1 = None):
+    from mldftdat.external.pyscf_ccsd_rdm import lowmem_ee_energy
+    if isinstance(vele_mat, np.ndarray):
+        return lowmem_ee_energy(mycc, mycc.t1, mycc.t2, mycc.l1, mycc.l2,
+                                vele_mat, mo_vals, dm1=dm1)
+    else:
+        ee_energy_density = np.array([])
+        for vele_mat_chunk, mo_vals_chunk in vele_mat(mo_vals):
+            ee_energy_density = np.append(ee_energy_density,
+                                    lowmem_ee_energy(mycc, mycc.t1, mycc.t2,
+                                                    mycc.l1, mycc.l2,
+                                                    vele_mat_chunk, mo_vals_chunk,
+                                                    dm1 = dm1))
+        return ee_energy_density
+
 def get_corr_energy_density(mol, tau, vele_mat_ov, orbvals_occ,
                             orbvals_vir, direct = True):
     """
