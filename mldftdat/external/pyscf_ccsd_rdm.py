@@ -398,15 +398,19 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     # Note: Assumes real input
     from mldftdat.pyscf_utils import get_ee_energy_density_split
     #print(t1.dtype, t2.dtype, l1.dtype, l2.dtype, vele_mat.dtype, mo_vals.dtype)
-    h5fobj = lib.H5TmpFile()
+    for ob in [t1, t2, l1, l2]:
+        if numpy.iscomplexobj(ob):
+            raise ValueError('Currently only supporting real inputs.')
+    #h5fobj = lib.H5TmpFile()
     log = logger.Logger(mycc.stdout, mycc.verbose)
     nocc, nvir = t1.shape
     nov = nocc * nvir
     nvir_pair = nvir * (nvir+1) // 2
     dtype = numpy.result_type(t1, t2, l1, l2).char
-    dvvvv = h5fobj.create_dataset('dvvvv', (nvir,nvir,nvir,nvir), dtype)
-    dovvo = h5fobj.create_dataset('dovvo', (nocc,nvir,nvir,nocc), dtype,
-                                  chunks=(nocc,1,nvir,nocc))
+    #dvvvv = h5fobj.create_dataset('dvvvv', (nvir,nvir,nvir,nvir), dtype)
+    #dovvo = h5fobj.create_dataset('dovvo', (nocc,nvir,nvir,nocc), dtype,
+    #                              chunks=(nocc,1,nvir,nocc))
+    dovvo = numpy.zeros((nocc,nvir,nvir,nocc), dtype)
 
     fswap = lib.H5TmpFile()
     if dm1 is not None:
@@ -438,11 +442,9 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     tau = numpy.einsum('ia,jb->ijab', t1, t1)
     tau += t2
     goooo = lib.einsum('ijab,klab->ijkl', tau, l2)*.5
-    h5fobj['doooo'] = (goooo.transpose(0,2,1,3)*2 -
+    doooo = (goooo.transpose(0,2,1,3)*2 -
                        goooo.transpose(0,3,1,2)).conj()
-    doooo = numpy.asarray(h5fobj['doooo'])
-    dm2tmp = doooo.copy()
-    dm2tmp+= doooo.transpose(1,0,3,2).conj()
+    dm2tmp = doooo + doooo.transpose(1,0,3,2).conj()
     dm2tmp*= 2
     if dm1 is not None:
         for i in range(nocc):
@@ -460,6 +462,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     #dm2tmp = dm2tmp.transpose(1,0,3,2)
     eed = get_ee_energy_density_split(dm2tmp, vele_mat[:,:nocc,:nocc],
                                 mo_vals[:,:nocc], mo_vals[:,:nocc])
+    doooo = None
     dm2tmp = None
 
     gooov += numpy.einsum('ji,ka->jkia', -.5*moo, t1)
@@ -467,14 +470,14 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     gooov -= lib.einsum('ib,jkba->jkia', l1, tau)
     gooov = gooov.conj()
     gooov -= lib.einsum('jkba,ib->jkia', l2, t1)
-    h5fobj['dooov'] = gooov.transpose(0,2,1,3)*2 - gooov.transpose(1,2,0,3)
+    dooov = gooov.transpose(0,2,1,3)*2 - gooov.transpose(1,2,0,3)
     tau = goovo = None
     time1 = log.timer_debug1('rdm intermediates pass1', *time1)
     #dm2[:nocc,:nocc,:nocc,nocc:] = dooov
     #dm2[:nocc,nocc:,:nocc,:nocc] = dooov.transpose(2,3,0,1)
     #dm2[:nocc,:nocc,nocc:,:nocc] = dooov.transpose(1,0,3,2).conj()
     #dm2[nocc:,:nocc,:nocc,:nocc] = dooov.transpose(3,2,1,0).conj()
-    dm2tmp = numpy.asarray(h5fobj['dooov'])
+    dm2tmp = dooov
     #dm2tmp = dm2tmp.transpose(1,0,3,2)
     # TODO
     if dm1 is not None:
@@ -494,13 +497,15 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
                                 vele_mat[:,:nocc,:nocc],
                                 mo_vals[:,nocc:], mo_vals[:,:nocc])
     dm2tmp = None
+    dooov = None
 
     goovv = numpy.einsum('ia,jb->ijab', mia.conj(), t1.conj())
     max_memory = max(0, mycc.max_memory - lib.current_memory()[0])
     unit = nocc**2*nvir*6
     blksize = min(nocc, nvir, max(ccsd.BLKMIN, int(max_memory*.95e6/8/unit)))
-    doovv = h5fobj.create_dataset('doovv', (nocc,nocc,nvir,nvir), dtype,
-                                  chunks=(nocc,nocc,1,nvir))
+    #doovv = h5fobj.create_dataset('doovv', (nocc,nocc,nvir,nvir), dtype,
+    #                              chunks=(nocc,nocc,1,nvir))
+    doovv = numpy.zeros((nocc,nocc,nvir,nvir), dtype)
 
     log.debug1('rdm intermediates pass 2: block size = %d, nvir = %d in %d blocks',
                blksize, nvir, int((nvir+blksize-1)/blksize))
@@ -535,13 +540,13 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
             goovv[:,:,q0:q1,:] += lib.einsum('dlia,jlbd->ijab', tmp, t2[:,:,:,p0:p1]).conj()
         pvOOv = pvoOV = tau = None
         time1 = log.timer_debug1('rdm intermediates pass2 [%d:%d]'%(p0, p1), *time1)
-    h5fobj['dovov'] = goovv.transpose(0,2,1,3) * 2 - goovv.transpose(1,2,0,3)
+    dovov = goovv.transpose(0,2,1,3) * 2 - goovv.transpose(1,2,0,3)
     goovv = goooo = None
     # dovvo, dovov, doovv
     #dm2[:nocc,nocc:,:nocc,nocc:] = dovov
     #dm2[:nocc,nocc:,:nocc,nocc:]+= dovov.transpose(2,3,0,1)
     #dm2[nocc:,:nocc,nocc:,:nocc] = dm2[:nocc,nocc:,:nocc,nocc:].transpose(1,0,3,2).conj()
-    dovov = numpy.asarray(h5fobj['dovov'])
+    #dovov = numpy.asarray(h5fobj['dovov'])
     dm2tmp = dovov + dovov.transpose(2,3,0,1)
     #dm2tmp = dm2tmp.transpose(1,0,3,2)
     eed += get_ee_energy_density_split(dm2tmp,
@@ -551,6 +556,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
                                 vele_mat[:,nocc:,:nocc],
                                 mo_vals[:,nocc:], mo_vals[:,:nocc])
     dm2tmp = None
+    dovov = None
 
     #dm2[:nocc,:nocc,nocc:,nocc:] = doovv
     #dm2[:nocc,:nocc,nocc:,nocc:]+= doovv.transpose(1,0,3,2).conj()
@@ -569,6 +575,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
                                 vele_mat[:,:nocc,:nocc],
                                 mo_vals[:,nocc:], mo_vals[:,nocc:])
     dm2tmp = None
+    doovv = None
 
     #dm2[:nocc,nocc:,nocc:,:nocc] = dovvo
     #dm2[:nocc,nocc:,nocc:,:nocc]+= dovvo.transpose(3,2,1,0).conj()
@@ -587,6 +594,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
                                 vele_mat[:,:nocc,nocc:],
                                 mo_vals[:,nocc:], mo_vals[:,:nocc])
     dm2tmp = None
+    dovvo = None
 
     max_memory = max(0, mycc.max_memory - lib.current_memory()[0])
     unit = max(nocc**2*nvir*2+nocc*nvir**2*3,
@@ -595,8 +603,10 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     iobuflen = int(256e6/8/blksize)
     log.debug1('rdm intermediates pass 3: block size = %d, nvir = %d in %d blocks',
                blksize, nocc, int((nvir+blksize-1)/blksize))
-    dovvv = h5fobj.create_dataset('dovvv', (nocc,nvir,nvir,nvir), dtype,
-                                  chunks=(nocc,min(nocc,nvir),1,nvir))
+    #dovvv = h5fobj.create_dataset('dovvv', (nocc,nvir,nvir,nvir), dtype,
+    #                              chunks=(nocc,min(nocc,nvir),1,nvir))
+    dovvv = numpy.zeros((nocc,nvir,nvir,nvir), dtype)
+
     time1 = time.clock(), time.time()
     for istep, (p0, p1) in enumerate(lib.prange(0, nvir, blksize)):
         l2tmp = l2[:,:,p0:p1]
@@ -604,6 +614,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
         jabc = lib.einsum('ijab,ic->jabc', l2tmp, t1)
         gvvvv += lib.einsum('jabc,jd->abcd', jabc, t1)
         l2tmp = jabc = None
+        dvvvv = numpy.zeros((p1-p0,nvir,nvir,nvir), dtype)
         for i in range(p0, p1):
             vvv = gvvvv[i-p0].conj().transpose(1,0,2)
             dvvvv[i] = vvv - vvv.transpose(2,1,0)*.5
@@ -618,7 +629,8 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
         eed += get_ee_energy_density_split(dm2tmp.transpose(1,0,3,2).conj(),
                                     vele_mat[:,nocc:,nocc:],
                                     mo_vals[:,nocc:], mo_vals[:,nocc+p0:nocc+p1])
-
+        dm2tmp = None
+        dvvvv = None
 
         gvovv = lib.einsum('adbc,id->aibc', gvvvv, -t1)
         gvvvv = None
@@ -651,7 +663,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     dm2[nocc:,:nocc,nocc:,nocc:] = dovvv.transpose(1,0,3,2).conj()
     dovvv = None
     """
-    dm2tmp = numpy.asarray(dovvv)
+    dm2tmp = dovvv
     #dm2tmp = dovvv.transpose(1,0,3,2)
     eed += get_ee_energy_density_split(dm2tmp,
                                 vele_mat[:,nocc:,nocc:],
@@ -665,6 +677,8 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     eed += get_ee_energy_density_split(dm2tmp.transpose(1,0,3,2).conj(),
                                 vele_mat[:,nocc:,nocc:],
                                 mo_vals[:,nocc:], mo_vals[:,:nocc])
+    dm2tmp = None
+    dovvv = None
 
     #dm1 = _make_rdm1(mycc, d1, with_frozen)
     #dm1[numpy.diag_indices(nocc)] -= 2
