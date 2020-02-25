@@ -388,7 +388,16 @@ def _rdm2_mo2ao(dm2, mo):
 
 
 def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
+    # Calculates
+    # dm2[p,q,r,s] = < p^\dagger r^\dagger s q >
+    # vele_mat[:,r,s] = < r | |x-x'|^{-1} | s > 
+    # mo_vals[:,p] = < x | p >
+    # return \sum_{pqrs} dm2[p,q,r,s] * vele_mat[:,r,s] * mo_vals[:,p] * mo_vals[:,q]
+    # return \sum_{pqrs} < p^\dagger r^\dagger s q > * < r | |x-x'|^{-1} | s >  
+    #                       * < x | p > * < x | q >
+    # Note: Assumes real input
     from mldftdat.pyscf_utils import get_ee_energy_density_split
+    #print(t1.dtype, t2.dtype, l1.dtype, l2.dtype, vele_mat.dtype, mo_vals.dtype)
     h5fobj = lib.H5TmpFile()
     log = logger.Logger(mycc.stdout, mycc.verbose)
     nocc, nvir = t1.shape
@@ -435,7 +444,6 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     dm2tmp = doooo.copy()
     dm2tmp+= doooo.transpose(1,0,3,2).conj()
     dm2tmp*= 2
-    #dm2tmp = dm2tmp.transpose(1,0,3,2)
     if dm1 is not None:
         for i in range(nocc):
             for j in range(nocc):
@@ -449,6 +457,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     #dm2[:nocc,:nocc,:nocc,:nocc] = doooo
     #dm2[:nocc,:nocc,:nocc,:nocc]+= doooo.transpose(1,0,3,2).conj()
     #dm2[:nocc,:nocc,:nocc,:nocc]*= 2
+    #dm2tmp = dm2tmp.transpose(1,0,3,2)
     eed = get_ee_energy_density_split(dm2tmp, vele_mat[:,:nocc,:nocc],
                                 mo_vals[:,:nocc], mo_vals[:,:nocc])
     dm2tmp = None

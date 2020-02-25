@@ -367,13 +367,16 @@ def get_ee_energy_density_split(rdm2, vele_mat, orb_vals1, orb_vals2):
     tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals)
     return 0.5 * Vele
+
+    return \sum_{pqrs} dm2[p,q,r,s] * vele_mat[:,r,s] * mo_vals[:,p] * mo_vals[:,q]
+    return \sum_{pqrs} < p^\dagger r^\dagger s q > * < r | |x-x'|^{-1} | s > 
+                          * < x | p > * < x | q >
+    Note: Assumes real input
     """
     #mu,nu,lambda,sigma->i,j,k,l; r->p
     rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
     rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
-    print(shape)
     vele_mat, shape = np.ascontiguousarray(vele_mat).view(), vele_mat.shape
-    print(shape)
     vele_mat.shape = (shape[0], shape[1] * shape[2])
     vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
     vele_tmp.shape = (shape[0], orb_vals1.shape[1], orb_vals2.shape[1])
@@ -382,6 +385,12 @@ def get_ee_energy_density_split(rdm2, vele_mat, orb_vals1, orb_vals2):
     return 0.5 * Vele
 
 def get_lowmem_ee_energy(mycc, vele_mat, mo_vals, dm1 = None):
+    """
+    return \sum_{pqrs} dm2[p,q,r,s] * vele_mat[:,r,s] * mo_vals[:,p] * mo_vals[:,q]
+    return \sum_{pqrs} < p^\dagger r^\dagger s q > * < r | |x-x'|^{-1} | s > 
+                          * < x | p > * < x | q >
+    Note: Assumes real input
+    """
     from mldftdat.external.pyscf_ccsd_rdm import lowmem_ee_energy
     if isinstance(vele_mat, np.ndarray):
         return lowmem_ee_energy(mycc, mycc.t1, mycc.t2, mycc.l1, mycc.l2,
