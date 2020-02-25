@@ -376,9 +376,6 @@ class CCSDAnalyzer(ElectronAnalyzer):
     def post_process(self):
         super(CCSDAnalyzer, self).post_process()
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
-        self.mo_rdm2_file = ext_ccsd_rdm.make_rdm2(self.calc, self.calc.t1,
-                                            self.calc.t2, self.calc.l1,
-                                            self.calc.l2)
 
         self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, self.mo_coeff.transpose())
         self.rdm1 = self.ao_rdm1

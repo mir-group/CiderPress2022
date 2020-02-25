@@ -609,19 +609,20 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
 
     time1 = time.clock(), time.time()
     for istep, (p0, p1) in enumerate(lib.prange(0, nvir, blksize)):
+        print(p0,p1)
         l2tmp = l2[:,:,p0:p1]
         gvvvv = lib.einsum('ijab,ijcd->abcd', l2tmp, t2)
         jabc = lib.einsum('ijab,ic->jabc', l2tmp, t1)
         gvvvv += lib.einsum('jabc,jd->abcd', jabc, t1)
         l2tmp = jabc = None
         dvvvv = numpy.zeros((p1-p0,nvir,nvir,nvir), dtype)
-        for i in range(p0, p1):
-            vvv = gvvvv[i-p0].conj().transpose(1,0,2)
+        for i in range(p1-p0):
+            vvv = gvvvv[i].conj().transpose(1,0,2)
             dvvvv[i] = vvv - vvv.transpose(2,1,0)*.5
         #dm2[nocc:,nocc:,nocc:,nocc+p0:nocc+p1] = dvvvv[:,:,:,p0:p1]
         #dm2[nocc:,nocc:,nocc:,nocc+p0:nocc+p1]+= dvvvv[:,:,p0:p1,:].transpose(1,0,3,2).conj()
         #dm2[nocc:,nocc:,nocc:,nocc+p0:nocc+p1]*= 2
-        dm2tmp = numpy.asarray(dvvvv[p0:p1]) * 2
+        dm2tmp = numpy.asarray(dvvvv) * 2
         #dm2tmp = dm2tmp.transpose(1,0,3,2)
         eed += get_ee_energy_density_split(dm2tmp,
                                     vele_mat[:,nocc:,nocc:],
