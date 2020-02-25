@@ -400,9 +400,9 @@ class CCSDAnalyzer(ElectronAnalyzer):
 
     def get_ee_energy_density(self):
         if self.ee_energy_density is None:
-            self.ee_energy_density = get_ee_energy_density_outcore2(
-                                    self.mol, self.mo_rdm2_file['dm2'],
-                                    self.mo_vele_mat, self.mo_vals)
+            self.ee_energy_density = get_lowmem_ee_energy(self.calc,
+                                            self.mo_vele_mat, self.mo_vals,
+                                            dm1 = self.mo_rdm1)
             self.ee_total = integrate_on_grid(self.ee_energy_density,
                                                 self.grid.weights)
         return self.ee_energy_density
