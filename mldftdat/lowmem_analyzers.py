@@ -376,9 +376,6 @@ class CCSDAnalyzer(ElectronAnalyzer):
     def post_process(self):
         super(CCSDAnalyzer, self).post_process()
         self.mo_rdm1 = np.array(self.calc.make_rdm1())
-        self.mo_rdm2_file = ext_ccsd_rdm.make_rdm2(self.calc, self.calc.t1,
-                                            self.calc.t2, self.calc.l1,
-                                            self.calc.l2)
 
         self.ao_rdm1 = transform_basis_1e(self.mo_rdm1, self.mo_coeff.transpose())
         self.rdm1 = self.ao_rdm1
@@ -400,9 +397,9 @@ class CCSDAnalyzer(ElectronAnalyzer):
 
     def get_ee_energy_density(self):
         if self.ee_energy_density is None:
-            self.ee_energy_density = get_ee_energy_density_outcore2(
-                                    self.mol, self.mo_rdm2_file['dm2'],
-                                    self.mo_vele_mat, self.mo_vals)
+            self.ee_energy_density = get_lowmem_ee_energy(self.calc,
+                                            self.mo_vele_mat, self.mo_vals,
+                                            dm1 = self.mo_rdm1)
             self.ee_total = integrate_on_grid(self.ee_energy_density,
                                                 self.grid.weights)
         return self.ee_energy_density
