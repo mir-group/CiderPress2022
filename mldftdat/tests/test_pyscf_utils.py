@@ -428,8 +428,8 @@ class TestPyscfUtils(unittest.TestCase):
         for i in range(5):
             print(i, nlc_data_reg[i].shape, squish_nlc_data_reg[i].shape,
                 type(nlc_data_reg[i]), type(squish_nlc_data_reg[i]))
-            #plt.scatter(self.tst_rs[self.tst_rs < 2], nlc_data_reg[i])
-            #plt.scatter(self.tst_rs[self.tst_rs < 2], squish_nlc_data_reg[i])
+            #plt.scatter(self.tst_rs[self.tst_rs < 2], np.log(nlc_data_reg[i]))
+            #plt.scatter(self.tst_rs[self.tst_rs < 2], np.log(squish_nlc_data_reg[i]))
             #plt.show()
             if i == 3:
                 assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-2)

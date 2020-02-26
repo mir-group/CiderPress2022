@@ -267,7 +267,7 @@ class TrainingDataCollector(FiretaskBase):
             exist_ok = True
         save_dir = get_save_dir(self['save_root_dir'], calc_type,
                                 mol.basis, self['mol_id'],
-                                functional = self.get('functional'))
+                                functional = fw_spec.get('functional'))
         os.makedirs(save_dir, exist_ok=exist_ok)
 
         analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
