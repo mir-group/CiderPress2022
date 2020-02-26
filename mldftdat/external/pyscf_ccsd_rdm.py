@@ -616,6 +616,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     dovvv = numpy.zeros((nocc,nvir,nvir,nvir), dtype)
 
     time1 = time.clock(), time.time()
+    #dvvvv = numpy.zeros((blksize,nvir,nvir,nvir), dtype)
     for istep, (p0, p1) in enumerate(lib.prange(0, nvir, blksize)):
         print(p0,p1)
         l2tmp = l2[:,:,p0:p1]
@@ -631,6 +632,7 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
         #dm2[nocc:,nocc:,nocc:,nocc+p0:nocc+p1]+= dvvvv[:,:,p0:p1,:].transpose(1,0,3,2).conj()
         #dm2[nocc:,nocc:,nocc:,nocc+p0:nocc+p1]*= 2
         #dm2tmp = numpy.asarray(dvvvv)
+        #dm2tmp = dvvvv[:p1-p0]
         dm2tmp = dvvvv
         #dm2tmp = dm2tmp.transpose(1,0,3,2)
         eed += 4 * get_ee_energy_density_split(dm2tmp,
@@ -640,8 +642,8 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
         #eed += 2 * get_ee_energy_density_split(dm2tmp.transpose(1,0,3,2).conj(),
         #                            vele_mat_vv,
         #                            mo_vals_v, mo_vals[:,nocc+p0:nocc+p1])
-        dm2tmp = None
         dvvvv = None
+        dm2tmp = None
 
         gvovv = lib.einsum('adbc,id->aibc', gvvvv, -t1)
         gvvvv = None
@@ -676,18 +678,19 @@ def lowmem_ee_energy(mycc, t1, t2, l1, l2, vele_mat, mo_vals, dm1 = None):
     """
     dm2tmp = dovvv
     #dm2tmp = dovvv.transpose(1,0,3,2)
-    eed += get_ee_energy_density_split(dm2tmp,
+    eed += 2 * get_ee_energy_density_split(dm2tmp,
                                 vele_mat_vv,
                                 mo_vals_o, mo_vals_v)
-    eed += get_ee_energy_density_split(dm2tmp.transpose(2,3,0,1),
+    eed += 2 * get_ee_energy_density_split(dm2tmp.transpose(2,3,0,1),
                                 vele_mat_ov,
                                 mo_vals_v, mo_vals_v)
-    eed += get_ee_energy_density_split(dm2tmp.transpose(3,2,1,0).conj(),
-                                vele_mat_vo,
-                                mo_vals_v, mo_vals_v)
-    eed += get_ee_energy_density_split(dm2tmp.transpose(1,0,3,2).conj(),
-                                vele_mat_vv,
-                                mo_vals_v, mo_vals_o)
+    #unneeded due to real input
+    #eed += get_ee_energy_density_split(dm2tmp.transpose(3,2,1,0).conj(),
+    #                            vele_mat_vo,
+    #                            mo_vals_v, mo_vals_v)
+    #eed += get_ee_energy_density_split(dm2tmp.transpose(1,0,3,2).conj(),
+    #                            vele_mat_vv,
+    #                            mo_vals_v, mo_vals_o)
     dm2tmp = None
     dovvv = None
 
