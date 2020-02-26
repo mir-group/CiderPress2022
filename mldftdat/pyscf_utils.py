@@ -378,7 +378,10 @@ def get_ee_energy_density_split(rdm2, vele_mat, orb_vals1, orb_vals2):
     rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
     vele_mat, shape = np.ascontiguousarray(vele_mat).view(), vele_mat.shape
     vele_mat.shape = (shape[0], shape[1] * shape[2])
-    vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
+    vele_tmp = np.zeros((shape[0], orb_vals1.shape[1] * orb_vals2.shape[1]),
+                        dtype=vele_mat.dtype)
+    vele_tmp = dgemm(1, vele_mat, rdm2, c=vele_tmp,
+                        overwrite_c=True, trans_b=True)
     vele_tmp.shape = (shape[0], orb_vals1.shape[1], orb_vals2.shape[1])
     tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals2)
     Vele = np.einsum('pi,pi->p', tmp, orb_vals1)
@@ -547,7 +550,7 @@ def get_hartree_potential(rho_data, coords, weights):
     init_shape = rho_data.shape
     if len(init_shape) == 1:
         rho_data = rho_data.reshape((1, rho_data.shape[0]))
-    return utilf.hartree_potential(rho_data[:4], coords.transpose(),
+    return utilf.hartree_potential(rho_data, coords.transpose(),
                                    weights)[1].reshape(init_shape)
 
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
