@@ -297,6 +297,11 @@ class TestCCSDAnalyzer():
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
 
+    def test_get_corr_energy_density(self):
+        ecorr_dens = self.analyzer.get_corr_energy_density()
+        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
+
 
 class TestCCSDAnalyzerChunks(TestCCSDAnalyzer):
 
@@ -383,6 +388,11 @@ class TestUCCSDAnalyzer():
         assert_equal(analyzer1.ha_energy_density, data_dict['ha_energy_density'])
         assert_equal(analyzer1.ee_energy_density, data_dict['ee_energy_density'])
         os.remove(TMP_TEST)
+
+    def test_get_corr_energy_density(self):
+        ecorr_dens = self.analyzer.get_corr_energy_density()
+        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
 
 
 class TestUCCSDAnalyzerChunks(TestUCCSDAnalyzer):
