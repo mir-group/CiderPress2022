@@ -357,6 +357,8 @@ class TestPyscfUtils(unittest.TestCase):
 
         assert_almost_equal(rho * ALPHA**3, squish_rho)
         assert_almost_equal(s, squish_s, 4)
+        # TODO: adjust this unit test to account for imprecise coordinate
+        # scaling of the regularized alpha
         assert_almost_equal(alpha, squish_alpha, 2)
         assert_almost_equal(tau_w * ALPHA**5, squish_tau_w, 4)
         assert_almost_equal(tau_unif * ALPHA**5, squish_tau_unif, 4)
@@ -407,6 +409,8 @@ class TestPyscfUtils(unittest.TestCase):
         ALPHA = 1.2
         rho_data = np.append(self.tst_dens.reshape((1, self.tst_dens.shape[0])),
                                 self.tst_grad, axis=0)
+        # TODO: rho_data[4] has tau instead of nabla^2, should fix
+        rho_data = np.append(rho_data, (self.tst_tau, self.tst_tau), axis=0)
         tau_data = np.append(self.tst_tau.reshape((1, self.tst_dens.shape[0])),
                                 self.tst_grad_tau, axis=0)
         coords = self.tst_coords
