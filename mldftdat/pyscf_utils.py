@@ -528,7 +528,8 @@ def get_uniform_tau(rho):
     return (3.0/10) * (3*np.pi**2)**(2.0/3) * rho**(5.0/3)
 
 def get_normalized_tau(tau, tau_w, tau_unif):
-    return (tau - tau_w) / (tau_unif + 1e-6)
+    alpha = (tau - tau_w) / (tau_unif + 1e-4)
+    return alpha**3 / (alpha**2 + 1e-3)
 
 def get_dft_input(rho_data):
     rho = rho_data[0,:]
@@ -550,12 +551,14 @@ def get_hartree_potential(rho_data, coords, weights):
     init_shape = rho_data.shape
     if len(init_shape) == 1:
         rho_data = rho_data.reshape((1, rho_data.shape[0]))
+    print('getting hartree potential')
     return utilf.hartree_potential(rho_data, coords.transpose(),
                                    weights)[1].reshape(init_shape)
 
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
     coords = coords.transpose()
     vh_data = utilf.hartree_potential(rho_data, coords, weights)[1]
+    print('getting nonlocal_data')
     return utilf.nonlocal_dft_data(rho_data[:4], tau_data[1:4],
                                    vh_data[1:4], ws_radii,
                                    coords, weights)[1]
@@ -609,6 +612,23 @@ def squish_tau(tau_data, alpha):
     return tau_data
 
 def get_regularized_nonlocal_data(nonlocal_data, rho_data):
+    """
+    INPUT:
+        0 : | nabla v_H |
+        1 : \int exp(r'/r_s) n(r+r') r' dot nabla' v_H(r+r')
+        2 : \int exp(r'/r_s) n(r+r') r' dot nabla' n(r+r')
+        3 : \int exp(r'/r_s) n(r+r') r' dot nabla' tau(r+r')
+        4 : \int exp(r'/r_s) n(r+r')
+        5 : \int exp(r'/r_s) n(r+r')^(4/3)
+        6 : \int exp(r'/r_s) n(r+r')^(5/3)
+        7 : \int exp(r'/r_s) n(r+r')^2
+    OUTPUT:
+        0 : INPUT[0] * RHO / (INPUT[0] * RHO + TAU)
+        1 : INPUT[1] / INPUT[5]
+        2 : INPUT[2] / INPUT[6]
+        3 : INPUT[3] / TAU_U
+        4 : INPUT[4]
+    """
     nonlocal_data = nonlocal_data.copy()
     rho = rho_data[0,:]
     ws_radii = get_ws_radii(rho)
@@ -617,8 +637,10 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     tau_unif = get_uniform_tau(rho)
     mag_grad = get_gradient_magnitude(rho_data)
     tau_w = get_single_orbital_tau(rho, mag_grad)
-    nonlocal_data[0,:] /= np.sqrt(n43) + 1e-6
-    nonlocal_data[1,:] *= ws_radii
-    nonlocal_data[2,:] /= rho + 1e-6
-    nonlocal_data[3,:] /= tau_unif + 1e-6
-    return nonlocal_data
+    #nonlocal_data[0,:] /= np.sqrt(n43) + 1e-6
+    ndvh = rho_data[0,:] * nonlocal_data[0,:]
+    nonlocal_data[0,:] = ndvh / (ndvh + rho_data[5,:] + 1e-6)
+    nonlocal_data[1,:] /= nonlocal_data[5,:] + 1e-6
+    nonlocal_data[2,:] /= nonlocal_data[7,:] + 1e-6
+    nonlocal_data[3,:] /= nonlocal_data[6,:] + 1e-6
+    return nonlocal_data[:5,:]

@@ -1,4 +1,5 @@
-
+import numpy as np
+from mldftdat.pyscf_utils import *
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -24,18 +25,16 @@ def get_x_nonlocal_descriptors_nsp(rho_data, tau_data, coords, weights):
 def get_exchange_descriptors(rho_data, tau_data, coords,
                              weights, restricted = True):
     if restricted:
-        lc = get_dft_input(rho_data, tau_data, coords, weights)
+        lc = get_dft_input(rho_data)[:3]
         nlc = get_x_nonlocal_descriptors_nsp(rho_data, tau_data,
                                                 coords, weights)
         return np.append(lc, nlc, axis=0)
     else:
-        lcu = get_dft_input(rho_data[0] * 2, tau_data[0] * 2,
-                            coords, weights)
+        lcu = get_dft_input(rho_data[0] * 2)[:3]
         nlcu = get_x_nonlocal_descriptors_nsp(rho_data[0] * 2,
                                                 tau_data[0] * 2,
                                                 coords, weights)
-        lcd = get_dft_input(rho_data[1] * 2, tau_data[1] * 2,
-                            coords, weights)
+        lcd = get_dft_input(rho_data[1] * 2)[:3]
         nlcd = get_x_nonlocal_descriptors_nsp(rho_data[1] * 2,
                                                 tau_data[1] * 2,
                                                 coords, weights)

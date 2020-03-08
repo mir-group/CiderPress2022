@@ -21,6 +21,7 @@ function hartree_potential (vh, rho_data, coords, weights, ngrid, ndat)
     real(8), dimension(ngrid)                       :: rs
 
     hartree_potential = -1
+    !$omp parallel do default(shared) private(vecs, rs, tmp)
     do i = 1, ngrid
         do j = 1, ngrid
             vecs(:,j) = coords(:,j) - coords(:,i)
@@ -33,6 +34,7 @@ function hartree_potential (vh, rho_data, coords, weights, ngrid, ndat)
             !vh(j,i) = vh(j,i) - rho_data(j,i) / rs(i) * weights(i)
         enddo
     enddo
+    !$omp end parallel do
     hartree_potential = 0
 
 end function hartree_potential
@@ -53,7 +55,7 @@ function nonlocal_dft_data (nlc_data, rho_data, dtau_data, dvh_data,&
     real(8), dimension(ngrid), intent(in)           :: ws_radii
     real(8), dimension(3,ngrid), intent(in)         :: coords
     real(8), dimension(ngrid), intent(in)           :: weights
-    real(8), dimension(5,ngrid), intent(out)        :: nlc_data
+    real(8), dimension(8,ngrid), intent(out)        :: nlc_data
     real(8), dimension(3,ngrid)                     :: vecs
     real(8), dimension(ngrid)                       :: tmp
     real(8), dimension(ngrid)                       :: rs
@@ -61,6 +63,7 @@ function nonlocal_dft_data (nlc_data, rho_data, dtau_data, dvh_data,&
 
     nonlocal_dft_data = -1
     nlc_data(1,:) = norm2(dvh_data(1:3,:))
+    !$omp parallel do default(shared) private(vecs, rs, exp_weights, tmp)
     do i = 1, ngrid
         do j = 1, ngrid
             vecs(:,j) = coords(:,j) - coords(:,i)
@@ -74,7 +77,13 @@ function nonlocal_dft_data (nlc_data, rho_data, dtau_data, dvh_data,&
         nlc_data(4,i) = dot_product(tmp, exp_weights)
         tmp(:) = sum(vecs * dvh_data(1:3,:))
         nlc_data(2,i) = dot_product(tmp, exp_weights)
+        tmp(:) = rho_data(1,:)**(1.0 / 3)
+        nlc_data(6,i) = dot_product(tmp, exp_weights)
+        tmp(:) = rho_data(1,:)**(5.0 / 3)
+        nlc_data(7,i) = dot_product(tmp, exp_weights)
+        nlc_data(8,i) = dot_product(rho_data(1,:), exp_weights)
     enddo
+    !$omp end parallel do
     nonlocal_dft_data = 0
 
 end function nonlocal_dft_data
