@@ -27,7 +27,15 @@ function hartree_potential (vh, rho_data, coords, weights, ngrid, ndat)
             vecs(:,j) = coords(:,j) - coords(:,i)
         enddo
         rs(:) = norm2(vecs, 1)
+        do j=1, ngrid
+            if (rs(j) < 1.0e-6) then
+                rs(j) = (2.0/3) * (3.0 * abs(weights(j)) / (4 * pi))**(1.0 / 3)
+            endif
+        enddo
         rs(i) = (2.0/3) * (3.0 * abs(weights(i)) / (4 * pi))**(1.0 / 3)
+        if (weights(i) < 1.0e-10) then
+            rs(i) = 1.0e10
+        endif
         do j=1, ndat
             tmp(j,:) = rho_data(j,:) / rs
             vh(j,i) = dot_product(tmp(j,:), weights)

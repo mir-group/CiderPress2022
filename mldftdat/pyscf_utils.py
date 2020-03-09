@@ -558,6 +558,8 @@ def get_hartree_potential(rho_data, coords, weights):
 def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
     coords = coords.transpose()
     vh_data = utilf.hartree_potential(rho_data, coords, weights)[1]
+    if np.isnan(vh_data).any():
+        raise ValueError('Part of vh_data is nan %d' % np.count_nonzero(np.isnan(vh_data)))
     print('getting nonlocal_data')
     return utilf.nonlocal_dft_data(rho_data[:4], tau_data[1:4],
                                    vh_data[1:4], ws_radii,

@@ -18,9 +18,14 @@ def get_x_nonlocal_descriptors_nsp(rho_data, tau_data, coords, weights):
     # calc ws_radii for single spin (1/n is factor of 2 larger)
     ws_radii = get_ws_radii(rho_data[0]) * 2**(1.0/3)
     nonlocal_data = get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights)
+    if np.isnan(nonlocal_data).any():
+        raise ValueError('Part of nonlocal_data is nan %d' % np.count_nonzero(np.isnan(nonlocal_data)))
     # note: ws_radii calculated in the regularization call does not have the
     # factor of 2^(1/3), but it only comes in linearly so it should be fine
-    return get_regularized_nonlocal_data(nonlocal_data, rho_data)
+    res = get_regularized_nonlocal_data(nonlocal_data, rho_data)
+    if np.isnan(res).any():
+        raise ValueError('Part of regularized result is nan %d' % np.count_nonzero(np.isnan(res)))
+    return res
 
 def get_exchange_descriptors(rho_data, tau_data, coords,
                              weights, restricted = True):
