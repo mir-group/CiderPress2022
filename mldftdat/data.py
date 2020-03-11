@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
 import os
+from sklearn.metrics import r2_score
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -129,7 +130,7 @@ def ldax(n):
 def ldax_dens(n):
     return LDA_FACTOR * n**(1.0/3)
 
-def get_descriptors(dirname, num=1):
+def get_descriptors(dirname, num=1, count=None):
     """
     Get exchange energy descriptors from the dataset directory.
     Returns a number of descriptors per point equal
@@ -141,7 +142,11 @@ def get_descriptors(dirname, num=1):
         need to regularize 4, 6, 7
     """
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
-    #X = X[:,(0,1,6,2,4,3,5)]
+    if count is not None:
+        X = X[:count]
+    else:
+        count = X.shape[0]
+    X = X[:,(0,1,2,3,4,5,7,6)]
     #print(np.max(X, axis=0))
     #print(np.min(X, axis=0))
     rho_data = X
@@ -149,24 +154,31 @@ def get_descriptors(dirname, num=1):
     X[:,0] = np.log(1+X[:,0])
     if num > 1:
         X[:,1] = np.log(0.5 * (1 + X[:,1]))
-    #if num > 3:
+    if num > 3:
         #X[:,3] = np.log(1-X[:,3])
+        X[:,3] = np.arcsinh(X[:,3])
         #fac = np.max(np.abs(X[:,3])) / 3
         #X[:,3] = np.arctan(X[:,3] / fac)
         #X[:,3] = np.arctan(X[:,3])
-    #if num > 4:
-    #    X[:,4] = np.arctan(X[:,4])
+    if num > 4:
+        X[:,4] = np.arcsinh(X[:,4])
+    if num > 6:
+        X[:,6] = np.arcsinh(X[:,6])
+    if num > 5:
+        X[:,5] = np.log(X[:,5] / 6)
     #if num > 5:
-    #    X[:,5] = np.arctan(X[:,5])
-    y = np.loadtxt(os.path.join(dirname, 'fx.npz'))
+    #    X[:,5] = np.arcsinh(X[:,5])
+    #if num > 6:
+    #    X[:,6] = np.log(X[:,6] / 6)
+    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
     y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
 
     X = X[rho > 1e-3]
     y = y[rho > 1e-3]
 
-    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,rho > 1e-3]
+    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count][:,rho > 1e-3]
 
-    rho = rho[rho > 1e-3]
+    rho = rho[:count][rho > 1e-3]
 
     return X, y, rho, rho_data
 
@@ -195,10 +207,11 @@ def score(y_true, y_pred):
     """
     r2 score
     """
-    y_mean = np.mean(y_true)
-    return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
+    #y_mean = np.mean(y_true)
+    #return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
+    return r2_score(y_true, y_pred)
 
-def quick_plot(rho, v_true, v_pred):
+def quick_plot(rho, v_true, v_pred, name = None):
     """
     Plot true and predicted values against charge density
     """
@@ -206,4 +219,8 @@ def quick_plot(rho, v_true, v_pred):
     plt.scatter(rho, v_pred, label='predicted')
     plt.xlabel('density')
     plt.legend()
-    plt.show()
+    if name is None:
+        plt.show()
+    else:
+        plt.title(name)
+        plt.savefig(name)
