@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 import os
 from sklearn.metrics import r2_score
+from mldftdat.density import get_exchange_descriptors
+from pyscf.dft.libxc import eval_xc
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -130,26 +132,10 @@ def ldax(n):
 def ldax_dens(n):
     return LDA_FACTOR * n**(1.0/3)
 
-def get_descriptors(dirname, num=1, count=None):
-    """
-    Get exchange energy descriptors from the dataset directory.
-    Returns a number of descriptors per point equal
-    to num.
-
-    Order info:
-        0,   1, 2,     3,     4,      5,       6,       7
-        rho, s, alpha, |dvh|, intdvh, intdrho, intdtau, intrho
-        need to regularize 4, 6, 7
-    """
-    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
-    if count is not None:
-        X = X[:count]
-    else:
-        count = X.shape[0]
+def get_gp_x_descriptors(X, y, num=1):
     X = X[:,(0,1,2,3,4,5,7,6)]
     #print(np.max(X, axis=0))
     #print(np.min(X, axis=0))
-    rho_data = X
     rho, X = X[:,0], X[:,1:1+num]
     X[:,0] = np.log(1+X[:,0])
     if num > 1:
@@ -170,15 +156,38 @@ def get_descriptors(dirname, num=1, count=None):
     #    X[:,5] = np.arcsinh(X[:,5])
     #if num > 6:
     #    X[:,6] = np.log(X[:,6] / 6)
-    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
     y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
+    return X, y
 
-    X = X[rho > 1e-3]
-    y = y[rho > 1e-3]
+def get_descriptors(dirname, num=1, count=None, tol=1e-3):
+    """
+    Get exchange energy descriptors from the dataset directory.
+    Returns a number of descriptors per point equal
+    to num.
 
-    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count][:,rho > 1e-3]
+    Order info:
+        0,   1, 2,     3,     4,      5,       6,       7
+        rho, s, alpha, |dvh|, intdvh, intdrho, intdtau, intrho
+        need to regularize 4, 6, 7
+    """
+    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
+    if count is not None:
+        X = X[:count]
+    else:
+        count = X.shape[0]
+    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
+    X, y = get_gp_x_descriptors(X, y, num=num)
 
-    rho = rho[:count][rho > 1e-3]
+    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+    rho = rho_data[0,:]
+
+    condition = rho > tol
+
+    X = X[condition]
+    y = y[condition]
+
+    rho = rho[:count][condition]
+    rho_data = rho_data[:,condition]
 
     return X, y, rho, rho_data
 
@@ -224,3 +233,81 @@ def quick_plot(rho, v_true, v_pred, name = None):
     else:
         plt.title(name)
         plt.savefig(name)
+        plt.cla()
+
+def predict_exchange(analyzer, model=None, num=1,
+                     restricted = True):
+    """
+    model:  If None, return exact exchange results
+            If str, evaluate the exchange energy of that functional.
+            Otherwise, assume sklearn model and run predict function.
+    """
+    if not restricted:
+        raise NotImplementedError('unrestricted case not available for this function yet')
+    rho_data = analyzer.rho_data
+    tau_data = analyzer.tau_data
+    coords = analyzer.grid.coords
+    weights = analyzer.grid.weights
+    rho = rho_data[0,:]
+    if model is None:
+        neps = analyzer.get_fx_energy_density()
+        eps = neps / (rho + 1e-7)
+    elif type(model) == str:
+        eps = eval_xc(model + ',', rho_data)[0]
+        neps = eps * rho
+    else:
+        xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
+                                         weights, restricted = restricted)
+        X, y = get_gp_x_descriptors(xdesc.transpose(),
+                                    analyzer.get_fx_energy_density(), num = num)
+        y_pred, std = model.predict(X, return_std = True)
+        eps = get_x(y_pred, rho)
+        neps = rho * eps
+    xef = neps / (ldax(rho) + 1e-7)
+    fx_total = np.dot(neps, weights)
+    return xef, eps, neps, fx_total
+
+def error_table(dirs, Analyzer, mlmodel, num = 1):
+    models = ['LDA', 'PBE', 'SCAN', mlmodel]
+    errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    count = 0
+    ise = np.zeros(4)
+    tse = np.zeros(4)
+    rise = np.zeros(4)
+    rtse = np.zeros(4)
+    for d in dirs:
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        weights = analyzer.grid.weights
+        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        fxlst_true.append(fx_total_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            xef_pred, eps_pred, neps_pred, fx_total_pred = \
+                predict_exchange(analyzer, model = model, num = num)
+
+            ise[i] += np.dot((eps_pred - eps_true)**2, weights)
+            tse[i] += ((eps_pred - eps_true)**2).sum()
+            rise[i] += np.dot((xef_pred - xef_true)**2, weights)
+            rtse[i] += ((xef_pred - xef_true)**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            errlst[i].append(fx_total_pred - fx_total_true)
+
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    rmise = np.sqrt(ise / count)
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / len(dirs))
+
+    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:3] + ['ML']
+    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst),\
+           (columns, rows, errtbl)
