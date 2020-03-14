@@ -1,6 +1,8 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
+from mldftdat.workflow_utils import get_save_dir
+from mldftdat.density import get_exchange_descriptors
 import os
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
@@ -66,9 +68,10 @@ def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
     print(scales)
     ax.set_title('Surface plot')
 
-def compile_dataset(DATASET_NAME, MOL_IDS, CALC_TYPE, FUNCTIONAL, BASIS,
-                    spherical_atom = False):
+def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+                    Analyzer, spherical_atom = False):
 
+    import time
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
@@ -77,7 +80,7 @@ def compile_dataset(DATASET_NAME, MOL_IDS, CALC_TYPE, FUNCTIONAL, BASIS,
         print('Working on {}'.format(MOL_ID))
         data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
         start = time.monotonic()
-        analyzer = RHFAnalyzer.load(data_dir + '/data.hdf5')
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
         end = time.monotonic()
         print('analyzer load time', end - start)
         if spherical_atom:
