@@ -132,7 +132,7 @@ def ldax(n):
 def ldax_dens(n):
     return LDA_FACTOR * n**(1.0/3)
 
-def get_gp_x_descriptors(X, y, num=1):
+def get_gp_x_descriptors(X, num=1):
     X = X[:,(0,1,2,3,4,5,7,6)]
     #print(np.max(X, axis=0))
     #print(np.min(X, axis=0))
@@ -156,8 +156,8 @@ def get_gp_x_descriptors(X, y, num=1):
     #    X[:,5] = np.arcsinh(X[:,5])
     #if num > 6:
     #    X[:,6] = np.log(X[:,6] / 6)
-    y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
-    return X, y
+    #y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
+    return X
 
 def get_descriptors(dirname, num=1, count=None, tol=1e-3):
     """
@@ -176,7 +176,9 @@ def get_descriptors(dirname, num=1, count=None, tol=1e-3):
     else:
         count = X.shape[0]
     y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
-    X, y = get_gp_x_descriptors(X, y, num=num)
+    rho = X[:,0]
+    X = get_gp_x_descriptors(X, num=num)
+    y = get_y_from_xed(y, rho)
 
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
     rho = rho_data[0,:]
@@ -191,13 +193,19 @@ def get_descriptors(dirname, num=1, count=None, tol=1e-3):
 
     return X, y, rho, rho_data
 
-def get_x(y, rho):
+def get_xed_from_y(y, rho):
     """
     Get the exchange energy density (n * epsilon_x)
     from the exchange enhancement factor y
     and density rho.
     """
-    return np.exp(y) * ldax_dens(rho)
+    #return np.exp(y) * ldax_dens(rho)
+    return (y + 1) * ldax_dens(rho)
+
+get_x = get_xed_from_y
+
+def get_y_from_xed(xed, rho):
+    return xed / (ldax(rho) - 1e-7) - 1
 
 def true_metric(y_true, y_pred, rho):
     """
@@ -258,8 +266,9 @@ def predict_exchange(analyzer, model=None, num=1,
     else:
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
-        X, y = get_gp_x_descriptors(xdesc.transpose(),
-                                    analyzer.get_fx_energy_density(), num = num)
+        rho = xdesc[0,:]
+        X = get_gp_x_descriptors(xdesc.transpose(), num=num)
+        y = get_xed_from_y(analyzer.get_fx_energy_density(), rho)
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
@@ -299,11 +308,13 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     fxlst_pred = np.array(fxlst_pred)
     errlst = np.array(errlst)
 
+    print(count, len(dirs))
+
     fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    rmise = np.sqrt(ise / count)
+    rmise = np.sqrt(ise / len(dirs))
     rmse = np.sqrt(tse / count)
     rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / len(dirs))
+    rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
     rows = models[:3] + ['ML']
