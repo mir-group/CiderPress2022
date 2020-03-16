@@ -292,12 +292,16 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     for d in dirs:
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
         weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 1e-3
         xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
         count += eps_true.shape[0]
         for i, model in enumerate(models):
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num)
+            print(np.std(xef_pred[condition]), np.std(eps_true[condition]))
 
             ise[i] += np.dot((eps_pred - eps_true)**2, weights)
             tse[i] += ((eps_pred - eps_true)**2).sum()
