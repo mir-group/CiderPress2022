@@ -25,7 +25,7 @@ def get_centered_mols(mol, center):
         new_atom1.append((atom[i][0],\
             center - np.array(atom[i][1])))
         new_atom2.append((atom[i][0],\
-            center + np.array(atom[i][1])))
+            -center + np.array(atom[i][1])))
     mol1 = mol.copy()
     mol1.atom = new_atom1
     mol1.unit = 'au'
@@ -40,10 +40,21 @@ def get_centered_mols(mol, center):
 
 def get_eri(mol, center):
     mol1, mol2, = get_centered_mols(mol, center)
+    phases = []
+    for j in range(mol1.nbas):
+        l = mol1._bas[j][1]
+        phases += [(-1)**l] * (2*l+1)
+    phases = np.array(phases)
     atm, bas, env = \
         gto.mole.conc_env(mol1._atm, mol1._bas, mol1._env,
                           mol2._atm, mol2._bas, mol2._env)
     # https://github.com/pyscf/pyscf/blob/master/examples/gto/21-concatenate_molecules.py
+    res = gto.moleintor.getints('cint1e_rinv_sph', atm, bas, env, shls_slice=(0, mol1.nbas, mol1.nbas, mol1.nbas + mol2.nbas))
+    #print(phases, phases.shape, res.shape)
+    for i in range(mol1.nao_nr()):
+        res[i,:] *= phases[i]
+    return res
+    """
     eri2c = np.zeros((mol1.nao_nr(), mol2.nao_nr()))
     pi = 0
     for i in range(mol1.nbas):
@@ -58,6 +69,7 @@ def get_eri(mol, center):
             pj += dj
         pi += di
     return eri2c
+    """
 
 def get_aux_mat_chunks(mol, points, num_chunks):
     naux = mol.nao_nr()
@@ -88,7 +100,7 @@ def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
         i += 1
         fx_energy_density = np.append(fx_energy_density,
                             np.einsum('pq,xpq->x', ex_dens, aux_mat_chunk))
-    return -0.25 * fx_energy_density
+    return -fx_energy_density
 
 class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
 
@@ -125,7 +137,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         #                            self.auxmol, self.grid.coords,
         #                            self.aux_num_chunks)
         small_grid = Grids(self.mol)
-        small_grid.level = 0
+        small_grid.level = 1
         small_grid.build()
         self.small_grid = small_grid
         self.mo_aux_mat_generator = get_aux_mat_generator(
