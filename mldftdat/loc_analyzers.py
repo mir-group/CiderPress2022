@@ -5,39 +5,6 @@ from pyscf import gto, df
 import scipy.linalg
 import numpy as np
 
-def invert_mol(mol, center):
-    atom = mol._atom
-    new_atom = []
-    for i in range(mol.natm):
-        new_atom.append((atom[i][0],\
-            2*center - np.array(atom[i][1])))
-    new_mol = mol.copy()
-    new_mol.atom = new_atom
-    new_mol.unit = 'au'
-    new_mol.build()
-    return new_mol
-
-def get_centered_mols(mol, center):
-    atom = mol._atom
-    new_atom1 = []
-    new_atom2 = []
-    for i in range(mol.natm):
-        new_atom1.append((atom[i][0],\
-            center - np.array(atom[i][1])))
-        new_atom2.append((atom[i][0],\
-            -center + np.array(atom[i][1])))
-    mol1 = mol.copy()
-    mol1.atom = new_atom1
-    mol1.unit = 'au'
-    mol1.set_common_origin([0,0,0])
-    mol1.build()
-    mol2 = mol.copy()
-    mol2.atom = new_atom2
-    mol2.unit = 'au'
-    mol2.set_common_origin([0,0,0])
-    mol2.build()
-    return mol1, mol2
-
 def get_aux_mat_chunks(mol, points, num_chunks):
     """
     Generate chunks of vele_mat on the fly to reduce memory load.
@@ -77,6 +44,16 @@ def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
 
 class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
 
+    def post_process(self):
+        super(RHFAnalyzer, self).post_process()
+        self.auxmol = None
+        self.loc_fx_energy_density = None
+
+    def as_dict(self):
+        analyzer_dict = super(RHFAnalyzer, self).as_dict()
+        analyzer_dict['data']['loc_fx_energy_density'] = self.loc_fx_energy_density
+        return analyzer_dict
+
     def setup_etb(self):
         #auxbasis = df.aug_etb(mol, beta=1.6)
         auxbasis = df.aug_etb(self.mol, beta=1.6)
@@ -106,9 +83,6 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         aux_ao_ratio = naux // nao + 1
         self.aux_num_chunks = self.num_chunks * aux_ao_ratio * aux_ao_ratio
         print(self.aux_num_chunks)
-        #self.mo_aux_mat_generator = get_vele_mat_generator(
-        #                            self.auxmol, self.grid.coords,
-        #                            self.aux_num_chunks)
         small_grid = Grids(self.mol)
         small_grid.level = 3
         small_grid.build()
@@ -118,12 +92,18 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
                                     self.aux_num_chunks)
 
     def get_loc_fx_energy_density(self):
-        #ha_pred = np.einsum('')
-        tot_loc = np.einsum('pij,qij,i,j->pq', self.mo_to_aux, self.mo_to_aux,
-                                            self.mo_occ, self.mo_occ)
-        tot_loc = -0.25 * np.einsum('pq,pq', tot_loc, self.augJ)
-        self.loc_fx_energy_density = get_fx_energy_density_from_aug(
-                                        self.mo_aux_mat_generator,
-                                        self.mo_to_aux, self.mo_occ
-                                        )
-        return self.loc_fx_energy_density, tot_loc
+        #tot_loc = np.einsum('pij,qij,i,j->pq', self.mo_to_aux, self.mo_to_aux,
+        #                                    self.mo_occ, self.mo_occ)
+        #tot_loc = -0.25 * np.einsum('pq,pq', tot_loc, self.augJ)
+        if self.auxmol is None:
+            self.setup_etb()
+        if self.loc_fx_energy_density is None:
+            self.loc_fx_energy_density = get_fx_energy_density_from_aug(
+                                            self.mo_aux_mat_generator,
+                                            self.mo_to_aux, self.mo_occ
+                                            )
+        return self.loc_fx_energy_density
+
+    def perform_full_analysis(self):
+        super(RHFAnalyzer, self).perform_full_analysis()
+        self.get_loc_fx_energy_density()
