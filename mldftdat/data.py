@@ -72,7 +72,7 @@ def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
     ax.set_title('Surface plot')
 
 def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False):
+                    Analyzer, spherical_atom = False, locx = False):
 
     import time
     all_descriptor_data = None
@@ -99,7 +99,11 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
                                                    restricted = True)
         end = time.monotonic()
         print('get descriptor time', end - start)
-        values = analyzer.get_fx_energy_density()
+        if locx:
+            print('Getting loc fx')
+            values = analyzer.get_loc_fx_energy_density()
+        else:
+            values = analyzer.get_fx_energy_density()
         descriptor_data = descriptor_data
         rho_data = analyzer.rho_data
         if spherical_atom:
@@ -310,6 +314,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
 
             fxlst_pred[i].append(fx_total_pred)
             errlst[i].append(fx_total_pred - fx_total_true)
+        print(errlst[-1][-1])
 
     fxlst_true = np.array(fxlst_true)
     fxlst_pred = np.array(fxlst_pred)
