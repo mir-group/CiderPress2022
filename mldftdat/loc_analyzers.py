@@ -95,9 +95,9 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         #tot_loc = np.einsum('pij,qij,i,j->pq', self.mo_to_aux, self.mo_to_aux,
         #                                    self.mo_occ, self.mo_occ)
         #tot_loc = -0.25 * np.einsum('pq,pq', tot_loc, self.augJ)
-        if self.auxmol is None:
-            self.setup_etb()
         if self.loc_fx_energy_density is None:
+            if self.auxmol is None:
+                self.setup_etb()
             self.loc_fx_energy_density = get_fx_energy_density_from_aug(
                                             self.mo_aux_mat_generator,
                                             self.mo_to_aux, self.mo_occ
