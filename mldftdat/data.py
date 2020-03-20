@@ -1,6 +1,8 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
+from mldftdat.workflow_utils import get_save_dir
+from mldftdat.density import get_exchange_descriptors
 import os
 from sklearn.metrics import r2_score
 from mldftdat.density import get_exchange_descriptors
@@ -69,9 +71,10 @@ def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
     print(scales)
     ax.set_title('Surface plot')
 
-def compile_dataset(DATASET_NAME, MOL_IDS, CALC_TYPE, FUNCTIONAL, BASIS,
-                    spherical_atom = False):
+def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+                    Analyzer, spherical_atom = False, locx = False):
 
+    import time
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
@@ -80,7 +83,7 @@ def compile_dataset(DATASET_NAME, MOL_IDS, CALC_TYPE, FUNCTIONAL, BASIS,
         print('Working on {}'.format(MOL_ID))
         data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
         start = time.monotonic()
-        analyzer = RHFAnalyzer.load(data_dir + '/data.hdf5')
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
         end = time.monotonic()
         print('analyzer load time', end - start)
         if spherical_atom:
@@ -96,7 +99,11 @@ def compile_dataset(DATASET_NAME, MOL_IDS, CALC_TYPE, FUNCTIONAL, BASIS,
                                                    restricted = True)
         end = time.monotonic()
         print('get descriptor time', end - start)
-        values = analyzer.get_fx_energy_density()
+        if locx:
+            print('Getting loc fx')
+            values = analyzer.get_loc_fx_energy_density()
+        else:
+            values = analyzer.get_fx_energy_density()
         descriptor_data = descriptor_data
         rho_data = analyzer.rho_data
         if spherical_atom:
@@ -289,12 +296,16 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     for d in dirs:
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
         weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 1e-3
         xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
         count += eps_true.shape[0]
         for i, model in enumerate(models):
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num)
+            print(np.std(xef_pred[condition]), np.std(eps_true[condition]))
 
             ise[i] += np.dot((eps_pred - eps_true)**2, weights)
             tse[i] += ((eps_pred - eps_true)**2).sum()
@@ -303,6 +314,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
 
             fxlst_pred[i].append(fx_total_pred)
             errlst[i].append(fx_total_pred - fx_total_true)
+        print(errlst[-1][-1])
 
     fxlst_true = np.array(fxlst_true)
     fxlst_pred = np.array(fxlst_pred)
