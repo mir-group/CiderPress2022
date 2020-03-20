@@ -4,6 +4,8 @@ from pyscf.dft.gen_grid import Grids
 from pyscf import gto, df
 import scipy.linalg
 import numpy as np
+from scipy.linalg.lapack import dgetrf, dgetri
+from scipy.linalg.blas import dgemm, dgemv
 
 def get_aux_mat_chunks(mol, points, num_chunks):
     """
@@ -22,8 +24,10 @@ def get_aux_mat_chunks(mol, points, num_chunks):
         vele_mat_chunk = df.incore.aux_e2(mol, auxmol, intor='int3c2e_lhpot_sph')
         vele_mat_chunk = np.ascontiguousarray(np.transpose(
                                 vele_mat_chunk, axes=(2,0,1)))
-        for i in range(mol.nao_nr()):
-            vele_mat_chunk[:,:,i] *= phases[i]
+        #for i in range(mol.nao_nr()):
+        #    vele_mat_chunk[:,:,i] *= phases[i]
+        #vele_mat_chunk[:,:,:] *= phases
+        vele_mat_chunk *= phases
         yield vele_mat_chunk
 
 def get_aux_mat_generator(mol, coords, num_chunks):
@@ -33,13 +37,19 @@ def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
                                     mo_occ):
     ex_dens = np.einsum('pij,qij,i,j->pq', mo_to_aux, mo_to_aux,
                                           mo_occ, mo_occ)
+    ex_dens.shape = (ex_dens.shape[0] * ex_dens.shape[1])
     fx_energy_density = np.array([])
     i = 0
+    print('start loc_fx_iteration')
     for aux_mat_chunk in aux_mat_gen():
         #print('iter', i)
         #i += 1
-        fx_energy_density = np.append(fx_energy_density,
-                            np.einsum('pq,xpq->x', ex_dens, aux_mat_chunk))
+        #fx_energy_density = np.append(fx_energy_density,
+        #                    np.einsum('pq,xpq->x', ex_dens, aux_mat_chunk))
+        aux_mat_chunk.shape = (aux_mat_chunk.shape[0],\
+            aux_mat_chunk.shape[1] * aux_mat_chunk.shape[2])
+        fxed_chunk = dgemv(1, aux_mat_chunk, ex_dens)
+        fx_energy_density = np.append(fx_energy_density, fxed_chunk)
     return -fx_energy_density
 
 class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
@@ -55,7 +65,6 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         return analyzer_dict
 
     def setup_etb(self):
-        #auxbasis = df.aug_etb(mol, beta=1.6)
         auxbasis = df.aug_etb(self.mol, beta=1.6)
         nao = self.mol.nao_nr()
         self.auxmol = df.make_auxmol(self.mol, auxbasis)
@@ -67,14 +76,19 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         print(aux_e2.shape)
         # shape (naux, nao * nao)
         aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
+        aux_e2 = np.ascontiguousarray(aux_e2)
         self.augJ = aug_J.copy()
         #self.inv_aug_J = scipy.linalg.inv(aug_J, overwrite_a = True)
         # d(Q,rs) shape (naux, nao * nao)
         # \sum_P \Theta_P * d(P,rs) \approx rho_{rs}
         print(aug_J.shape, aux_e2.shape)
-        self.ao_to_aux = scipy.linalg.solve(aug_J, aux_e2, overwrite_a=False,
-                         overwrite_b=False, debug=None, check_finite=True,
-                         assume_a='sym', transposed=False)
+        #self.ao_to_aux = scipy.linalg.solve(aug_J, aux_e2, overwrite_a=True,
+        #                 overwrite_b=True, debug=None, check_finite=True,
+        #                 assume_a='sym', transposed=False)
+        lu, piv, info = dgetrf(aug_J, overwrite_a = True)
+        inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
+        #self.ao_to_aux = np.matmul(inv_aug_J, aux_e2)
+        self.ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
         print(self.ao_to_aux.shape)
         # phi_i phi_j = \sum_{mu,nu,P} c_{i,mu} c_{j,nu} d_{P,mu,nu}
         self.mo_to_aux = np.matmul(self.mo_coeff.transpose(),
