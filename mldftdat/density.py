@@ -46,3 +46,40 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
     return np.append(lcu, nlcu, axis=0),\
            np.append(lcd, nlcd, axis=0)
 
+"""
+The following two routines are from
+J. Tao, J. Chem. Phys. 115, 3519 (2001) (doi: 10.1063/1.1388047)
+"""
+
+A = 0.704 # maybe replace with sqrt(6/5)?
+B = 2 * np.pi / 9 * np.sqrt(6.0/5)
+FXP0 = 27 / 50 * 10 / 81
+FXI = 1.0 / 3 * (4*np.pi**2 / 3)**(1.0/3)
+#MU = 10/81
+MU = 0.21
+C1 = 1.0 / 3 * (4*np.pi**2 / 3)**(1.0/3)
+C2 = 1 - C1
+C3 = 0.19697 * np.sqrt(0.704)
+C4 = (C3**2 - 0.09834 * MU) / C3**3
+
+def edmgga(rho_data):
+    print(rho_data.shape)
+    gradn = np.linalg.norm(rho_data[1:4], axis=0)
+    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
+    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    QB = tau0 - rho_data[5] + tauw + 0.25 * rho_data[4]
+    QB /= tau0
+    x = A * QB + np.sqrt(1 + (A*QB)**2)
+    FX = C1 + (C2 * x) / (1 + C3 * np.sqrt(x) * np.arcsinh(C4 * (x-1)))
+    return FX
+
+def edmgga_loc(rho_data):
+    print(rho_data.shape)
+    gradn = np.linalg.norm(rho_data[1:4], axis=0)
+    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
+    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    QB = tau0 - rho_data[5] + 0.125 * rho_data[4]
+    QB /= tau0
+    x = A * QB + np.sqrt(1 + (A*QB)**2)
+    FX = C1 + (C2 * x) / (1 + C3 * np.sqrt(x) * np.arcsinh(C4 * (x-1)))
+    return FX
