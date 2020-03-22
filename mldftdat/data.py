@@ -166,6 +166,24 @@ def get_gp_x_descriptors(X, num=1):
     #y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
     return X
 
+def load_descriptors(dirname, count=None):
+    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
+    if count is not None:
+        X = X[:count]
+    else:
+        count = X.shape[0]
+    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
+    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+    return X, y, rho_data
+
+def filter_descriptors(X, y, rho_data, tol=1e-3):
+    condition = rho_data[0] > tol
+    X = X[condition,:]
+    y = y[condition]
+    rho = rho_data[0,condition]
+    rho_data = rho_data[:,condition]
+    return X, y, rho, rho_data
+
 def get_descriptors(dirname, num=1, count=None, tol=1e-3):
     """
     Get exchange energy descriptors from the dataset directory.
@@ -177,28 +195,13 @@ def get_descriptors(dirname, num=1, count=None, tol=1e-3):
         rho, s, alpha, |dvh|, intdvh, intdrho, intdtau, intrho
         need to regularize 4, 6, 7
     """
-    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
-    if count is not None:
-        X = X[:count]
-    else:
-        count = X.shape[0]
-    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
-    rho = X[:,0]
+    X, y, rho_data = load_descriptors(dirname, count)
+    rho = rho_data[0]
+
     X = get_gp_x_descriptors(X, num=num)
     y = get_y_from_xed(y, rho)
 
-    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
-    rho = rho_data[0,:]
-
-    condition = rho > tol
-
-    X = X[condition]
-    y = y[condition]
-
-    rho = rho[:count][condition]
-    rho_data = rho_data[:,condition]
-
-    return X, y, rho, rho_data
+    return filter_descriptors(X, y, rho_data, tol)
 
 def get_xed_from_y(y, rho):
     """
@@ -206,12 +209,14 @@ def get_xed_from_y(y, rho):
     from the exchange enhancement factor y
     and density rho.
     """
+    return rho * get_x(y, rho)
+
+def get_x(y, rho):
     #return np.exp(y) * ldax_dens(rho)
     return (y + 1) * ldax_dens(rho)
 
-get_x = get_xed_from_y
-
 def get_y_from_xed(xed, rho):
+    #return np.log(xed / (ldax(rho) - 1e-7) + 1e-7)
     return xed / (ldax(rho) - 1e-7) - 1
 
 def true_metric(y_true, y_pred, rho):
