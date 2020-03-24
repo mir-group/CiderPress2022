@@ -95,4 +95,52 @@ function nonlocal_dft_data (nlc_data, rho_data, dtau_data, dvh_data,&
     nonlocal_dft_data = 0
 
 end function nonlocal_dft_data
-    
+
+function nonlocal_dft_data2 (nlc_data, rho_data, dtau_data, dvh_data,&
+                            ws_radii, coords, weights, ngrid)
+
+    implicit none
+
+    integer                                         :: ngrid
+    integer                                         :: i
+    integer                                         :: j
+    integer                                         :: nonlocal_dft_data
+    real(8)                                         :: pi = 4 * atan(1.0_8)
+    real(8), dimension(4,ngrid), intent(in)         :: rho_data
+    real(8), dimension(3,ngrid), intent(in)         :: dtau_data
+    real(8), dimension(3,ngrid), intent(in)         :: dvh_data
+    real(8), dimension(ngrid), intent(in)           :: ws_radii
+    real(8), dimension(3,ngrid), intent(in)         :: coords
+    real(8), dimension(ngrid), intent(in)           :: weights
+    real(8), dimension(8,ngrid), intent(out)        :: nlc_data
+    real(8), dimension(3,ngrid)                     :: vecs
+    real(8), dimension(ngrid)                       :: tmp
+    real(8), dimension(ngrid)                       :: rs
+    real(8), dimension(ngrid)                       :: exp_weights
+
+    nonlocal_dft_data = -1
+    nlc_data(1,:) = norm2(dvh_data(1:3,:))
+    !$omp parallel do default(shared) private(vecs, rs, exp_weights, tmp)
+    do i = 1, ngrid
+        do j = 1, ngrid
+            vecs(:,j) = coords(:,j) - coords(:,i)
+        enddo
+        rs(:) = norm2(vecs, 1)
+        exp_weights(:) = exp(-rs / ws_radii(i)) * weights * rho_data(1,:)
+        nlc_data(5,i) = sum(exp_weights)
+        tmp(:) = sum(vecs * rho_data(2:4,:), 1)
+        nlc_data(3,i) = dot_product(tmp, exp_weights)
+        tmp(:) = sum(vecs * dtau_data(1:3,:))
+        nlc_data(4,i) = dot_product(tmp, exp_weights)
+        tmp(:) = sum(vecs * dvh_data(1:3,:))
+        nlc_data(2,i) = dot_product(tmp, exp_weights)
+        tmp(:) = rho_data(1,:)**(1.0 / 3)
+        nlc_data(6,i) = dot_product(tmp, exp_weights)
+        tmp(:) = rho_data(1,:)**(5.0 / 3)
+        nlc_data(7,i) = dot_product(tmp, exp_weights)
+        nlc_data(8,i) = dot_product(rho_data(1,:) / rs, exp_weights)
+    enddo
+    !$omp end parallel do
+    nonlocal_dft_data = 0
+
+end function nonlocal_dft_data
