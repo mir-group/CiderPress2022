@@ -7,6 +7,7 @@ import os
 from sklearn.metrics import r2_score
 from mldftdat.density import get_exchange_descriptors
 from pyscf.dft.libxc import eval_xc
+from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -275,7 +276,7 @@ def predict_exchange(analyzer, model=None, num=1,
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data)[0]
         neps = eps * rho
-    else:
+    elif type(model) == GPR:
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
         rho = xdesc[0,:]
@@ -284,6 +285,12 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
+    else:
+        xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
+                                         weights, restricted = restricted)
+        neps = model.predict(xdesc.transpose(), rho)
+        #neps = model.predict(xdesc.transpose(), rho_data)
+        eps = neps / rho
     xef = neps / (ldax(rho) + 1e-7)
     fx_total = np.dot(neps, weights)
     return xef, eps, neps, fx_total
@@ -299,6 +306,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     rise = np.zeros(4)
     rtse = np.zeros(4)
     for d in dirs:
+        print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
@@ -310,7 +318,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
         for i, model in enumerate(models):
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num)
-            print(np.std(xef_pred[condition]), np.std(eps_true[condition]))
+            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
 
             ise[i] += np.dot((eps_pred - eps_true)**2, weights)
             tse[i] += ((eps_pred - eps_true)**2).sum()
@@ -320,7 +328,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
             fxlst_pred[i].append(fx_total_pred)
             errlst[i].append(fx_total_pred - fx_total_true)
         print(errlst[-1][-1])
-
+        print()
     fxlst_true = np.array(fxlst_true)
     fxlst_pred = np.array(fxlst_pred)
     errlst = np.array(errlst)
