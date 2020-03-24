@@ -92,8 +92,10 @@ class DFTGPR():
         self.y = None
         if use_algpr:
             self.gp = ALGPR(kernel = kernel)
+            self.al = True
         else:
             self.gp = GaussianProcessRegressor(kernel = kernel)
+            self.al = False
         self.init_kernel = kernel
         self.num = num_desc
 
@@ -161,10 +163,13 @@ class DFTGPR():
         if self.is_uncertain(x, y, threshold_factor):
             self.X = np.append(self.X, x, axis=0)
             self.y = np.append(self.y, y)
-            prev_optimizer = self.gp.optimizer
-            self.gp.optimizer = None
-            self.gp.fit(self.X, self.y)
-            self.gp.optimizer = prev_optimizer
+            if self.al:
+                self.gp.fit_single(x, y)
+            else:
+                prev_optimizer = self.gp.optimizer
+                self.gp.optimizer = None
+                self.gp.fit(self.X, self.y)
+                self.gp.optimizer = prev_optimizer
 
     @property
     def noise(self):
