@@ -5,10 +5,73 @@ from mldftdat.data import get_gp_x_descriptors, get_y_from_xed, get_xed_from_y,\
 from mldftdat import data
 import numpy as np
 
+from scipy.linalg import solve_triangular
+
+"""
+['L_', 'X_train_', '_K_inv', '__class__', '__delattr__', '__dict__',
+'__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__',
+'__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__',
+'__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__',
+'__repr__', '__setattr__', '__setstate__', '__sizeof__', '__str__',
+'__subclasshook__', '__weakref__', '_constrained_optimization', '_estimator_type',
+'_get_param_names', '_get_tags', '_more_tags', '_rng', '_y_train_mean',
+'alpha', 'alpha_', 'copy_X_train', 'fit', 'get_params', 'kernel', 'kernel_',
+'log_marginal_likelihood', 'log_marginal_likelihood_value_', 'n_restarts_optimizer',
+'normalize_y', 'optimizer', 'predict', 'random_state',
+'sample_y', 'score', 'set_params', 'y_train_']
+"""
+
+class ALGPR(GaussianProcessRegressor):
+
+    def fit_single(self, x, y):
+        # following Rasmussen A.12 (p. 201)
+        if self._K_inv is None:
+            # compute inverse K_inv of K based on its Cholesky
+            # decomposition L and its inverse L_inv
+            L_inv = solve_triangular(self.L_.T,
+                                     np.eye(self.L_.shape[0]))
+            self._K_inv = L_inv.dot(L_inv.T)
+
+        Pinv = self._K_inv
+        self.X_train_ = np.append(self.X_train_, x, axis=0)
+        self.y_train_ = np.append(self.y_train_, y)
+        newK = self.kernel_(x, self.X_train_).reshape(-1)
+        newK[-1] += self.alpha
+        R = newK[:-1]
+        S = newK[-1]
+        print(Pinv.shape, R.shape, S.shape)
+        RPinv = np.dot(R, Pinv)
+        PinvQRPinv = np.outer(RPinv, RPinv)
+        M = 1 / (S - np.dot(R, np.dot(Pinv, R)))
+        Ptilde = Pinv + M * PinvQRPinv
+        Rtilde = - M * RPinv
+        Stilde = M
+        N_old = Pinv.shape[0]
+        N_new = N_old + 1
+
+        newKinv = np.zeros((N_new, N_new))
+        newKinv[:-1,:-1] = Ptilde
+        newKinv[-1,:-1] = Rtilde
+        newKinv[:-1,-1] = Rtilde
+        newKinv[-1,-1] = Stilde
+        self._K_inv = newKinv
+
+        newL = np.zeros((N_new, N_new))
+        B = newK[:-1]
+        R = solve_triangular(self.L_, B, lower=True)
+        newL[:-1,:-1] = self.L_
+        newL[:-1,-1] = 0
+        newL[-1,:-1] = R
+        newL[-1,-1] = np.sqrt(newK[-1] - np.dot(R, R))
+        self.L_ = newL
+
+        self.alpha_ = np.dot(self._K_inv, self.y_train_).reshape(-1)
+
+
 class DFTGPR():
 
     def __init__(self, num_desc, descriptor_getter = None, xed_y_converter = None,
-                 init_kernel = None):
+                 init_kernel = None, use_algpr = False):
         if descriptor_getter is None:
             self.get_descriptors = data.get_gp_x_descriptors
         else:
@@ -27,7 +90,10 @@ class DFTGPR():
             kernel = init_kernel
         self.X = None
         self.y = None
-        self.gp = GaussianProcessRegressor(kernel = kernel)
+        if use_algpr:
+            self.gp = ALGPR(kernel = kernel)
+        else:
+            self.gp = GaussianProcessRegressor(kernel = kernel)
         self.init_kernel = kernel
         self.num = num_desc
 
@@ -86,7 +152,8 @@ class DFTGPR():
 
     def fit_single(self, x, y):
         # NOTE: experimental
-        raise NotImplementedError()
+        self.X = np.append(self.X_train_, x, axis=0)
+        self.y = np.append(self.y_train_, y)
 
     def add_point(self, xdesc, xed, rho_data, threshold_factor = 1.2):
         x = self.get_descriptors(xdesc, num=self.num)
