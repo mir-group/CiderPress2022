@@ -39,7 +39,6 @@ class ALGPR(GaussianProcessRegressor):
         newK[-1] += self.alpha
         R = newK[:-1]
         S = newK[-1]
-        print(Pinv.shape, R.shape, S.shape)
         RPinv = np.dot(R, Pinv)
         PinvQRPinv = np.outer(RPinv, RPinv)
         M = 1 / (S - np.dot(R, np.dot(Pinv, R)))
