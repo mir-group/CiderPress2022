@@ -70,11 +70,12 @@ class ALGPR(GaussianProcessRegressor):
 class DFTGPR():
 
     def __init__(self, num_desc, descriptor_getter = None, xed_y_converter = None,
-                 init_kernel = None, use_algpr = False):
+                 init_kernel = None, use_algpr = False, selection = None):
         if descriptor_getter is None:
             self.get_descriptors = data.get_gp_x_descriptors
         else:
             self.get_descriptors = descriptor_getter
+        self.selection = selection
         if xed_y_converter is None:
             self.xed_to_y = data.get_y_from_xed
             self.y_to_xed = data.get_xed_from_y
