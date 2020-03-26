@@ -2,10 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors
+from mldftdat.density import get_exchange_descriptors, edmgga
 import os
 from sklearn.metrics import r2_score
-from mldftdat.density import get_exchange_descriptors
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 
@@ -140,20 +139,20 @@ def ldax(n):
 def ldax_dens(n):
     return LDA_FACTOR * n**(1.0/3)
 
-def get_gp_x_descriptors(X, num=1):
+def get_gp_x_descriptors(X, num=1, selection=None):
     X = X[:,(0,1,2,3,4,5,7,6)]
+    if selection is not None:
+        num = 7
     #print(np.max(X, axis=0))
     #print(np.min(X, axis=0))
-    rho, X = X[:,0], X[:,1:1+num]
+    #rho, X = X[:,0], X[:,1:1+num]
+    rho, X = X[:,0], X[:,1:]
     X[:,0] = np.log(1+X[:,0])
     if num > 1:
         X[:,1] = np.log(0.5 * (1 + X[:,1]))
+        #X[:,1] = 1 / (1 + X[:,1]**2)
     if num > 3:
-        #X[:,3] = np.log(1-X[:,3])
         X[:,3] = np.arcsinh(X[:,3])
-        #fac = np.max(np.abs(X[:,3])) / 3
-        #X[:,3] = np.arctan(X[:,3] / fac)
-        #X[:,3] = np.arctan(X[:,3])
     if num > 4:
         X[:,4] = np.arcsinh(X[:,4])
     if num > 6:
@@ -164,8 +163,11 @@ def get_gp_x_descriptors(X, num=1):
     #    X[:,5] = np.arcsinh(X[:,5])
     #if num > 6:
     #    X[:,6] = np.log(X[:,6] / 6)
-    #y = np.log(y / (ldax(rho) - 1e-7) + 1e-7)
-    return X
+    if selection is None:
+        X = X[:,(0,1,2,5,4,3,6)]
+        return X[:,:num]
+    else:
+        return X[:,selection]
 
 def load_descriptors(dirname, count=None):
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
@@ -273,6 +275,10 @@ def predict_exchange(analyzer, model=None, num=1,
     if model is None:
         neps = analyzer.get_fx_energy_density()
         eps = neps / (rho + 1e-7)
+    elif model == 'EDM':
+        fx = edmgga(rho_data)
+        neps = fx * ldax(rho)
+        eps = fx * ldax_dens(rho)
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data)[0]
         neps = eps * rho
@@ -296,21 +302,22 @@ def predict_exchange(analyzer, model=None, num=1,
     return xef, eps, neps, fx_total
 
 def error_table(dirs, Analyzer, mlmodel, num = 1):
-    models = ['LDA', 'PBE', 'SCAN', mlmodel]
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
     errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
     fxlst_true = []
     count = 0
-    ise = np.zeros(4)
-    tse = np.zeros(4)
-    rise = np.zeros(4)
-    rtse = np.zeros(4)
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
     for d in dirs:
         print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
-        condition = rho > 1e-3
+        condition = rho > 3e-3
         xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
         print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
@@ -320,10 +327,10 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
                 predict_exchange(analyzer, model = model, num = num)
             print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
 
-            ise[i] += np.dot((eps_pred - eps_true)**2, weights)
-            tse[i] += ((eps_pred - eps_true)**2).sum()
-            rise[i] += np.dot((xef_pred - xef_true)**2, weights)
-            rtse[i] += ((xef_pred - xef_true)**2).sum()
+            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
 
             fxlst_pred[i].append(fx_total_pred)
             errlst[i].append(fx_total_pred - fx_total_true)
@@ -342,7 +349,7 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:3] + ['ML']
+    rows = models[:NMODEL-1] + ['ML']
     errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
     return (fxlst_true, fxlst_pred, errlst),\
