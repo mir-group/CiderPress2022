@@ -84,7 +84,7 @@ class DFTGPR():
             self.y_to_xed = xed_y_converter[1]
         if init_kernel is None:
             rbf = RBF([1.0] * num_desc, length_scale_bounds=(1.0e-5, 1.0e5))
-            wk = WhiteKernel(noise_level=1.0e-3, noise_level_bounds=(1e-05, 1.0e5))
+            wk = WhiteKernel(noise_level=1.0e-3, noise_level_bounds=(1e-04, 1.0e5))
             kernel = rbf + wk
         else:
             kernel = init_kernel
