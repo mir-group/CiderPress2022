@@ -31,6 +31,7 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     x = np.arcsinh(x - 1)
     X = get_gp_x_descriptors(X, num = num)
     X = np.append(x.reshape(-1,1), X, axis=1)
+    return X
 
 class PBEGPR(DFTGPR):
 
