@@ -39,7 +39,6 @@ class ALGPR(GaussianProcessRegressor):
         newK[-1] += self.alpha
         R = newK[:-1]
         S = newK[-1]
-        print(Pinv.shape, R.shape, S.shape)
         RPinv = np.dot(R, Pinv)
         PinvQRPinv = np.outer(RPinv, RPinv)
         M = 1 / (S - np.dot(R, np.dot(Pinv, R)))
@@ -71,11 +70,12 @@ class ALGPR(GaussianProcessRegressor):
 class DFTGPR():
 
     def __init__(self, num_desc, descriptor_getter = None, xed_y_converter = None,
-                 init_kernel = None, use_algpr = False):
+                 init_kernel = None, use_algpr = False, selection = None):
         if descriptor_getter is None:
             self.get_descriptors = data.get_gp_x_descriptors
         else:
             self.get_descriptors = descriptor_getter
+        self.selection = selection
         if xed_y_converter is None:
             self.xed_to_y = data.get_y_from_xed
             self.y_to_xed = data.get_xed_from_y
@@ -84,7 +84,7 @@ class DFTGPR():
             self.y_to_xed = xed_y_converter[1]
         if init_kernel is None:
             rbf = RBF([1.0] * num_desc, length_scale_bounds=(1.0e-5, 1.0e5))
-            wk = WhiteKernel(noise_level=1.0e-3, noise_level_bounds=(1e-05, 1.0e5))
+            wk = WhiteKernel(noise_level=1.0e-3, noise_level_bounds=(1e-04, 1.0e5))
             kernel = rbf + wk
         else:
             kernel = init_kernel
