@@ -43,7 +43,7 @@ class PBEGPR(DFTGPR):
 class EDMGPR(DFTGPR):
 
     def __init__(num_desc, init_kernel = None, use_algpr = False):
-        super.__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
+        super(EDMGPR, self).__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
