@@ -1,5 +1,5 @@
 from mldftdat.gp import DFTGPR
-from mldftdat.density import edmgga
+from mldftdat.density import *
 from mldftdat.data import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
@@ -20,6 +20,12 @@ def y_to_xed_pbe(y, rho_data):
     yp = y * ldax(rho_data[0])
     pbex = eval_xc('PBE,', rho_data)[0] * rho_data[0]
     return yp + pbex
+
+def xed_to_y_lda(xed, rho_data):
+    return get_y_from_xed(xed, rho_data[0])
+
+def y_to_xed_lda(y, rho_data):
+    return get_xed_from_y(y, rho_data[0])
 
 def get_edmgga_descriptors(X, rho_data, num=1):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
@@ -43,7 +49,7 @@ class PBEGPR(DFTGPR):
 
 class EDMGPR(DFTGPR):
 
-    def __init__(num_desc, init_kernel = None, use_algpr = False):
+    def __init__(self, num_desc, init_kernel = None, use_algpr = False):
         super(EDMGPR, self).__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
