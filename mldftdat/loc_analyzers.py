@@ -1,6 +1,7 @@
 from mldftdat import lowmem_analyzers
 from mldftdat.pyscf_utils import get_vele_mat_generator
 from pyscf.dft.gen_grid import Grids
+from pyscf.dft.numint import eval_ao
 from pyscf import gto, df
 import scipy.linalg
 import numpy as np
@@ -104,6 +105,60 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         self.mo_aux_mat_generator = get_aux_mat_generator(
                                     self.auxmol, small_grid.coords,
                                     self.aux_num_chunks)
+
+    def setup_eps_basis(self):
+        auxbasis = df.aug_etb(self.mol, beta=1.5)
+        nao = self.mol.nao_nr()
+        auxmol = df.make_auxmol(self.mol, auxbasis)
+        naux = auxmol.nao_nr()
+        self.Saux = auxmol.intor('int1e_ovlp')
+        evals, evecs = np.linalg.eigh(self.Saux)
+        revecs = evecs[:,evals > 1e-6]
+        revals = np.diag(1 / evals[evals > 1e-6])
+        #self.Saux_inv = np.linalg.inv(self.Saux)
+        self.Saux_inv = np.matmul(revecs, np.matmul(revals, revecs.T))
+        # (4, N, nao)
+        self.aux_ao = eval_ao(auxmol, self.grid.coords, deriv=2)
+        #print(self.aux_ao.shape)
+
+    def setup_rho_basis(self):
+        auxbasis = df.aug_etb(self.mol, beta=1.6)
+        nao = self.mol.nao_nr()
+        auxmol = df.make_auxmol(self.mol, auxbasis)
+        naux = auxmol.nao_nr()
+        gridmol = gto.fakemol_for_charges(self.grid.coords)
+        atm, bas, env = \
+            gto.mole.conc_env(auxmol._atm, auxmol._bas, auxmol._env,
+                              gridmol._atm, gridmol._bas, gridmol._env)
+        Vpr = gto.mole.intor_cross('int2c2e', auxmol, gridmol)
+        print('vpr', naux, Vpr.shape, self.grid.weights.shape, auxmol.nbas, gridmol.nbas)
+        N = self.grid.weights.shape[0]
+        Vpq = np.einsum('pr,qr,r->pq', Vpr, Vpr, self.grid.weights)
+        #Vpq += 1e-6 * np.identity(Vpq.shape[0])
+        self.Vpr = Vpr
+        evals, evecs = np.linalg.eigh(Vpq)
+        revecs = evecs[:,evals > 1e-6]
+        revals = np.diag(1 / evals[evals > 1e-6])
+        self.Vpq_inv = np.matmul(revecs, np.matmul(revals, revecs.T))
+        print(np.linalg.eigvalsh(Vpq))
+        #self.Vpq_inv = np.linalg.inv(Vpq)
+        self.aux_ao = eval_ao(auxmol, self.grid.coords, deriv=2)
+        print('ao', self.aux_ao.shape)
+
+    def fit_vals_to_aux(self, vals, minrho = 3e-3):
+        rho = self.rho_data[0]
+        cond = rho > minrho
+        Sval = np.dot(vals[cond] * self.grid.weights[cond], self.aux_ao[0,cond])
+        Caux = np.dot(self.Saux_inv, Sval)
+        return Caux
+
+    def fit_vals_to_aux2(self, vals, minrho = 3e-3):
+        rho = self.rho_data[0]
+        cond = rho > minrho
+        Vpe = np.dot(self.Vpr, vals * self.grid.weights)
+        C = np.dot(self.Vpq_inv, Vpe)
+        tst = np.dot(self.aux_ao, C)
+        return C, tst
 
     def get_loc_fx_energy_density(self):
         #tot_loc = np.einsum('pij,qij,i,j->pq', self.mo_to_aux, self.mo_to_aux,
