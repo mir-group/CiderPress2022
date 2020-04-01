@@ -259,7 +259,7 @@ def quick_plot(rho, v_true, v_pred, name = None):
         plt.cla()
 
 def predict_exchange(analyzer, model=None, num=1,
-                     restricted = True):
+                     restricted = True, return_desc = False):
     """
     model:  If None, return exact exchange results
             If str, evaluate the exchange energy of that functional.
@@ -297,9 +297,14 @@ def predict_exchange(analyzer, model=None, num=1,
         #neps = model.predict(xdesc.transpose(), rho)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     xef = neps / (ldax(rho) + 1e-7)
     fx_total = np.dot(neps, weights)
-    return xef, eps, neps, fx_total
+    if return_desc:
+        return xef, eps, neps, fx_total, X
+    else:
+        return xef, eps, neps, fx_total
 
 def error_table(dirs, Analyzer, mlmodel, num = 1):
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
@@ -354,3 +359,93 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
 
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl)
+
+def error_table2(dirs, Analyzer, mlmodel, num = 1):
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    data_dict = {}
+    data_dict['true'] = {'rho_data': None, 'eps_data': []}
+    for model in models:
+        if type(model) != str:
+            data_dict['ML'] = {'eps_data': [], 'desc_data': None}
+        else:
+            data_dict[model] = {'eps_data': []}
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-3
+        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
+        fxlst_true.append(fx_total_true)
+        count += eps_true.shape[0]
+        data_dict['true']['eps_data'] = np.append(data_dict['true']['eps_data'], eps_true)
+        if data_dict['true'].get('rho_data') is None:
+            data_dict['true']['rho_data'] = analyzer.rho_data
+        else:
+            data_dict['true']['rho_data'] = np.append(data_dict['true']['rho_data'],
+                                                analyzer.rho_data, axis=1)
+        for i, model in enumerate(models):
+            if type(model) == str:
+                xef_pred, eps_pred, neps_pred, fx_total_pred = \
+                    predict_exchange(analyzer, model = model, num = num)
+                desc_data = None
+            else:
+                xef_pred, eps_pred, neps_pred, fx_total_pred, desc_data = \
+                    predict_exchange(analyzer, model = model, num = num,
+                        return_desc = True)
+            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+
+            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            errlst[i].append(fx_total_pred - fx_total_true)
+
+            if desc_data is None:
+                data_dict[model]['eps_data'] = np.append(
+                                data_dict[model]['eps_data'],
+                                eps_pred)
+            else:
+                data_dict['ML']['eps_data'] = np.append(
+                                data_dict['ML']['eps_data'],
+                                eps_pred)
+                if data_dict['ML'].get('desc_data') is None:
+                    data_dict['ML']['desc_data'] = desc_data
+                else:
+                    data_dict['ML']['desc_data'] = np.append(
+                                data_dict['ML']['desc_data'],
+                                desc_data, axis=0)
+
+        print(errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst),\
+           (columns, rows, errtbl),\
+           data_dict
