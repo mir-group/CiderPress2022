@@ -294,8 +294,8 @@ def predict_exchange(analyzer, model=None, num=1,
     else:
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
-        neps = model.predict(xdesc.transpose(), rho)
-        #neps = model.predict(xdesc.transpose(), rho_data)
+        #neps = model.predict(xdesc.transpose(), rho)
+        neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
     xef = neps / (ldax(rho) + 1e-7)
     fx_total = np.dot(neps, weights)
