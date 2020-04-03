@@ -148,17 +148,12 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     #rho, X = X[:,0], X[:,1:1+num]
     rho, X = X[:,0], X[:,1:]
     X[:,0] = np.log(1+X[:,0])
-    if num > 1:
-        X[:,1] = np.log(0.5 * (1 + X[:,1]))
-        #X[:,1] = 1 / (1 + X[:,1]**2)
-    if num > 3:
-        X[:,3] = np.arcsinh(X[:,3])
-    if num > 4:
-        X[:,4] = np.arcsinh(X[:,4])
-    if num > 6:
-        X[:,6] = np.arcsinh(X[:,6])
-    if num > 5:
-        X[:,5] = np.log(X[:,5] / 6)
+    #X[:,1] = np.log(0.5 * (1 + X[:,1]))
+    X[:,1] = 1 / (1 + X[:,1]**2) - 0.5
+    X[:,3] = np.arcsinh(X[:,3])
+    X[:,4] = np.arcsinh(X[:,4])
+    X[:,6] = np.arcsinh(X[:,6])
+    X[:,5] = np.log(X[:,5] / 6)
     #if num > 5:
     #    X[:,5] = np.arcsinh(X[:,5])
     #if num > 6:
