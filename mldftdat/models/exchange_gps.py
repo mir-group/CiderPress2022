@@ -12,6 +12,15 @@ def y_to_xed_edmgga(y, rho_data):
     fx = np.array(y) + edmgga(rho_data)
     return fx * ldax(rho_data[0])
 
+def xed_to_y_scan(xed, rho_data):
+    pbex = eval_xc('SCAN,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
+
+def y_to_xed_scan(y, rho_data):
+    yp = y * ldax(rho_data[0])
+    pbex = eval_xc('SCAN,', rho_data)[0] * rho_data[0]
+    return yp + pbex
+
 def xed_to_y_pbe(xed, rho_data):
     pbex = eval_xc('PBE,', rho_data)[0] * rho_data[0]
     return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
