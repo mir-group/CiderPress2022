@@ -4,7 +4,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
-from mldftdat import utilf
+from mldftdat.utilf import utils as utilf
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
