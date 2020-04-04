@@ -172,6 +172,13 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         self.aux_d2 = aux_ao[4] + aux_ao[7] + aux_ao[9]
         d2pq = auxmol.intor('int1e_p4')
         self.d2pq_inv = np.linalg.inv(d2pq)
+        """
+        print(self.aux_d2.shape)
+        d2divrho = self.aux_d2 / (self.rho_data[0].reshape(-1,1) + 1e-7)
+        d2pq = np.einsum('rp,rq,r->pq', d2divrho, d2divrho, self.grid.weights)
+        self.d2pq_inv = np.linalg.inv(d2pq)
+        print(np.diag(self.d2pq_inv))
+        """
 
     """
     def fit_vals_to_aux(self, vals, minrho = 3e-3):
@@ -185,6 +192,10 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
     def fit_vals_to_lapl(self, vals):
         Sval = np.dot(vals * self.grid.weights, self.aux_d2)
         Caux = np.dot(self.d2pq_inv, Sval)
+
+        #rho = self.rho_data[0] + 1e-7
+        #Sval = np.dot(vals * self.grid.weights / rho, self.aux_d2 / rho.reshape(-1,1))
+        #Caux = np.dot(self.d2pq_inv, Sval)
         return Caux
 
     def fit_vals_to_aux(self, vals, minrho = 3e-3):
@@ -224,7 +235,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         diff = neps - xcscan
         self.setup_lapl_basis()
         Cdiff = self.fit_vals_to_lapl(diff)
-        return np.dot(self.aux_d2, Cdiff)
+        return neps - np.dot(self.aux_d2, Cdiff)
 
     def perform_full_analysis(self):
         super(RHFAnalyzer, self).perform_full_analysis()
