@@ -110,7 +110,7 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
         if locx:
             print('Getting loc fx')
             #values = analyzer.get_loc_fx_energy_density()
-            values = analyzers.get_smooth_fx_energy_density()
+            values = analyzer.get_smooth_fx_energy_density()
         else:
             values = analyzer.get_fx_energy_density()
         descriptor_data = descriptor_data
