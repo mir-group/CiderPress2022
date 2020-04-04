@@ -1,4 +1,9 @@
+module utils
+implicit none
 
+real(8), parameter :: pi = 4 * atan(1.0_8)
+
+contains
 
 ! module, function, program, or block
 ! 3xN, not Nx3
@@ -11,7 +16,6 @@ function hartree_potential (vh, rho_data, coords, weights, ngrid, ndat)
     integer                                         :: i
     integer                                         :: j
     integer                                         :: hartree_potential
-    real(8)                                         :: pi = 4 * atan(1.0_8)
     real(8), dimension(ndat,ngrid), intent(in)      :: rho_data
     real(8), dimension(3,ngrid), intent(in)         :: coords
     real(8), dimension(ngrid), intent(in)           :: weights
@@ -56,7 +60,6 @@ function nonlocal_dft_data (nlc_data, rho_data, dtau_data, dvh_data,&
     integer                                         :: i
     integer                                         :: j
     integer                                         :: nonlocal_dft_data
-    real(8)                                         :: pi = 4 * atan(1.0_8)
     real(8), dimension(4,ngrid), intent(in)         :: rho_data
     real(8), dimension(3,ngrid), intent(in)         :: dtau_data
     real(8), dimension(3,ngrid), intent(in)         :: dvh_data
@@ -104,8 +107,7 @@ function nonlocal_dft_data2 (nlc_data, rho_data, dtau_data, dvh_data,&
     integer                                         :: ngrid
     integer                                         :: i
     integer                                         :: j
-    integer                                         :: nonlocal_dft_data
-    real(8)                                         :: pi = 4 * atan(1.0_8)
+    integer                                         :: nonlocal_dft_data2
     real(8), dimension(4,ngrid), intent(in)         :: rho_data
     real(8), dimension(3,ngrid), intent(in)         :: dtau_data
     real(8), dimension(3,ngrid), intent(in)         :: dvh_data
@@ -118,7 +120,7 @@ function nonlocal_dft_data2 (nlc_data, rho_data, dtau_data, dvh_data,&
     real(8), dimension(ngrid)                       :: rs
     real(8), dimension(ngrid)                       :: exp_weights
 
-    nonlocal_dft_data = -1
+    nonlocal_dft_data2 = -1
     nlc_data(1,:) = norm2(dvh_data(1:3,:))
     !$omp parallel do default(shared) private(vecs, rs, exp_weights, tmp)
     do i = 1, ngrid
@@ -141,6 +143,122 @@ function nonlocal_dft_data2 (nlc_data, rho_data, dtau_data, dvh_data,&
         nlc_data(8,i) = dot_product(rho_data(1,:) / rs, exp_weights)
     enddo
     !$omp end parallel do
-    nonlocal_dft_data = 0
+    nonlocal_dft_data2 = 0
 
-end function nonlocal_dft_data
+end function nonlocal_dft_data2
+
+function fact (n)
+
+    implicit none
+    integer :: n
+    integer :: i
+    integer :: f 
+    real(8) :: fact
+
+    f = 1
+    do i=1,n 
+        f = f * i
+    enddo
+    fact = real(f,8)
+
+end function fact
+
+function legendre (l, m, x)
+
+    implicit none
+
+    integer             :: l
+    integer             :: m
+    integer             :: msign
+    integer             :: n
+    real(8)             :: x
+    real(8)             :: legendre
+
+    msign = sign(1, m)
+    m = abs(m)
+    n = l
+    legendre = 0
+    do while ( (n .ge. 0) .and. (2*n-l-m .ge. 0) )
+        legendre = legendre &
+                    + x**(2*n-l-m) * fact(2*n) / fact(2*n-l-m) &
+                    / fact(n) / fact(l-n) * (-1)**(l-n)
+        n = n - 1
+    enddo
+    legendre = legendre * (-1)**m * (1-x*x)**(m/2.0) / 2**l
+    if (msign < 0) then
+        legendre = (-1)**m * fact(l+m) / fact(l-m) * legendre
+    endif
+
+end function legendre
+
+function ylm (l, m, costheta, phi)
+
+    implicit none
+    integer             :: l
+    integer             :: m
+    real(8)             :: costheta ! polar angle
+    real(8)             :: phi ! azimuthal angle
+    !real(8)             :: pi = 4 * atan(1.0_8)
+    real(8)             :: ylm
+
+    if (m.eq.0) then
+        ylm = 1.
+    else if (m.le.0) then
+        m = abs(m)
+        ylm = sqrt(2.) * (-1)**m * sin(m * phi)
+    else
+        ylm = sqrt(2.) * (-1)**m * cos(m * phi)
+    endif
+
+    ylm = sqrt((2*l+1) / (4*pi) * fact(l-m) / fact(l+m))&
+          * legendre(l, m, costheta) * ylm
+end function ylm
+
+function laguerre (n, a, x)
+
+    implicit none
+    integer     :: n
+    integer     :: a
+    integer     :: k
+    real(8)     :: x
+    real(8)     :: lkm1
+    real(8)     :: lkm0
+    real(8)     :: laguerre
+
+    laguerre = 0
+    if (n.eq.0) then
+        laguerre = 1
+    else if (n.eq.1) then
+        laguerre = 1 + a - x
+    else
+        lkm1 = 1
+        lkm0 = 1 + a - x
+        do k=1,n-1
+            ! from https://en.wikipedia.org/wiki/Laguerre_polynomials#Generalized_Laguerre_polynomials
+            laguerre = ((2*k+1+a-x) * lkm0 - (k+a) * lkm1) / (k+1)
+            lkm1 = lkm0
+            lkm0 = laguerre
+        enddo
+    endif
+end function laguerre
+
+function hwf (n, l, m, a, r, costheta, phi)
+
+    implicit none
+    integer     :: n
+    integer     :: l
+    integer     :: m
+    real(8)     :: r
+    real(8)     :: rho
+    real(8)     :: a
+    real(8)     :: costheta
+    real(8)     :: phi
+
+    ! https://en.wikipedia.org/wiki/Hydrogen_atom#Schr%C3%B6dinger_equation
+    rho = 2 * r / (n * a)
+    hwf = sqrt( (2 / (n * a))**3 * fact(n-l-1) / (2 * n * fact(n+l)) )
+    hwf = hwf * exp(-rho/2) * rho**l
+    hwf = hwf * laguerre(n-l-1, 2*l+1, rho) * ylm(l, m, costheta, phi)
+end function hwf
+
+end module utils

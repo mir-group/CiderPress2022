@@ -40,17 +40,25 @@ def get_zr_diatomic(mol, coords):
     rs = np.linalg.norm(coords - zvecs, axis=1)
     return zs, rs
 
-def plot_data_diatomic(mol, coords, values, value_name, units, bounds):
+def plot_data_diatomic(mol, coords, values, value_name, units, bounds,
+                        ax = None):
     mol.build()
     diff = np.array(mol._atom[1][1]) - np.array(mol._atom[0][1])
     direction = diff / np.linalg.norm(diff)
     zs = np.dot(coords, direction)
     print(zs.shape, values.shape)
-    plt.scatter(zs, values, label=value_name)
-    plt.xlabel('$z$ (Bohr radii)')
-    plt.ylabel(units)
-    plt.xlim(bounds[0], bounds[1])
-    plt.legend()
+    if ax is None:
+        plt.scatter(zs, values, label=value_name)
+        plt.xlabel('$z$ (Bohr radii)')
+        plt.ylabel(units)
+        plt.xlim(bounds[0], bounds[1])
+        plt.legend()
+    else:
+        ax.scatter(zs, values, label=value_name)
+        ax.set_xlabel('$z$ (Bohr radii)')
+        ax.set_ylabel(units)
+        ax.set_xlim(bounds[0], bounds[1])
+        ax.legend()
     if mol._atom[0][0] == mol._atom[1][0]:
         title = '{}$_2$'.format(mol._atom[0][0])
     else:
