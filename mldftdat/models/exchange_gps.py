@@ -36,6 +36,10 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     x = A * QB + np.sqrt(1 + (A*QB)**2)
     x = np.arcsinh(x - 1)
     X = get_gp_x_descriptors(X, num = num)
+    c = X[:,2]
+    ndvh2 = rho_data[5] * c * 5e-4 / (1 - c + 1e-7)
+    c2 = ndvh2 / (ndvh2 + rho_data[5] + 1e-7) - 0.5
+    X[:,2] = c2
     X = np.append(x.reshape(-1,1), X, axis=1)
     return X
 
