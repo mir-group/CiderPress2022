@@ -1,7 +1,7 @@
 module utils
 implicit none
 
-real(8), parameter :: pi = 4 * atan(1.0_8)
+real(8), parameter :: pi = 3.141592653589793115997963468544185161590576171875
 
 contains
 
@@ -253,6 +253,7 @@ function hwf (n, l, m, a, r, costheta, phi)
     real(8)     :: a
     real(8)     :: costheta
     real(8)     :: phi
+    real(8)     :: hwf
 
     ! https://en.wikipedia.org/wiki/Hydrogen_atom#Schr%C3%B6dinger_equation
     rho = 2 * r / (n * a)
