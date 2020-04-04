@@ -2,6 +2,7 @@ from mldftdat import lowmem_analyzers
 from mldftdat.pyscf_utils import get_vele_mat_generator
 from pyscf.dft.gen_grid import Grids
 from pyscf.dft.numint import eval_ao
+from pyscf.dft.libxc import eval_xc
 from pyscf import gto, df
 import scipy.linalg
 import numpy as np
@@ -215,6 +216,15 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
                                             self.mo_to_aux, self.mo_occ
                                             )
         return self.loc_fx_energy_density
+
+    def get_smooth_fx_energy_density(self):
+        rho = self.rho_data[0]
+        xcscan = eval_xc('SCAN,', self.rho_data)[0] * rho
+        neps = self.get_fx_energy_density()
+        diff = neps - xcscan
+        self.setup_lapl_basis()
+        Cdiff = self.fit_vals_to_lapl(diff)
+        return np.dot(self.aux_d2, Cdiff)
 
     def perform_full_analysis(self):
         super(RHFAnalyzer, self).perform_full_analysis()
