@@ -9,7 +9,8 @@
 
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
-    NormalizedKernelMixin, Kernel, Hyperparameter, RBF
+    NormalizedKernelMixin, Kernel, Hyperparameter, RBF,\
+    GenericKernelMixin, _num_samples
 
 from scipy.special import kv, gamma
 from scipy.spatial.distance import pdist, cdist, squareform
@@ -152,9 +153,9 @@ class PartialRBF(RBF):
         self.start = start
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        X = X[:,start:]
+        X = X[:,self.start:]
         if Y is not None:
-            Y = Y[:,start:]
+            Y = Y[:,self.start:]
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
@@ -165,21 +166,24 @@ class PartialMatrixRBF(MatrixRBF):
         self.start = start
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        X = X[:,start:]
+        X = X[:,self.start:]
         if Y is not None:
-            Y = Y[:,start:]
+            Y = Y[:,self.start:]
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
         
 
 class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
                    Kernel):
 
+    def __init__(self):
+        pass
+
     def __call__(self, X, Y=None, eval_gradient=False):
         if Y is not None and eval_gradient:
             raise ValueError("Gradient can only be evaluated when Y is None.")
 
         if Y is None:
-            K = self.diag(X)
+            K = np.diag(self.diag(X))
             if eval_gradient:
                 return K, np.empty((_num_samples(X), _num_samples(X), 0))
             else:
@@ -189,7 +193,7 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
     def diag(self, X):
         rho = X[:,0]
-        return (0.02 / (1 + 6 * rho))**2
+        return (0.015 / (1 + 6 * rho))**2
 
     def __repr__(self):
         return "{0}".format(self.__class__.__name__)
