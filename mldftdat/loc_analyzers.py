@@ -230,7 +230,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
 
     def get_smooth_fx_energy_density(self):
         rho = self.rho_data[0]
-        xcscan = eval_xc('SCAN,', self.rho_data)[0] * rho
+        xcscan = eval_xc('PBE,', self.rho_data)[0] * rho
         neps = self.get_fx_energy_density()
         diff = neps - xcscan
         self.setup_lapl_basis()
