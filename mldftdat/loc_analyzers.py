@@ -162,7 +162,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         self.aux_v = gto.mole.intor_cross('int2c2e', gridmol, auxmol)
 
     def setup_lapl_basis(self):
-        auxbasis = df.aug_etb(self.mol, beta=1.8)
+        auxbasis = df.aug_etb(self.mol, beta=2.3)
         nao = self.mol.nao_nr()
         auxmol = df.make_auxmol(self.mol, auxbasis)
         naux = auxmol.nao_nr()
