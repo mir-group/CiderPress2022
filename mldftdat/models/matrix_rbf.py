@@ -9,7 +9,7 @@
 
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
-    NormalizedKernelMixin, Kernel, Hyperparameter, _check_length_scale
+    NormalizedKernelMixin, Kernel, Hyperparameter, RBF, _check_length_scale
 
 def vector_to_tril(size, vec):
     if vec.shape[0] != size * (size + 1) // 2:
@@ -44,7 +44,7 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
     L_bounds : pair of floats >= 0, default: (1e-5, 1e5)
         The lower and upper bound on length_scale
     """
-    def __init__(self, size, L = None, L_bounds=(1e-5, 1e5)):
+    def __init__(self, size, L = None, L_bounds=(1e-5, 1e5), ):
         if L is None:
             self.L = tril_to_vector(np.identity(size))
         elif len(L.shape) == 1:
@@ -54,10 +54,10 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
         else:
             if size != L.shape[0]:
                 raise ValueError('Size must match L shape')
+            if not np.allclose(L, np.tril(L)):
+                raise ValueError('L must be lower-triangular')
             self.L = tril_to_vector(L)
         self.size = size
-        if not np.allclose(mat, np.tril(mat)):
-            raise ValueError('L must be lower-triangular')
         self.L_bounds = L_bounds
 
     @property
@@ -132,3 +132,53 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
         return "{0}(length_scale=[{1}])".format(
             self.__class__.__name__, ", ".join(map("{0:.3g}".format,
                                                self.L)))
+
+
+class PartialRBF(RBF):
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
+        super(PartialRBF, self).__init__(length_scale, length_scale_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X = X[:,start:]
+        if Y is not None:
+            Y = Y[:,start:]
+        return super(PartialRBF, self).__call__(X, Y, eval_gradient)
+
+
+class PartialMatrixRBF(MatrixRBF):
+
+    def __init__(self, size, L = None, L_bounds=(1e-5, 1e5), start = 0):
+        super(PartialMatrixRBF, self).__init__(size, L, L_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X = X[:,start:]
+        if Y is not None:
+            Y = Y[:,start:]
+        return super(PartialRBF, self).__call__(X, Y, eval_gradient)
+        
+
+class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
+                   Kernel):
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is not None and eval_gradient:
+            raise ValueError("Gradient can only be evaluated when Y is None.")
+
+        if Y is None:
+            K = self.diag(X)
+            if eval_gradient:
+                return K, np.empty((_num_samples(X), _num_samples(X), 0))
+            else:
+                return K
+        else:
+            return np.zeros((_num_samples(X), _num_samples(Y)))
+
+    def diag(self, X):
+        rho = X[:,0]
+        return (0.02 / (1 + 6 * rho))**2
+
+    def __repr__(self):
+        return "{0}".format(self.__class__.__name__)
