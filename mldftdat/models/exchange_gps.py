@@ -131,16 +131,17 @@ def get_rho_and_edmgga_descriptors(X, rho_data, num=1):
     return X
 
 
-class NoisyEDMGPR(DFTGPR):
+class NoisyEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False):
         const = ConstantKernel()
         rbf = PartialRBF([1.0] * (num_desc + 1),
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok = DensityNoise()
-        wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(5e-05, 1.0e5))
-        init_kernel = const * rbf + rhok + wk
-        super(NoisyEDMGPR, self).__init__(num_desc,
+        wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-05, 1.0e5))
+        init_kernel = const * rbf + wk + rhok
+        super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
+        self.gp.alpha = 1e-8
