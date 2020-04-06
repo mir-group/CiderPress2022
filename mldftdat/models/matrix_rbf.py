@@ -197,3 +197,40 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
     def __repr__(self):
         return "{0}".format(self.__class__.__name__)
+
+
+class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
+                   Kernel):
+
+    def __init__(self, decay_rate = 4.0, decay_rate_bounds = (1e-5, 1e5)):
+        self.decay_rate = decay_rate
+        self.decay_rate_bounds = decay_rate_bounds
+
+    @property
+    def hyperparameter_decay_rate(self):
+        return Hyperparameter(
+            "decay_rate", "numeric", self.decay_rate_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is not None and eval_gradient:
+            raise ValueError("Gradient can only be evaluated when Y is None.")
+
+        if Y is None:
+            K = np.diag(self.diag(X))
+            if eval_gradient:
+                rho = X[:,0]
+                grad = np.empty((_num_samples(X), _num_samples(X), 2))
+                grad[:,:,0] = np.diag(1 / (1 + self.decay_rate * rho))
+                grad[:,:,1] = np.diag(- rho / (1 + self.decay_rate * rho)**2)
+                return K, 
+            else:
+                return K
+        else:
+            return np.zeros((_num_samples(X), _num_samples(Y)))
+
+    def diag(self, X):
+        rho = X[:,0]
+        return 1 / (1 + self.decay_rate * rho)
+
+    def __repr__(self):
+        return "{0}".format(self.__class__.__name__)
