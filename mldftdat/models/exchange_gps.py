@@ -4,6 +4,7 @@ from mldftdat.data import *
 from mldftdat.models.matrix_rbf import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
+from sklearn.gaussian_process.kernels import *
 
 def xed_to_y_edmgga(xed, rho_data):
     y = xed / (ldax(rho_data[0]) - 1e-7)
