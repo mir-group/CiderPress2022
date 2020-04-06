@@ -9,7 +9,18 @@
 
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
-    NormalizedKernelMixin, Kernel, Hyperparameter, RBF, _check_length_scale
+    NormalizedKernelMixin, Kernel, Hyperparameter, RBF
+
+from scipy.special import kv, gamma
+from scipy.spatial.distance import pdist, cdist, squareform
+
+def _check_length_scale(X, length_scale):
+    length_scale = np.squeeze(length_scale).astype(float)
+    if np.ndim(length_scale) == 1 and X.shape[1] * (X.shape[1] + 1) // 2 != length_scale.shape[0]:
+        raise ValueError("Anisotropic kernel must have the same number of "
+                         "dimensions as data (%d!=%d)"
+                         % (length_scale.shape[0], X.shape[1]))
+    return length_scale
 
 def vector_to_tril(size, vec):
     if vec.shape[0] != size * (size + 1) // 2:
@@ -93,7 +104,7 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
         """
         X = np.atleast_2d(X)
         L = _check_length_scale(X, self.L)
-        L = vector_to_tril(L)
+        L = vector_to_tril(self.size, L)
         if Y is None:
             dists = pdist(np.matmul(X, L), metric='sqeuclidean')
             K = np.exp(-.5 * dists)
@@ -120,8 +131,8 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
                                     self.size * (self.size + 1) // 2))
                 ind = 0
                 for i in range(self.size):
-                    for j in range(i, self.size):
-                        diffprod[:,:,ind] = Ldiff[:,:,j] * diff[:,:,i]
+                    for j in range(i + 1):
+                        diffprod[:,:,ind] = Ldiff[:,:,i] * diff[:,:,j]
                         ind += 1
                 K_gradient = - diffprod * K[..., np.newaxis]
                 return K, K_gradient
