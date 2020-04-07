@@ -219,10 +219,9 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
             K = np.diag(self.diag(X))
             if eval_gradient:
                 rho = X[:,0]
-                grad = np.empty((_num_samples(X), _num_samples(X), 2))
-                grad[:,:,0] = np.diag(1 / (1 + self.decay_rate * rho))
-                grad[:,:,1] = np.diag(- rho / (1 + self.decay_rate * rho)**2)
-                return K, 
+                grad = np.empty((_num_samples(X), _num_samples(X), 1))
+                grad[:,:,0] = np.diag(- rho / (1 + self.decay_rate * rho)**2)
+                return K, grad 
             else:
                 return K
         else:
@@ -233,4 +232,5 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
         return 1 / (1 + self.decay_rate * rho)
 
     def __repr__(self):
-        return "{0}".format(self.__class__.__name__)
+        return "{0}(decay_rate={1:.3g})".format(self.__class__.__name__,
+                                                self.decay_rate)
