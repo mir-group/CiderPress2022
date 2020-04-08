@@ -299,7 +299,8 @@ def predict_exchange(analyzer, model=None, num=1,
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
         #neps = model.predict(xdesc.transpose(), rho)
-        neps = model.predict(xdesc.transpose(), rho_data)
+        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
+        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
