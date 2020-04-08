@@ -145,17 +145,15 @@ class DFTGPR():
     def predict(self, X, rho_data, return_std = False):
         X = self.get_descriptors(X, num=self.num)
         y = self.gp.predict(X, return_std = return_std)
-        return self.y_to_xed(y, rho_data)
+        if return_std:
+            return self.y_to_xed(y[0], rho_data), y[1] * ldax(rho_data[0])
+        else:
+            return self.y_to_xed(y, rho_data)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2):
         threshold = self.noise * threshold_factor
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
-
-    def fit_single(self, x, y):
-        # NOTE: experimental
-        self.X = np.append(self.X_train_, x, axis=0)
-        self.y = np.append(self.y_train_, y)
 
     def add_point(self, xdesc, xed, rho_data, threshold_factor = 1.2):
         x = self.get_descriptors(xdesc, num=self.num)

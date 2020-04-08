@@ -141,8 +141,15 @@ class NoisyEDMGPR(EDMGPR):
         rhok = FittedDensityNoise()
         wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
         wk2 = WhiteKernel(noise_level = 4.0e-4, noise_level_bounds=(1e-05, 1.0e5))
-        init_kernel = const * rbf + wk + wk2 * rhok
+        cov_kernel = const * rbf
+        noise_kernel = wk + wk2 * rhok
+        init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred = self.gp.predict(x)
+        return np.abs(y - y_pred) > threshold
