@@ -47,10 +47,11 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     x = A * QB + np.sqrt(1 + (A*QB)**2)
     x = np.arcsinh(x - 1)
     X = get_gp_x_descriptors(X, num = num)
-    c = X[:,2]
-    ndvh2 = rho_data[5] * c * 5e-4 / (1 - c + 1e-7)
-    c2 = ndvh2 / (ndvh2 + rho_data[5] + 1e-7) - 0.5
-    X[:,2] = c2
+    if num > 2:
+        c = X[:,2]
+        ndvh2 = rho_data[5] * c * 5e-4 / (1 - c + 1e-7)
+        c2 = ndvh2 / (ndvh2 + rho_data[5] + 1e-7) - 0.5
+        X[:,2] = c2
     X = np.append(x.reshape(-1,1), X, axis=1)
     return X
     #return X[:,(0,3,4)]
@@ -134,15 +135,18 @@ def get_rho_and_edmgga_descriptors(X, rho_data, num=1):
 class NoisyEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False):
-        const = ConstantKernel()
+        const = ConstantKernel(0.2)
         #rbf = PartialRBF([1.0] * (num_desc + 1),
-        rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
+        #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
+        rbf = PartialRBF([0.395, 0.232, 0.297, 0.157, 0.468, 1.0][:num_desc+1],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
-        rhok = FittedDensityNoise()
-        wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
-        wk2 = WhiteKernel(noise_level = 4.0e-4, noise_level_bounds=(1e-05, 1.0e5))
+        rhok1 = FittedDensityNoise(decay_rate = 20.0)
+        rhok2 = FittedDensityNoise(decay_rate = 5.0)
+        wk = WhiteKernel(noise_level=5.0e-6, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.001, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.0001, noise_level_bounds=(1e-05, 1.0e5))
         cov_kernel = const * rbf
-        noise_kernel = wk + wk2 * rhok
+        noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,

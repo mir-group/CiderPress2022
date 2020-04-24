@@ -110,7 +110,7 @@ class DFTGPR():
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
         self.gp.fit(self.X, self.y)
-        self.gp.kernel = self.gp.kernel_
+        self.gp.set_params(kernel = self.gp.kernel_)
 
     def scores(self, xdesc, xed_true, rho_data):
         # Returns
@@ -141,6 +141,7 @@ class DFTGPR():
             optimizer = None
         self.gp.optimizer = optimizer
         self.gp.fit(self.X, self.y)
+        self.gp.set_params(kernel = self.gp.kernel_)
 
     def predict(self, X, rho_data, return_std = False):
         X = self.get_descriptors(X, num=self.num)
