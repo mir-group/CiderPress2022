@@ -172,13 +172,13 @@ class PartialRBF2(RBF):
         A = 0.704
         tr = np.array([[1.0, 1.0], [1.0, -1.0]]) / np.sqrt(2) 
 
-        X = X[:,self.start:]
+        X = np.copy(X[:,self.start:])
         s = np.exp(X[:,1]) - 1
         QB = b**2 / (8 * a) * s**2
         X[:,1] = np.arcsinh(A * QB + np.sqrt(1 + (A*QB)**2) - 1)
         X[:,:2] = np.matmul(X[:,:2], tr) 
         if Y is not None:
-            Y = Y[:,self.start:]
+            Y = np.copy(Y[:,self.start:])
             s = np.exp(Y[:,1]) - 1
             QB = b**2 / (8 * a) * s**2
             Y[:,1] = np.arcsinh(A * QB + np.sqrt(1 + (A*QB)**2) - 1)
