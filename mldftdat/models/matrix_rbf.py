@@ -31,6 +31,7 @@ def vector_to_tril(size, vec):
     for i in range(size):
         tril[i,:i+1] = vec[ind:ind+i+1]
         ind += i + 1
+    print(tril, np.tril(tril))
     assert np.allclose(tril, np.tril(tril))
     return tril
 
@@ -56,7 +57,7 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
     L_bounds : pair of floats >= 0, default: (1e-5, 1e5)
         The lower and upper bound on length_scale
     """
-    def __init__(self, size, L = None, L_bounds=(1e-5, 1e5), ):
+    def __init__(self, size, L = None, L_bounds=(-1e5, 1e5)):
         if L is None:
             self.L = tril_to_vector(np.identity(size))
         elif len(L.shape) == 1:
@@ -66,8 +67,8 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
         else:
             if size != L.shape[0]:
                 raise ValueError('Size must match L shape')
-            if not np.allclose(L, np.tril(L)):
-                raise ValueError('L must be lower-triangular')
+            #if not np.allclose(L, np.tril(L)):
+            #    raise ValueError('L must be lower-triangular')
             self.L = tril_to_vector(L)
         self.size = size
         self.L_bounds = L_bounds
@@ -159,6 +160,32 @@ class PartialRBF(RBF):
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
+class PartialRBF2(RBF):
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
+        super(PartialRBF2, self).__init__(length_scale, length_scale_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        b = 2 * (3 * np.pi * np.pi)**(1.0/3)
+        a = (3.0/10) * (3*np.pi**2)**(2.0/3)
+        A = 0.704
+        tr = np.array([[1.0, 1.0], [1.0, -1.0]]) / np.sqrt(2) 
+
+        X = X[:,self.start:]
+        s = np.exp(X[:,1]) - 1
+        QB = b**2 / (8 * a) * s**2
+        X[:,1] = np.arcsinh(A * QB + np.sqrt(1 + (A*QB)**2) - 1)
+        X[:,:2] = np.matmul(X[:,:2], tr) 
+        if Y is not None:
+            Y = Y[:,self.start:]
+            s = np.exp(Y[:,1]) - 1
+            QB = b**2 / (8 * a) * s**2
+            Y[:,1] = np.arcsinh(A * QB + np.sqrt(1 + (A*QB)**2) - 1)
+            Y[:,:2] = np.matmul(Y[:,:2], tr)
+        return super(PartialRBF2, self).__call__(X, Y, eval_gradient)
+
+
 class PartialMatrixRBF(MatrixRBF):
 
     def __init__(self, size, L = None, L_bounds=(1e-5, 1e5), start = 0):
@@ -169,7 +196,7 @@ class PartialMatrixRBF(MatrixRBF):
         X = X[:,self.start:]
         if Y is not None:
             Y = Y[:,self.start:]
-        return super(PartialRBF, self).__call__(X, Y, eval_gradient)
+        return super(PartialMatrixRBF, self).__call__(X, Y, eval_gradient)
         
 
 class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
