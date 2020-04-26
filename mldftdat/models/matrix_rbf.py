@@ -189,7 +189,7 @@ class PartialRBF2(RBF):
 class PartialRBF3(RBF):
 
     def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
-        super(PartialRBF2, self).__init__(length_scale, length_scale_bounds)
+        super(PartialRBF3, self).__init__(length_scale, length_scale_bounds)
         self.start = start
 
     def transform_input(self, X):
@@ -225,7 +225,7 @@ class PartialRBF3(RBF):
         X = self.transform_input(X[:,self.start:])
         if Y is not None:
             Y = self.transform_input(Y[:,self.start:])
-        return super(PartialRBF2, self).__call__(X, Y, eval_gradient)
+        return super(PartialRBF3, self).__call__(X, Y, eval_gradient)
 
 
 class PartialMatrixRBF(MatrixRBF):
