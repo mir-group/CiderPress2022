@@ -228,6 +228,50 @@ class PartialRBF3(RBF):
         return super(PartialRBF3, self).__call__(X, Y, eval_gradient)
 
 
+class PartialRBF4(DotProduct):
+
+    def __init__(self, sigma_0=0.0, sigmo_0_bounds=(1e-5, 1e5), start = 0):
+        super(PartialRBF3, self).__init__(sigma_0, sigma_0_bounds)
+        self.start = start
+
+    def transform_input(self, X):
+        X = np.copy(X)
+
+        nab = np.sinh(X[:,0])
+        alpha = 2 * np.exp(X[:,2]) - 1
+        b = 2 * (3 * np.pi * np.pi)**(1.0/3)
+        a = (3.0/10) * (3*np.pi**2)**(2.0/3)
+        A = 0.704
+        s = np.exp(X[:,1]) - 1
+        QB = b**2 / (8 * a) * s**2
+        X[:,0] = nab - alpha
+        X[:,1] = QB
+        X[:,2] = alpha
+
+        X -= np.array([7.52968753, 4.24533034, 1.10285059])
+        X /= np.array([9.54236196, 4.53946865, 1.10346559])
+
+        X = np.dot(X, np.array([[ 0.69407835,  0.67714376,  0.24440044],
+         [-0.09951586, -0.24598502,  0.96415142],
+         [ 0.71298797, -0.69351835, -0.10334633]]).T)
+        X[:,:2] = np.dot(X[:,:2], np.array([[np.cos(np.pi/12), np.sin(np.pi/12)],
+            [-np.sin(np.pi/12), np.cos(np.pi/12)]]))
+        X[:,0] -= -1.31307
+        X[:,1] -= -1.01712
+        X[:,:2] = np.arcsinh(10 * X[:,:2])
+        X[:,2] /= 1 + 0.25 * (X[:,0]**2  + X[:,1]**2)
+        X /= np.array([0.92757106, 0.74128336, 0.03151811])
+
+        return X
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = self.transform_input(X[:,self.start:])
+        if Y is not None:
+            Y = self.transform_input(Y[:,self.start:])
+        return super(PartialRBF3, self).__call__(X, Y, eval_gradient)
+
+
 class PartialMatrixRBF(MatrixRBF):
 
     def __init__(self, size, L = None, L_bounds=(1e-5, 1e5), start = 0):
