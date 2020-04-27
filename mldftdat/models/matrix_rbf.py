@@ -10,7 +10,7 @@
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
     NormalizedKernelMixin, Kernel, Hyperparameter, RBF,\
-    GenericKernelMixin, _num_samples
+    GenericKernelMixin, _num_samples, DotProduct
 
 from scipy.special import kv, gamma
 from scipy.spatial.distance import pdist, cdist, squareform
@@ -230,8 +230,8 @@ class PartialRBF3(RBF):
 
 class PartialRBF4(DotProduct):
 
-    def __init__(self, sigma_0=0.0, sigmo_0_bounds=(1e-5, 1e5), start = 0):
-        super(PartialRBF3, self).__init__(sigma_0, sigma_0_bounds)
+    def __init__(self, sigma_0=0.0, sigma_0_bounds=(1e-5, 1e5), start = 0):
+        super(PartialRBF4, self).__init__(sigma_0, sigma_0_bounds)
         self.start = start
 
     def transform_input(self, X):
@@ -269,7 +269,7 @@ class PartialRBF4(DotProduct):
         X = self.transform_input(X[:,self.start:])
         if Y is not None:
             Y = self.transform_input(Y[:,self.start:])
-        return super(PartialRBF3, self).__call__(X, Y, eval_gradient)
+        return super(PartialRBF4, self).__call__(X, Y, eval_gradient)
 
 
 class PartialMatrixRBF(MatrixRBF):
