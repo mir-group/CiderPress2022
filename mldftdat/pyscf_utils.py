@@ -4,7 +4,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
-from mldftdat import utilf
+from mldftdat.utilf import utils as utilf
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
@@ -240,6 +240,41 @@ def get_tau_and_grad(mol, grid, rdm1, ao_data):
     else:
         return np.array([get_tau_and_grad_helper(mol, grid, rdm1[0], ao_data),\
                         get_tau_and_grad_helper(mol, grid, rdm1[1], ao_data)])
+
+def get_rho_second_deriv_helper(mol, grid, dm, ao):
+    from pyscf.dft.numint import _contract_rho, _dot_ao_dm
+    from pyscf.dft.gen_grid import make_mask, BLKSIZE
+
+    nao = mol.nao_nr()
+    N = grid.weights.shape[0]
+    non0tab = np.ones(((N+BLKSIZE-1)//BLKSIZE, mol.nbas),
+                         dtype=np.uint8)
+    shls_slice = (0, mol.nbas)
+    ao_loc = mol.ao_loc_nr()
+    c0 = _dot_ao_dm(mol, ao[0], dm, non0tab, shls_slice, ao_loc)
+    c1 = np.zeros((3, N, nao))
+    # 0 1 2 3 4  5  6  7  8  9
+    # 0 x y z xx xy xz yy yz zz
+    # - - - - 0  1  2  3  4  5
+    # - - - - 11 12 13 22 23 33
+    ddrho = np.zeros((6, N))
+    alphas = [0, 0, 0, 1, 1, 2]
+    betas =  [0, 1, 2, 1, 2, 2]
+    for i in range(3):
+        c1[i] = _dot_ao_dm(mol, ao[i+1], dm.T, non0tab, shls_slice, ao_loc)
+    for i in range(6):
+        term1 = _contract_rho(c0, ao[i + 4])
+        term2 = _contract_rho(c1[alphas[i]], ao[betas[i]+1])
+        total = term1 + term2
+        ddrho[i] = total + total.conj()
+    return ddrho
+
+def get_rho_second_deriv(mol, grid, rdm1, ao_data):
+    if len(rdm1.shape) == 2:
+        return get_rho_second_deriv_helper(mol, grid, rdm1, ao_data)
+    else:
+        return np.array([get_rho_second_deriv_helper(mol, grid, rdm1[0], ao_data),\
+                        get_rho_second_deriv_helper(mol, grid, rdm1[1], ao_data)])
 
 def get_vele_mat(mol, points):
     """
