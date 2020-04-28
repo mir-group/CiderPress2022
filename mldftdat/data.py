@@ -40,17 +40,25 @@ def get_zr_diatomic(mol, coords):
     rs = np.linalg.norm(coords - zvecs, axis=1)
     return zs, rs
 
-def plot_data_diatomic(mol, coords, values, value_name, units, bounds):
+def plot_data_diatomic(mol, coords, values, value_name, units, bounds,
+                        ax = None):
     mol.build()
     diff = np.array(mol._atom[1][1]) - np.array(mol._atom[0][1])
     direction = diff / np.linalg.norm(diff)
     zs = np.dot(coords, direction)
     print(zs.shape, values.shape)
-    plt.scatter(zs, values, label=value_name)
-    plt.xlabel('$z$ (Bohr radii)')
-    plt.ylabel(units)
-    plt.xlim(bounds[0], bounds[1])
-    plt.legend()
+    if ax is None:
+        plt.scatter(zs, values, label=value_name)
+        plt.xlabel('$z$ (Bohr radii)')
+        plt.ylabel(units)
+        plt.xlim(bounds[0], bounds[1])
+        plt.legend()
+    else:
+        ax.scatter(zs, values, label=value_name)
+        ax.set_xlabel('$z$ (Bohr radii)')
+        ax.set_ylabel(units)
+        ax.set_xlim(bounds[0], bounds[1])
+        ax.legend()
     if mol._atom[0][0] == mol._atom[1][0]:
         title = '{}$_2$'.format(mol._atom[0][0])
     else:
@@ -101,7 +109,8 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
         print('get descriptor time', end - start)
         if locx:
             print('Getting loc fx')
-            values = analyzer.get_loc_fx_energy_density()
+            #values = analyzer.get_loc_fx_energy_density()
+            values = analyzer.get_smooth_fx_energy_density()
         else:
             values = analyzer.get_fx_energy_density()
         descriptor_data = descriptor_data
@@ -148,17 +157,12 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     #rho, X = X[:,0], X[:,1:1+num]
     rho, X = X[:,0], X[:,1:]
     X[:,0] = np.log(1+X[:,0])
-    if num > 1:
-        X[:,1] = np.log(0.5 * (1 + X[:,1]))
-        #X[:,1] = 1 / (1 + X[:,1]**2)
-    if num > 3:
-        X[:,3] = np.arcsinh(X[:,3])
-    if num > 4:
-        X[:,4] = np.arcsinh(X[:,4])
-    if num > 6:
-        X[:,6] = np.arcsinh(X[:,6])
-    if num > 5:
-        X[:,5] = np.log(X[:,5] / 6)
+    #X[:,1] = np.log(0.5 * (1 + X[:,1]))
+    X[:,1] = 1 / (1 + X[:,1]**2) - 0.5
+    X[:,3] = np.arcsinh(X[:,3])
+    X[:,4] = np.arcsinh(X[:,4])
+    X[:,6] = np.arcsinh(X[:,6])
+    X[:,5] = np.log(X[:,5] / 6)
     #if num > 5:
     #    X[:,5] = np.arcsinh(X[:,5])
     #if num > 6:
@@ -295,7 +299,8 @@ def predict_exchange(analyzer, model=None, num=1,
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
         #neps = model.predict(xdesc.transpose(), rho)
-        neps = model.predict(xdesc.transpose(), rho_data)
+        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
+        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
