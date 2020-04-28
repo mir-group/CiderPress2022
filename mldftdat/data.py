@@ -80,7 +80,8 @@ def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
     ax.set_title('Surface plot')
 
 def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False):
+                    Analyzer, spherical_atom = False, locx = False,
+                    append_all_rho_data = False):
 
     import time
     all_descriptor_data = None
@@ -105,6 +106,18 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
                                                    analyzer.grid.coords,
                                                    analyzer.grid.weights,
                                                    restricted = True)
+        if append_all_rho_data:
+            import pyscf_utils
+            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
+                                                        analyzer.grid,
+                                                        analyzer.rmd1)
+            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
+                                                    analyzer.grid,
+                                                    analyzer.rdm1,
+                                                    ao_data)
+            descriptor_data = np.append(descriptor_data, rho_data, axis=0)
+            descriptor_data = np.append(descriptor_data, tau_data, axis=0)
+            descriptor_data = np.append(descriptor_data, ddrho, axis=0)
         end = time.monotonic()
         print('get descriptor time', end - start)
         if locx:
