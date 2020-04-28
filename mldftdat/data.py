@@ -107,16 +107,16 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
                                                    analyzer.grid.weights,
                                                    restricted = True)
         if append_all_rho_data:
-            import pyscf_utils
+            from mldftdat import pyscf_utils
             ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
                                                         analyzer.grid,
-                                                        analyzer.rmd1)
+                                                        analyzer.rdm1)
             ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
                                                     analyzer.grid,
                                                     analyzer.rdm1,
                                                     ao_data)
-            descriptor_data = np.append(descriptor_data, rho_data, axis=0)
-            descriptor_data = np.append(descriptor_data, tau_data, axis=0)
+            descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
+            descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
             descriptor_data = np.append(descriptor_data, ddrho, axis=0)
         end = time.monotonic()
         print('get descriptor time', end - start)
