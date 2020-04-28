@@ -189,6 +189,12 @@ class TestPyscfUtils(unittest.TestCase):
         zero = integrate_on_grid(tau_data[:,1:,:], self.uhf_grid.weights)
         assert_almost_equal(np.linalg.norm(zero), 0, 4)
 
+    def test_get_rho_second_deriv(self):
+        ao_data, rho_data = get_mgga_data(self.FH, self.rhf_grid, self.rhf_rdm1)
+        ddrho = get_rho_second_deriv(self.FH, self.rhf_grid, self.rhf_rdm1, ao_data)
+        lapl = ddrho[0] + ddrho[3] + ddrho[5]
+        assert_almost_equal(rho_data[4], lapl)
+
     def test_make_rdm2_from_rdm1(self):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
         ree = get_ee_energy_density(self.FH, rhf_rdm2,
