@@ -230,7 +230,7 @@ class PartialRBF3(RBF):
 
 class PartialRBF4(DotProduct):
 
-    def __init__(self, sigma_0=0.0, sigma_0_bounds=(1e-5, 1e5), start = 0):
+    def __init__(self, sigma_0=0.0, sigma_0_bounds=(1e-5, 1e-4), start = 0):
         super(PartialRBF4, self).__init__(sigma_0, sigma_0_bounds)
         self.start = start
 
@@ -261,6 +261,14 @@ class PartialRBF4(DotProduct):
         X[:,:2] = np.arcsinh(10 * X[:,:2])
         X[:,2] /= 1 + 0.25 * (X[:,0]**2  + X[:,1]**2)
         X /= np.array([0.92757106, 0.74128336, 0.03151811])
+
+        for i in range(5):
+            for j in range(5):
+                for k in range(4):
+                    if i+j+k > 1:
+                        X = np.append(X,
+                            (X[:,0]**i * X[:,1]**j * X[:,2]**k).reshape(-1,1),
+                            axis=1)
 
         return X
 
