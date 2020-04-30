@@ -1,4 +1,5 @@
 from mldftdat.gp import DFTGPR
+from mldftdat.pyscf_utils import *
 from mldftdat.density import *
 from mldftdat.data import *
 from mldftdat.models.matrix_rbf import *
@@ -39,6 +40,8 @@ def y_to_xed_lda(y, rho_data):
     return get_xed_from_y(y, rho_data[0])
 
 def get_gp_x_descriptors(X, num=1, selection=None):
+    # X is initially rho, s, alpha, dvh/(dvh+tau), norm-int-dvh,
+    # norm-int-ndn, norm-int-tau, int-n
     X = X[:,(0,1,2,3,4,5,7,6)]
     if selection is not None:
         num = 7
@@ -69,6 +72,36 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     X = np.append(x.reshape(-1,1), X, axis=1)
     return X
     #return X[:,(0,3,4)]
+
+def get_semilocal_suite(X):
+    # first 8 are normalized descriptors
+    # 8:14 (next 6) are rho_data
+    # 14:18 (next 4) are tau_data
+    # 18:24 (last 6) are rho second derivatives xx, xy, xz, yy, yz, zz
+    assert X.shape[-1] == 24
+    rho_data = X[:,8:14]
+    ws_radii = get_ws_radii(rho_data[:,0])
+    tau_u = get_uniform_tau(rho_data[:,0])
+    tau_data = X[:,14:18]
+    ddrho = X[:,18:24]
+    diag_ind = [0, 3, 5]
+    #ddrho[:,diag_ind] -= rho_data[:,4].reshape(-1,1) / 3
+    ddrho_mat = np.zeros((X.shape[0], 3, 3))
+    inds = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
+    for i in range(3):
+        ddrho_mat[:,i,:] = ddrho[:,inds[i]]
+    X = get_gp_x_descriptors(X, num=2)
+    d1 = np.linalg.norm(tau_data[:,1:4], axis=1) * ws_radii / (tau_u + 1e-5)
+    d2 = np.einsum('pi,pi->p', rho_data[:,1:4], tau_data[:,1:4])
+    d2 /= np.linalg.norm(rho_data[:,1:4], axis=1) + 1e-6
+    d2 /= np.linalg.norm(tau_data[:,1:4], axis=1) + 1e-6
+    d3 = np.einsum('pi,pij,pj->p', rho_data[:,1:4], ddrho_mat, rho_data[:,1:4])
+    d4 = np.einsum('pi,pij,pj->p', tau_data[:,1:4], ddrho_mat, tau_data[:,1:4])
+    d5 = np.einsum('pi,pij,pj->p', rho_data[:,1:4], ddrho_mat, tau_data[:,1:4])
+    d3 /= rho_data[:,0]**(13.0/3) + 1e-5
+    d4 /= rho_data[:,0]**(15.0/3) + 1e-5
+    d5 /= rho_data[:,0]**(14.0/3) + 1e-5
+    return np.append(X, np.array([d1, d2, d3, d4, d5]).T, axis=1)
 
 class EDMGPR(DFTGPR):
 

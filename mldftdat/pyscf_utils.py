@@ -662,8 +662,8 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     OUTPUT:
         0 : INPUT[0] * RHO / (INPUT[0] * RHO + TAU)
         1 : INPUT[1] / INPUT[5]
-        2 : INPUT[2] / INPUT[6]
-        3 : INPUT[3] / TAU_U
+        2 : INPUT[2] / INPUT[7]
+        3 : INPUT[3] / INPUT[6]
         4 : INPUT[4]
     """
     nonlocal_data = nonlocal_data.copy()
@@ -679,5 +679,6 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     nonlocal_data[0,:] = ndvh / (ndvh + rho_data[5,:] + 1e-6)
     nonlocal_data[1,:] /= nonlocal_data[5,:] + 1e-6
     nonlocal_data[2,:] /= nonlocal_data[7,:] + 1e-6
+    # TODO: below value is not normalized properly
     nonlocal_data[3,:] /= nonlocal_data[6,:] + 1e-6
     return nonlocal_data[:5,:]
