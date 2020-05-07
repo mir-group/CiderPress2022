@@ -317,12 +317,38 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
-    xef = neps / (ldax(rho) + 1e-7)
+    xef = neps / (ldax(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
         return xef, eps, neps, fx_total, X
     else:
         return xef, eps, neps, fx_total
+
+def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
+    if isinstance(analyzer.calc, scf.hf.RHF):
+        return predict_exchange(analyzer, model, num)[3]
+    rho_data = analyzer.rho_data
+    tau_data = analyzer.tau_data
+    coords = analyzer.grid.coords
+    weights = analyzer.grid.weights
+    rho = rho_data[:,0,:]
+    if model is None:
+        neps = analyzer.get_fx_energy_density()
+    elif model == 'EDM':
+        fxu = edmgga(rho_data[0])
+        fxd = edmgga(rho_data[1])
+        neps = fxu * ldax(rho[0]) + fxd * ldax(rho[1])
+    elif type(model) == str:
+        eps = eval_xc(model + ',', rho_data, spin=analyzer.mol.spin)[0]
+        print(eps.shape)
+        neps = eps[0] * rho[0] + eps[1] * rho[1]
+    else:
+        xdescu, xdescd = get_exchange_descriptors(rho_data, tau_data, coords,
+                                         weights, restricted = True)
+        neps = model.predict(xdescu.transpose(), rho_data[0])
+        neps += model.predict(xdescd.transpose(), rho_data[1])
+    fx_total = np.dot(neps, weights)
+    return fx_total
 
 def error_table(dirs, Analyzer, mlmodel, num = 1):
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
@@ -467,3 +493,88 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl),\
            data_dict
+
+def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
+    from collections import Counter
+    from ase.data import chemical_symbols, ground_state_magnetic_moments
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    errlst = [[] for _ in models]
+    ae_errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    ae_fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    ae_fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        atoms = [a[0] for a in analyzer.mol._atom]
+        formula = Counter(atoms)
+        element_analyzers = {}
+        for Z in list(formula.keys()):
+            symbol = chemical_symbols[Z]
+            spin = int(ground_state_magnetic_moments[Z])
+            letter = 'R' if spin == 0 else 'U'
+            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}'.format(
+                        dbpath, letter, Z, element, spin)
+            element_analyzers[Z] = Analyzer.load(path)
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-3
+        fx_total_ref_true = 0
+        for Z in list(formula.keys()):
+            fx_total_ref_true += formula[Z] \
+                                 * predict_total_exchange_unrestricted(
+                                        element_analyzers[Z])
+        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
+        fxlst_true.append(fx_total_true)
+        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            fx_total_ref = 0
+            for Z in list(formula.keys()):
+                fx_total_ref += formula[Z] \
+                                * predict_total_exchange_unrestricted(
+                                    element_analyzers[Z],
+                                    model = model, num = num)
+            xef_pred, eps_pred, neps_pred, fx_total_pred = \
+                predict_exchange(analyzer, model = model, num = num)
+            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+
+            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
+            errlst[i].append(fx_total_pred - fx_total_true)
+            ae_errlst[i].append(fx_total_pred - fx_total_true \
+                                - (fx_total_ref - fx_total_ref_true))
+        print(errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst),\
+           (columns, rows, errtbl),\
+           (ae_fxlst_true, ae_fxlst_pred, ae_errlst)
