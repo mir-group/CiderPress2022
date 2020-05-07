@@ -43,8 +43,8 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
         nlcd = get_x_nonlocal_descriptors_nsp(rho_data[1] * 2,
                                                 tau_data[1] * 2,
                                                 coords, weights)
-    return np.append(lcu, nlcu, axis=0),\
-           np.append(lcd, nlcd, axis=0)
+        return np.append(lcu, nlcu, axis=0),\
+               np.append(lcd, nlcd, axis=0)
 
 """
 The following two routines are from
@@ -63,10 +63,9 @@ C3 = 0.19697 * np.sqrt(0.704)
 C4 = (C3**2 - 0.09834 * MU) / C3**3
 
 def edmgga(rho_data):
-    print(rho_data.shape)
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
-    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
+    tauw = get_single_orbital_tau(rho_data[0], gradn)
     QB = tau0 - rho_data[5] + tauw + 0.25 * rho_data[4]
     QB /= tau0
     x = A * QB + np.sqrt(1 + (A*QB)**2)
@@ -74,10 +73,9 @@ def edmgga(rho_data):
     return FX
 
 def edmgga_loc(rho_data):
-    print(rho_data.shape)
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
-    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
+    tauw = get_single_orbital_tau(rho_data[0], gradn)
     QB = tau0 - rho_data[5] + 0.125 * rho_data[4]
     QB /= tau0
     x = A * QB + np.sqrt(1 + (A*QB)**2)

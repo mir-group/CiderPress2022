@@ -60,20 +60,20 @@ def get_gp_x_descriptors(X, num=1, selection=None):
         return X[:,selection]
 
 def get_edmgga_descriptors(X, rho_data, num=1):
-    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
+    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
     QB = rho_data[4] / tau0
     x = np.arcsinh(QB)
     X = get_gp_x_descriptors(X, num = num)
     if num > 2:
         c = X[:,2]
-        ndvh2 = rho_data[5] * c * 5e-4 / (1 - c + 1e-7)
+        ndvh2 = rho_data[5] * c * 1e-3 / (1 - c + 1e-7)
         c2 = ndvh2 / (ndvh2 + rho_data[5] + 1e-7) - 0.5
         X[:,2] = c2
     X = np.append(x.reshape(-1,1), X, axis=1)
     return X
     #return X[:,(0,3,4)]
 
-def get_semilocal_suite(X):
+def get_semilocal_suite(X, num = 3):
     # first 8 are normalized descriptors
     # 8:14 (next 6) are rho_data
     # 14:18 (next 4) are tau_data
@@ -90,7 +90,12 @@ def get_semilocal_suite(X):
     inds = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
     for i in range(3):
         ddrho_mat[:,i,:] = ddrho[:,inds[i]]
-    X = get_gp_x_descriptors(X, num=2)
+    X = get_edmgga_descriptors(X, rho_data.transpose(), num=num)
+    #if num > 2:
+    #    c = X[:,2]
+    #    ndvh2 = rho_data[:,5] * c * 1e-2 / (1 - c + 1e-7)
+    #    c2 = ndvh2 / (ndvh2 + rho_data[:,5] + 1e-7) - 0.5
+    #    X[:,2] = c2
     d1 = np.linalg.norm(tau_data[:,1:4], axis=1) * ws_radii / (tau_u + 1e-5)
     d2 = np.einsum('pi,pi->p', rho_data[:,1:4], tau_data[:,1:4])
     d2 /= np.linalg.norm(rho_data[:,1:4], axis=1) + 1e-6

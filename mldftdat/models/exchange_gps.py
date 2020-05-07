@@ -40,8 +40,8 @@ def y_to_xed_lda(y, rho_data):
 
 def get_edmgga_descriptors(X, rho_data, num=1):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
-    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
+    tauw = get_single_orbital_tau(rho_data[0], gradn)
     QB = tau0 - rho_data[5] + tauw + 0.25 * rho_data[4]
     QB /= tau0
     x = A * QB + np.sqrt(1 + (A*QB)**2)
