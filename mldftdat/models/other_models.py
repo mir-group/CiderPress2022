@@ -112,7 +112,7 @@ class EDMGPR(DFTGPR):
 
     def __init__(self, num_desc, init_kernel = None, use_algpr = False):
         super(EDMGPR, self).__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def fit(self, xdesc, xed, rho_data, optimize_theta = True):
@@ -192,7 +192,7 @@ class NoisyEDMGPR(EDMGPR):
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
