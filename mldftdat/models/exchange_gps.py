@@ -40,8 +40,8 @@ def y_to_xed_lda(y, rho_data):
 
 def get_edmgga_descriptors(X, rho_data, num=1):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = 3 / 10 * 3 * np.pi**2 * rho_data[0]**(5/3) + 1e-6
-    tauw = 1 / 8 * gradn**2 / (rho_data[0] + 1e-6)
+    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
+    tauw = get_single_orbital_tau(rho_data[0], gradn)
     QB = tau0 - rho_data[5] + tauw + 0.25 * rho_data[4]
     QB /= tau0
     x = A * QB + np.sqrt(1 + (A*QB)**2)
@@ -68,7 +68,7 @@ class EDMGPR(DFTGPR):
 
     def __init__(self, num_desc, init_kernel = None, use_algpr = False):
         super(EDMGPR, self).__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def fit(self, xdesc, xed, rho_data, optimize_theta = True):
@@ -150,7 +150,7 @@ class NoisyEDMGPR(EDMGPR):
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
