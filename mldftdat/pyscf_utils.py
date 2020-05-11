@@ -80,6 +80,33 @@ def get_grid(mol):
     grid.kernel()
     return grid
 
+def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+
+    a = np.pi * (rho / 2 + 1e-4)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    if s is not None:
+        scale += fac * s**2
+    if alpha is not None:
+        scale += 3.0 / 5 * fac * (alpha - 1)
+    bas[:,1] = l
+    env[bas[:,5]] = a * scale
+    env[bas[rho<1e-5,5]] = 1e16
+    print(np.sqrt(np.min(env[bas[:,5]])))
+    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+
+    return atm, bas, env
+
 def get_ha_total(rdm1, eeint):
     return np.sum(np.sum(eeint * rdm1, axis=(2,3)) * rdm1)
 
@@ -574,6 +601,16 @@ def get_dft_input(rho_data):
     tau_w = get_single_orbital_tau(rho, mag_grad)
     tau_unif = get_uniform_tau(rho)
     alpha = get_normalized_tau(rho_data[5], tau_w, tau_unif)
+    return rho, s, alpha, tau_w, tau_unif
+
+def get_dft_input2(rho_data):
+    rho = rho_data[0,:]
+    r_s = get_ws_radii(rho)
+    mag_grad = get_gradient_magnitude(rho_data)
+    s = get_normalized_grad(rho, mag_grad)
+    tau_w = get_single_orbital_tau(rho, mag_grad)
+    tau_unif = get_uniform_tau(rho)
+    alpha = (rho_data[5] - tau_w) / (tau_unif + 1e-9)
     return rho, s, alpha, tau_w, tau_unif
 
 def get_vh(rho, rs, weights):
