@@ -1,4 +1,8 @@
 import numpy as np
+from pyscf import gto, df
+import scipy.linalg
+from scipy.linalg.lapack import dgetrf, dgetri
+from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import *
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
@@ -45,6 +49,50 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
                                                 coords, weights)
         return np.append(lcu, nlcu, axis=0),\
                np.append(lcd, nlcd, axis=0)
+
+
+def get_exchange_descriptors2(analyzer):
+
+    lc = get_dft_input2(analyzer.rho_data)[:3]
+
+    auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
+    nao = analyzer.mol.nao_nr()
+    auxmol = df.make_auxmol(analyzer.mol, auxbasis)
+    naux = auxmol.nao_nr()
+    # shape (naux, naux), symmetric
+    aug_J = auxmol.intor('int2c2e')
+    # shape (nao, nao, naux)
+    aux_e2 = df.incore.aux_e2(analyzer.mol, auxmol)
+    #print(aux_e2.shape)
+    # shape (naux, nao * nao)
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
+    aux_e2 = np.ascontiguousarray(aux_e2)
+    lu, piv, info = dgetrf(aug_J, overwrite_a = True)
+    inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
+    ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+    #print(ao_to_aux.shape)
+    # phi_i phi_j = \sum_{mu,nu,P} c_{i,mu} c_{j,nu} d_{P,mu,nu}
+    l = 0
+    N = analyzer.grid.weights.shape[0]
+    atm, bas, env = get_gaussian_grid(analyzer.grid.coords,
+                                analyzer.rho_data[0], l = l, s = lc[1], alpha=lc[2])
+    gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+
+    ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+    # naux
+    density = np.einsum('npq,pq->n', ao_to_aux, analyzer.rdm1)
+    # (ngrid, naux)
+    ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+    #print(ovlp.shape)
+    #ovlp2 = gridmol.intor('int1e_ovlp')
+    #a = 2 * np.pi * (analyzer.rho_data[0] / 2)**(2.0 / 3)
+    #norm = np.sqrt(a / np.pi)**3
+    #print(np.diag(ovlp2) * norm)
+    # ngrid
+    #proj = np.dot(ovlp, density).reshape(2*l+1, N)
+    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+
+    return np.append(lc, proj, axis=0), env[bas[:,5]]
 
 """
 The following two routines are from
