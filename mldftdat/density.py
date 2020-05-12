@@ -181,7 +181,25 @@ def contract_exchange_descriptors(desc):
     dot1 = np.einsum('an,an->n', svec, g1)
 
     # nabla and g2 norms
-    g2_norm = np.sqrt(np.einsum('pqn,pqn->n', g2_mat, g2_mat))
+    #g2_norm = np.sqrt(np.einsum('pqn,pqn->n', g2_mat, g2_mat))
+
+    # Clebsch Gordan https://en.wikipedia.org/wiki/Table_of_Clebsch%E2%80%93Gordan_coefficients
+    # TODO need to adjust for the fact that these are real sph_harm?
+    g2_norm = 0
+    """
+    g2 = np.array([(g2[-1] + 1j * g2[0]) / np.sqrt(2),
+                   (-g2[-2] - 1j * g2[1]) / np.sqrt(2),
+                   g2[2],
+                   (g2[-2] - 1j * g2[1]) / np.sqrt(2),
+                   (g2[-1] - 1j * g2[0]) / np.sqrt(2)])
+
+    for i in range(5):
+        g2_norm += g2[i] * g2[-1-i] * (-1)**i
+    """
+    for i in range(5):
+        g2_norm += g2[i] * g2[i]
+    g2_norm /= np.sqrt(5)
+
     d2_norm = np.sqrt(np.einsum('pqn,pqn->n', ddrho_mat, ddrho_mat))
 
     res[4] = g0
@@ -194,9 +212,45 @@ def contract_exchange_descriptors(desc):
     res[10] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, svec)
     res[11] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, g1)
 
-    res[12] = np.einsum('pn,pqn,qn->n', svec, g2_mat, svec)
-    res[13] = np.einsum('pn,pqn,qn->n', g1, g2_mat, svec)
-    res[14] = np.einsum('pn,pqn,qn->n', g1, g2_mat, g1)
+    # TODO: Check the math
+    def contract21(t2, t1):
+        # xy, yz, z2, xz, x2-y2
+        # x, y, z
+        t2c = np.zeros(t2.shape, dtype=np.complex128)
+        t2c[4] = (t2[4] + 1j * t2[0]) / np.sqrt(2) # +2
+        t2c[3] = (-t2[3] - 1j * t2[1]) / np.sqrt(2) # +1
+        t2c[2] = t2[2] # 0
+        t2c[1] = (t2[3] - 1j * t2[1]) / np.sqrt(2) # -1
+        t2c[0] = (t2[4] - 1j * t2[0]) / np.sqrt(2) # -2
+
+        t1c = np.zeros(t1.shape, dtype=np.complex128)
+        t1c[2] = -(t1[0] + 1j * t1[1]) / np.sqrt(2) # +1
+        t1c[1] = t1[2] # 0
+        t1c[0] = (t1[0] - 1j * t1[1]) / np.sqrt(2) # -1
+
+        res = np.zeros(t1.shape, dtype=np.complex128)
+        res[0] = np.sqrt(0.6) * t2c[0] * t1c[2]\
+                 - np.sqrt(0.3) * t2c[1] * t1c[1]\
+                 + np.sqrt(0.1) * t2c[2] * t1c[0] # -1
+        res[1] = np.sqrt(0.3) * t2c[1] * t1c[2]\
+                 - np.sqrt(0.4) * t2c[2] * t1c[1]\
+                 + np.sqrt(0.3) * t2c[3] * t1c[0]
+        res[2] = np.sqrt(0.6) * t2c[4] * t1c[0]\
+                 - np.sqrt(0.3) * t2c[3] * t1c[1]\
+                 + np.sqrt(0.1) * t2c[2] * t1c[2]
+
+        xterm = (res[0] - res[2]) / np.sqrt(2)
+        yterm = 1j * (res[0] + res[2]) / np.sqrt(2)
+        zterm = res[1]
+
+        return np.real(np.array([xterm, yterm, zterm]))
+
+    sgc = contract21(g2, svec)
+    sgg = contract21(g2, g1)
+
+    res[12] = np.einsum('pn,pn->n', sgc, svec)
+    res[13] = np.einsum('pn,pn->n', sgc, g1)
+    res[14] = np.einsum('pn,pn->n', sgg, g1)
 
     # res
     # 0:  rho
