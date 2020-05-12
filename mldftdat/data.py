@@ -156,13 +156,13 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     #gp = DFTGP(descriptor_data, values, 1e-3)
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False,
-                    append_all_rho_data = False):
+                    Analyzer, spherical_atom = False):
 
     import time
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
+    locx = False
 
     for MOL_ID in MOL_IDS:
         print('Working on {}'.format(MOL_ID))
@@ -182,20 +182,21 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             print('index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_exchange_descriptors(analyzer.rho_data,
+            descriptor_data = get_exchange_descriptors2(analyzer.rho_data,
                                                        analyzer.tau_data,
                                                        analyzer.grid.coords,
                                                        analyzer.grid.weights,
                                                        restricted = True)
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors(analyzer.rho_data,
+                              get_exchange_descriptors2(analyzer.rho_data,
                                                        analyzer.tau_data,
                                                        analyzer.grid.coords,
                                                        analyzer.grid.weights,
-                                                       restricted = True)
+                                                       restricted = False)
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
+        """
         if append_all_rho_data:
             from mldftdat import pyscf_utils
             ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
@@ -216,11 +217,12 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
                 descriptor_data = np.append(descriptor_data, tmp1, axis=0)
                 descriptor_data = np.append(descriptor_data, tmp2, axis=0)
                 descriptor_data = np.append(descriptor_data, tmp3, axis=0)
+        """
         end = time.monotonic()
         print('get descriptor time', end - start)
         if locx:
             if not restricted:
-                raise ValueError('locx + restricted not supported')
+                raise ValueError('locx + unrestricted not supported')
             print('Getting loc fx')
             #values = analyzer.get_loc_fx_energy_density()
             values = analyzer.get_smooth_fx_energy_density()

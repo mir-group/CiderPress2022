@@ -51,10 +51,47 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
                np.append(lcd, nlcd, axis=0)
 
 
-def get_exchange_descriptors2(analyzer):
+def _get_x_helper(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
+    # desc[0:6]   = rho_data
+    # desc[6:12]  = ddrho
+    # desc[12:13] = g0
+    # desc[13:16] = g1
+    # desc[16:21] = g2
+    # g1 order: x, y, z
+    # g2 order: xy, yz, z^2, xz, x^2-y^2
+    lc = get_dft_input2(rho_data)[:3]
+    # size naux
+    density = np.einsum('npq,pq->n', ao_to_aux, rdm1)
+    desc = np.append(rho_data, ddrho, axis=0)
+    N = grid.weights.shape[0]
+    for l in range(3):
+        atm, bas, env = get_gaussian_grid(grid.coords, rho_data[0],
+                                          l = l, s = lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+        # (ngrid * (2l+1), naux)
+        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+        desc = np.append(desc, proj, axis=0)
+    return contract_exchange_descriptors(desc)
 
-    lc = get_dft_input2(analyzer.rho_data)[:3]
+def get_exchange_descriptors2(analyzer, restricted = True):
+    """
+    A length-21 descriptor containing semi-local information
+    and a few Gaussian integrals. The descriptors are not
+    normalized to be scale-invariant or rotation-invariant.
+    
+    Args:
+        analyzer (RHFAnalyzer)
 
+    Returns 2D numpy array desc:
+        desc[0:6]   = rho_data
+        desc[6:12]  = ddrho
+        desc[12:13] = g0
+        desc[13:16] = g1
+        desc[16:21] = g2
+        g1 order: x, y, z
+        g2 order: xy, yz, z^2, xz, x^2-y^2
+    """
     auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
     nao = analyzer.mol.nao_nr()
     auxmol = df.make_auxmol(analyzer.mol, auxbasis)
@@ -70,29 +107,120 @@ def get_exchange_descriptors2(analyzer):
     lu, piv, info = dgetrf(aug_J, overwrite_a = True)
     inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
     ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
-    #print(ao_to_aux.shape)
-    # phi_i phi_j = \sum_{mu,nu,P} c_{i,mu} c_{j,nu} d_{P,mu,nu}
-    l = 0
-    N = analyzer.grid.weights.shape[0]
-    atm, bas, env = get_gaussian_grid(analyzer.grid.coords,
-                                analyzer.rho_data[0], l = l, s = lc[1], alpha=lc[2])
-    gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
-
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
-    # naux
-    density = np.einsum('npq,pq->n', ao_to_aux, analyzer.rdm1)
-    # (ngrid, naux)
-    ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
-    #print(ovlp.shape)
-    #ovlp2 = gridmol.intor('int1e_ovlp')
-    #a = 2 * np.pi * (analyzer.rho_data[0] / 2)**(2.0 / 3)
-    #norm = np.sqrt(a / np.pi)**3
-    #print(np.diag(ovlp2) * norm)
-    # ngrid
-    #proj = np.dot(ovlp, density).reshape(2*l+1, N)
-    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
 
-    return np.append(lc, proj, axis=0), env[bas[:,5]]
+    # rho_dat aand rrdho are polarized if calc is unrestricted
+    ao_data, rho_data = get_mgga_data(analyzer.mol,
+                                      analyzer.grid,
+                                      analyzer.rdm1)
+    ddrho = get_rho_second_deriv(analyzer.mol,
+                                analyzer.grid,
+                                analyzer.rdm1,
+                                ao_data)
+
+    if restricted:
+        return _get_x_helper(auxmol, rho_data, ddrho, analyzer.grid,
+                             analyzer.rdm1, ao_to_aux)
+    else:
+        desc0 = _get_x_helper(auxmol, 2*rho_data[0], 2*ddrho[0], analyzer.grid,
+                              2*analyzer.rdm1[0], ao_to_aux)
+        desc1 = _get_x_helper(auxmol, 2*rho_data[1], 2*ddrho[1], analyzer.grid,
+                              2*analyzer.rdm1[1], ao_to_aux)
+        return desc0, desc1
+
+def contract_exchange_descriptors(desc):
+    # desc[0:6]   = rho_data
+    # desc[6:12]  = ddrho
+    # desc[12:13] = g0
+    # desc[13:16] = g1
+    # desc[16:21] = g2
+    # g1 order: x, y, z
+    # g2 order: xy, yz, z^2, xz, x^2-y^2
+
+    N = desc.shape[1]
+    res = np.zeros((15,N))
+    rho_data = desc[:6]
+
+    # rho, g0, s, alpha, nabla
+    rho, s, alpha, tau_w, tau_unif = get_dft_input2(desc[:6])
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    n43 = rho**(4.0/3)
+    svec = desc[1:4] / (sprefac * n43 + 1e-7)
+    nabla = rho_data[4] / (tau_unif + 1e-7)
+
+    res[0] = rho
+    res[1] = s
+    res[2] = alpha
+    res[3] = nabla
+
+    # other setup
+    g0 = desc[12]
+    g1 = desc[13:16]
+    g2 = desc[16:21]
+    ddrho = desc[6:12]
+    ddrho_mat = np.zeros((3, 3, N))
+    inds = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
+    for i in range(3):
+        ddrho_mat[:,i,:] = ddrho[inds[i],:]
+        ddrho_mat[i,i,:] -= rho_data[4] / 3
+    ddrho_mat /= tau_unif + 1e-7
+    g2_mat = np.zeros((3, 3, N))
+    # y^2 = -(1/2) (z^2 + (x^2-y^2))
+    g2_mat[1,1,:] = -0.5 * (g2[2] + g2[4])
+    g2_mat[2,2,:] = g2[4]
+    g2_mat[0,0,:] = - (g2_mat[1,1,:] + g2_mat[2,2,:])
+    g2_mat[1,0,:] = g2[0]
+    g2_mat[0,1,:] = g2[0]
+    g2_mat[2,0,:] = g2[3]
+    g2_mat[0,2,:] = g2[3]
+    g2_mat[1,2,:] = g2[1]
+    g2_mat[2,1,:] = g2[1]
+
+    # g1_norm and 1d dot product
+    g1_norm = np.linalg.norm(g1, axis=0)
+    dot1 = np.einsum('an,an->n', svec, g1)
+
+    # nabla and g2 norms
+    g2_norm = np.sqrt(np.einsum('pqn,pqn->n', g2_mat, g2_mat))
+    d2_norm = np.sqrt(np.einsum('pqn,pqn->n', ddrho_mat, ddrho_mat))
+
+    res[4] = g0
+    res[5] = g1_norm
+    res[6] = dot1
+    res[7] = d2_norm
+    res[8] = g2_norm
+
+    res[9] = np.einsum('pn,pqn,qn->n', svec, ddrho_mat, svec)
+    res[10] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, svec)
+    res[11] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, g1)
+
+    res[12] = np.einsum('pn,pqn,qn->n', svec, g2_mat, svec)
+    res[13] = np.einsum('pn,pqn,qn->n', g1, g2_mat, svec)
+    res[14] = np.einsum('pn,pqn,qn->n', g1, g2_mat, g1)
+
+    # res
+    # 0:  rho
+    # 1:  s
+    # 2:  alpha
+    # 3:  nabla
+    # 4:  g0
+    # 5:  norm(g1)
+    # 6:  g1 dot svec
+    # 7:  norm(ddrho_{l=2})
+    # 8:  norm(g2)
+    # 9:  svec dot ddrho_{l=2} dot svec
+    # 10: g1 dot ddrho_{l=2} dot svec
+    # 11: g1 dot ddrho_{l=2} dot g1
+    # 12: svec dot g2 dot svec
+    # 13: g1 dot g2 dot svec
+    # 14: g1 dot g2 dot g1
+    return res
+
+
+
+
+
+    # rho, g0
 
 """
 The following two routines are from
