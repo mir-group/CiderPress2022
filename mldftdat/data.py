@@ -156,6 +156,111 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     np.savetxt(val_file, all_values)
     #gp = DFTGP(descriptor_data, values, 1e-3)
 
+def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+                    Analyzer, spherical_atom = False):
+
+    import time
+    all_descriptor_data = None
+    all_rho_data = None
+    all_values = []
+    locx = False
+
+    for MOL_ID in MOL_IDS:
+        print('Working on {}'.format(MOL_ID))
+        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
+        start = time.monotonic()
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        if type(analyzer.calc) == scf.hf.RHF:
+            restricted = True
+        else:
+            restricted = False
+        end = time.monotonic()
+        print('analyzer load time', end - start)
+        if spherical_atom:
+            start = time.monotonic()
+            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
+            end = time.monotonic()
+            print('index scanning time', end - start)
+        start = time.monotonic()
+        if restricted:
+            descriptor_data = get_exchange_descriptors2(analyzer.rho_data,
+                                                       analyzer.tau_data,
+                                                       analyzer.grid.coords,
+                                                       analyzer.grid.weights,
+                                                       restricted = True)
+        else:
+            descriptor_data_u, descriptor_data_d = \
+                              get_exchange_descriptors2(analyzer.rho_data,
+                                                       analyzer.tau_data,
+                                                       analyzer.grid.coords,
+                                                       analyzer.grid.weights,
+                                                       restricted = False)
+            descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
+                                        axis = 1)
+        """
+        if append_all_rho_data:
+            from mldftdat import pyscf_utils
+            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
+                                                        analyzer.grid,
+                                                        analyzer.rdm1)
+            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
+                                                    analyzer.grid,
+                                                    analyzer.rdm1,
+                                                    ao_data)
+            if restricted:
+                descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
+                descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
+                descriptor_data = np.append(descriptor_data, ddrho, axis=0)
+            else:
+                tmp1 = 2 * np.append(analyzer.rho_data[0], analyzer.rho_data[1], axis=1)
+                tmp2 = 2 * np.append(analyzer.tau_data[0], analyzer.tau_data[1], axis=1)
+                tmp3 = 2 * np.append(ddrho[0], ddrho[1], axis=1)
+                descriptor_data = np.append(descriptor_data, tmp1, axis=0)
+                descriptor_data = np.append(descriptor_data, tmp2, axis=0)
+                descriptor_data = np.append(descriptor_data, tmp3, axis=0)
+        """
+        end = time.monotonic()
+        print('get descriptor time', end - start)
+        if locx:
+            if not restricted:
+                raise ValueError('locx + unrestricted not supported')
+            print('Getting loc fx')
+            #values = analyzer.get_loc_fx_energy_density()
+            values = analyzer.get_smooth_fx_energy_density()
+        else:
+            values = analyzer.get_fx_energy_density()
+            if not restricted:
+                values = 2 * np.append(analyzer.fx_energy_density_u,
+                                       analyzer.fx_energy_density_d)
+        rho_data = analyzer.rho_data
+        if not restricted:
+            rho_data = 2 * np.append(rho_data[0], rho_data[1], axis=1)
+        if spherical_atom:
+            values = values[indexes]
+            descriptor_data = descriptor_data[:,indexes]
+            rho_data = rho_data[:,indexes]
+
+        if all_descriptor_data is None:
+            all_descriptor_data = descriptor_data
+        else:
+            all_descriptor_data = np.append(all_descriptor_data, descriptor_data,
+                                            axis = 1)
+        if all_rho_data is None:
+            all_rho_data = rho_data
+        else:
+            all_rho_data = np.append(all_rho_data, rho_data, axis=1)
+        all_values = np.append(all_values, values)
+
+    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    rho_file = os.path.join(save_dir, 'rho.npz')
+    desc_file = os.path.join(save_dir, 'desc.npz')
+    val_file = os.path.join(save_dir, 'val.npz')
+    np.savetxt(rho_file, all_rho_data)
+    np.savetxt(desc_file, all_descriptor_data)
+    np.savetxt(val_file, all_values)
+
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
 
