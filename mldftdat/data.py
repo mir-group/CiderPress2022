@@ -7,6 +7,7 @@ import os
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -430,7 +431,7 @@ def predict_exchange(analyzer, model=None, num=1,
         return xef, eps, neps, fx_total
 
 def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
-    if isinstance(analyzer.calc, scf.hf.RHF):
+    if isinstance(analyzer, RHFAnalyzer):
         return predict_exchange(analyzer, model, num)[3]
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
@@ -440,18 +441,20 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
     if model is None:
         neps = analyzer.get_fx_energy_density()
     elif model == 'EDM':
-        fxu = edmgga(rho_data[0])
-        fxd = edmgga(rho_data[1])
-        neps = fxu * ldax(rho[0]) + fxd * ldax(rho[1])
+        fxu = edmgga(2 * rho_data[0])
+        fxd = edmgga(2 * rho_data[1])
+        neps = 0.5 * fxu * ldax(2 * rho[0]) + 0.5 * fxd * ldax(2 * rho[1])
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data, spin=analyzer.mol.spin)[0]
-        print(eps.shape)
-        neps = eps[0] * rho[0] + eps[1] * rho[1]
+        #epsu = eval_xc(model + ',', 2 * rho_data[0])[0]
+        #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
+        #print(eps.shape, rho_data.shape, analyzer.mol.spin)
+        neps = eps * (rho[0] + rho[1])
     else:
         xdescu, xdescd = get_exchange_descriptors(rho_data, tau_data, coords,
-                                         weights, restricted = True)
-        neps = model.predict(xdescu.transpose(), rho_data[0])
-        neps += model.predict(xdescd.transpose(), rho_data[1])
+                                         weights, restricted = False)
+        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
+        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
     fx_total = np.dot(neps, weights)
     return fx_total
 
@@ -601,7 +604,7 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
 
 def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
     from collections import Counter
-    from ase.data import chemical_symbols, ground_state_magnetic_moments
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
@@ -618,16 +621,19 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
     for d in dirs:
         print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        atoms = [a[0] for a in analyzer.mol._atom]
+        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
         formula = Counter(atoms)
         element_analyzers = {}
         for Z in list(formula.keys()):
             symbol = chemical_symbols[Z]
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}'.format(
-                        dbpath, letter, Z, element, spin)
-            element_analyzers[Z] = Analyzer.load(path)
+            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+                        dbpath, letter, Z, symbol, spin)
+            if letter == 'R':
+                element_analyzers[Z] = RHFAnalyzer.load(path)
+            else:
+                element_analyzers[Z] = UHFAnalyzer.load(path)
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
         condition = rho > 3e-3
@@ -650,7 +656,8 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
                                     model = model, num = num)
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num)
-            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+            print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
+                                                 - (fx_total_ref - fx_total_ref_true))
 
             ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
             tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
@@ -662,24 +669,25 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
             errlst[i].append(fx_total_pred - fx_total_true)
             ae_errlst[i].append(fx_total_pred - fx_total_true \
                                 - (fx_total_ref - fx_total_ref_true))
-        print(errlst[-1][-1])
+        print(errlst[-1][-1], ae_errlst[-1][-1])
         print()
     fxlst_true = np.array(fxlst_true)
     fxlst_pred = np.array(fxlst_pred)
     errlst = np.array(errlst)
+    ae_errlst = np.array(ae_errlst)
 
     print(count, len(dirs))
 
     fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
     rmise = np.sqrt(ise / len(dirs))
     rmse = np.sqrt(tse / count)
     rrmise = np.sqrt(rise / len(dirs))
     rrmse = np.sqrt(rtse / count)
 
-    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
     rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
-    return (fxlst_true, fxlst_pred, errlst),\
-           (columns, rows, errtbl),\
-           (ae_fxlst_true, ae_fxlst_pred, ae_errlst)
+    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
+           (columns, rows, errtbl)
