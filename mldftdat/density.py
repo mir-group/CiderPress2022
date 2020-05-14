@@ -72,6 +72,14 @@ def _get_x_helper(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
+    #for mul in [0.5, 2]:
+    #    atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
+    #                                      l = 0, s = lc[1], alpha=lc[2])
+    #    gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+    #    # (ngrid * (2l+1), naux)
+    #    ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+    #    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+    #    desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors(desc)
 
 def get_exchange_descriptors2(analyzer, restricted = True):
