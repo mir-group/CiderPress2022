@@ -138,15 +138,15 @@ class NoisyEDMGPR(EDMGPR):
         const = ConstantKernel(0.2)
         #rbf = PartialRBF([1.0] * (num_desc + 1),
         #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
-        rbf = PartialRBF([0.395, 0.232, 0.297, 0.157, 0.468, 1.0][:num_desc+1],
+        rbf = PartialRBF([0.324, 0.153, 0.046, 0.157, 0.468, 1.0][:num_desc+1],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
-        rhok1 = FittedDensityNoise(decay_rate = 20.0)
+        rhok1 = FittedDensityNoise(decay_rate = 100.0)
         rhok2 = FittedDensityNoise(decay_rate = 5.0)
-        wk = WhiteKernel(noise_level=5.0e-6, noise_level_bounds=(1e-06, 1.0e5))
-        wk1 = WhiteKernel(noise_level = 0.001, noise_level_bounds=(1e-05, 1.0e5))
+        wk = WhiteKernel(noise_level=1.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.1, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.0001, noise_level_bounds=(1e-05, 1.0e5))
         cov_kernel = const * rbf
-        noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2
+        noise_kernel = wk + wk1 * rhok1 #+ wk2 * rhok2
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
