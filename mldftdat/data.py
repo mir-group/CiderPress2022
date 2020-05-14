@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors, edmgga
+from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
 import os
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
@@ -160,6 +160,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
                     Analyzer, spherical_atom = False):
 
     import time
+    from pyscf import scf
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
@@ -183,18 +184,10 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             print('index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer.rho_data,
-                                                       analyzer.tau_data,
-                                                       analyzer.grid.coords,
-                                                       analyzer.grid.weights,
-                                                       restricted = True)
+            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True)
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer.rho_data,
-                                                       analyzer.tau_data,
-                                                       analyzer.grid.coords,
-                                                       analyzer.grid.weights,
-                                                       restricted = False)
+                              get_exchange_descriptors2(analyzer, restricted = False)
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
         """
