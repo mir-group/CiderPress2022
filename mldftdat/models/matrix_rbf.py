@@ -354,6 +354,34 @@ class PartialRBF5(RBF):
         return super(PartialRBF5, self).__call__(X, Y, eval_gradient)
 
 
+class PartialDot(DotProduct):
+
+    def __init__(self, sigma_0=1.0, sigma_0_bounds=(1e-5, 1e5), start = 0):
+        super(PartialDot, self).__init__(sigma_0, sigma_0_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = X[:,self.start:]
+        if Y is not None:
+            Y = Y[:,self.start:]
+        return super(PartialRBF4, self).__call__(X, Y, eval_gradient)
+
+
+class SingleRBF(RBF):
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), index = 1):
+        super(SingleRBF, self).__init__(length_scale, length_scale_bounds)
+        self.index = index
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = X[:,self.index]
+        if Y is not None:
+            Y = Y[:,self.index]
+        return super(SingleRBF, self).__call__(X, Y, eval_gradient)    
+
+
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
                    Kernel):
 
