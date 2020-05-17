@@ -57,6 +57,8 @@ def _get_x_helper(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     # desc[12:13] = g0
     # desc[13:16] = g1
     # desc[16:21] = g2
+    # desc[21] = g0-0.5
+    # desc[22] = g0-2
     # g1 order: x, y, z
     # g2 order: xy, yz, z^2, xz, x^2-y^2
     lc = get_dft_input2(rho_data)[:3]
@@ -72,14 +74,15 @@ def _get_x_helper(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
-    #for mul in [0.5, 2]:
-    #    atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
-    #                                      l = 0, s = lc[1], alpha=lc[2])
-    #    gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
-    #    # (ngrid * (2l+1), naux)
-    #    ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
-    #    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
-    #    desc = np.append(desc, proj, axis=0)
+    l = 0
+    for mul in [0.25, 4.00]:
+        atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
+                                          l = 0, s = lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+        # (ngrid * (2l+1), naux)
+        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+        desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors(desc)
 
 def get_exchange_descriptors2(analyzer, restricted = True):
@@ -142,11 +145,13 @@ def contract_exchange_descriptors(desc):
     # desc[12:13] = g0
     # desc[13:16] = g1
     # desc[16:21] = g2
+    # desc[21] = g0-0.5
+    # desc[22] = g0-2
     # g1 order: x, y, z
     # g2 order: xy, yz, z^2, xz, x^2-y^2
 
     N = desc.shape[1]
-    res = np.zeros((15,N))
+    res = np.zeros((17,N))
     rho_data = desc[:6]
 
     # rho, g0, s, alpha, nabla
@@ -260,6 +265,9 @@ def contract_exchange_descriptors(desc):
     res[13] = np.einsum('pn,pn->n', sgc, g1)
     res[14] = np.einsum('pn,pn->n', sgg, g1)
 
+    res[15] = desc[21]
+    res[16] = desc[22]
+
     # res
     # 0:  rho
     # 1:  s
@@ -276,6 +284,8 @@ def contract_exchange_descriptors(desc):
     # 12: svec dot g2 dot svec
     # 13: g1 dot g2 dot svec
     # 14: g1 dot g2 dot g1
+    # 15: g0-0.5
+    # 16: g0-2
     return res
 
 
