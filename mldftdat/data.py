@@ -2,12 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors, edmgga
+from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
 import os
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+#from mldftdat.models import integral_gps
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -160,6 +161,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
                     Analyzer, spherical_atom = False):
 
     import time
+    from pyscf import scf
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
@@ -183,18 +185,10 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             print('index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer.rho_data,
-                                                       analyzer.tau_data,
-                                                       analyzer.grid.coords,
-                                                       analyzer.grid.weights,
-                                                       restricted = True)
+            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True)
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer.rho_data,
-                                                       analyzer.tau_data,
-                                                       analyzer.grid.coords,
-                                                       analyzer.grid.weights,
-                                                       restricted = False)
+                              get_exchange_descriptors2(analyzer, restricted = False)
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
         """
@@ -414,7 +408,14 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    else:
+    else:# type(model) == integral_gps.NoisyEDMGPR:
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
+        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
+        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    """else:
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
         #neps = model.predict(xdesc.transpose(), rho)
@@ -423,6 +424,7 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    """
     xef = neps / (ldax(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
@@ -451,10 +453,16 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
         #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
     else:
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False)
+        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
+        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
+    """
+    else:
         xdescu, xdescd = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = False)
         neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
         neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
+    """
     fx_total = np.dot(neps, weights)
     return fx_total
 
