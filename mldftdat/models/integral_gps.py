@@ -142,3 +142,37 @@ class NoisyEDMGPR(EDMGPR):
         threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
+
+
+def get_edmgga_descriptors2(X, rho_data, num=1):
+    X[:,1] = X[:,1]**2
+    X[:,2] = 1 / (1 + X[:,2]**2)
+    return X[:,(0,2,1,4,5,8,15,16,6,12,13,14)[:num+1]]
+
+class SmoothEDMGPR(EDMGPR):
+
+    def __init__(self, num_desc, use_algpr = False):
+        const = ConstantKernel(0.2)
+        #rbf = PartialRBF([1.0] * (num_desc + 1),
+        #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
+        #rbf = PartialRBF([0.395, 0.232, 0.297, 0.157, 0.468, 1.0][:num_desc+1],
+        #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        rbf = SingleRBF(index = 1)
+        dot = PartialDot(start = 2)
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        cov_kernel = const * rbf
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(EDMGPR, self).__init__(num_desc,
+                       descriptor_getter = get_edmgga_descriptors2,
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred = self.gp.predict(x)
+        return np.abs(y - y_pred) > threshold
