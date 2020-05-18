@@ -365,7 +365,7 @@ class PartialDot(DotProduct):
         X = X[:,self.start:]
         if Y is not None:
             Y = Y[:,self.start:]
-        return super(PartialRBF4, self).__call__(X, Y, eval_gradient)
+        return super(PartialDot, self).__call__(X, Y, eval_gradient)
 
 
 class SingleRBF(RBF):
@@ -376,9 +376,9 @@ class SingleRBF(RBF):
 
     def __call__(self, X, Y=None, eval_gradient=False):
 
-        X = X[:,self.index]
+        X = X[:,self.index:self.index+1]
         if Y is not None:
-            Y = Y[:,self.index]
+            Y = Y[:,self.index:self.index+1]
         return super(SingleRBF, self).__call__(X, Y, eval_gradient)    
 
 

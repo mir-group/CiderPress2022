@@ -92,9 +92,15 @@ class EDMGPR(DFTGPR):
         return model_score, model_rmse, xed_rmse, xed_rel_rmse, xed_score
 
     def predict(self, X, rho_data, return_std = False):
+        #X = self.get_descriptors(X, rho_data, num=self.num)
+        #y = self.gp.predict(X, return_std = return_std)
+        #return self.y_to_xed(y, rho_data)
         X = self.get_descriptors(X, rho_data, num=self.num)
         y = self.gp.predict(X, return_std = return_std)
-        return self.y_to_xed(y, rho_data)
+        if return_std:
+            return self.y_to_xed(y[0], rho_data), y[1] * ldax(rho_data[0])
+        else:
+            return self.y_to_xed(y, rho_data)
 
     def add_point(self, xdesc, xed, rho_data, threshold_factor = 1.2):
         x = self.get_descriptors(xdesc, rho_data, num=self.num)
@@ -116,6 +122,11 @@ def get_rho_and_edmgga_descriptors(X, rho_data, num=1):
     X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
     return X
 
+def get_rho_and_edmgga_descriptors2(X, rho_data, num=1):
+    X = get_edmgga_descriptors(X, rho_data, num)
+    X = np.append(edmgga(rho_data).reshape(-1,1), X, axis=1)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
 
 class NoisyEDMGPR(EDMGPR):
 
@@ -138,7 +149,7 @@ class NoisyEDMGPR(EDMGPR):
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
@@ -160,14 +171,14 @@ class SmoothEDMGPR(EDMGPR):
         #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
         #rbf = PartialRBF([0.395, 0.232, 0.297, 0.157, 0.468, 1.0][:num_desc+1],
         #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
-        rbf = SingleRBF(index = 1)
+        rbf = SingleRBF(length_scale=0.15, index = 1)
         dot = PartialDot(start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
-        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=1.0e-4, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        cov_kernel = const * rbf
+        cov_kernel = const * rbf * Exponentiation(dot, 3)
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
