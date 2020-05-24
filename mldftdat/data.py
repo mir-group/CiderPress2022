@@ -65,7 +65,7 @@ def plot_data_diatomic(mol, coords, values, value_name, units, bounds,
         title = '{}$_2$'.format(mol._atom[0][0])
     else:
         title = mol._atom[0][0] + mol._atom[1][0]
-    plt.title(title)
+    #plt.title(title)
 
 def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
                             bounds, scales = None):
