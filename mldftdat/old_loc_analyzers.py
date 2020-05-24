@@ -9,7 +9,7 @@ import numpy as np
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
 
-def get_aux_mat_chunks(mol, points, num_chunks, lam = 0.5):
+def get_aux_mat_chunks(mol, points, num_chunks):
     """
     Generate chunks of vele_mat on the fly to reduce memory load.
     """
@@ -17,27 +17,23 @@ def get_aux_mat_chunks(mol, points, num_chunks, lam = 0.5):
     for j in range(mol.nbas):
         l = mol._bas[j][1]
         phases += [(-1)**l] * (2*l+1)
-
     phase = np.array(phases)
     num_pts = points.shape[0]
     for i in range(num_chunks):
         start = (i * num_pts) // num_chunks
         end = ((i+1) * num_pts) // num_chunks
         auxmol = gto.fakemol_for_charges(points[start:end])
-        mol._env[11] = lam
-        auxmol._env[11] = lam
-        vele_mat_chunk = df.incore.aux_e2(mol, auxmol, intor='int3c2e_xed_sph')
+        vele_mat_chunk = df.incore.aux_e2(mol, auxmol, intor='int3c2e_lhpot_sph')
         vele_mat_chunk = np.ascontiguousarray(np.transpose(
                                 vele_mat_chunk, axes=(2,0,1)))
         #for i in range(mol.nao_nr()):
         #    vele_mat_chunk[:,:,i] *= phases[i]
         #vele_mat_chunk[:,:,:] *= phases
         vele_mat_chunk *= phases
-        #vele_mat_chunk *= mulphases
         yield vele_mat_chunk
 
-def get_aux_mat_generator(mol, coords, num_chunks, lam=0.5):
-    return lambda: get_aux_mat_chunks(mol, coords, num_chunks, lam)
+def get_aux_mat_generator(mol, coords, num_chunks):
+    return lambda: get_aux_mat_chunks(mol, coords, num_chunks)
 
 def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
                                     mo_occ):
@@ -56,7 +52,7 @@ def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
             aux_mat_chunk.shape[1] * aux_mat_chunk.shape[2])
         fxed_chunk = dgemv(1, aux_mat_chunk, ex_dens)
         fx_energy_density = np.append(fx_energy_density, fxed_chunk)
-    return - 0.25 * fx_energy_density
+    return -fx_energy_density
 
 class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
 
@@ -70,7 +66,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         analyzer_dict['data']['loc_fx_energy_density'] = self.loc_fx_energy_density
         return analyzer_dict
 
-    def setup_etb(self, lam = 0.5):
+    def setup_etb(self):
         auxbasis = df.aug_etb(self.mol, beta=1.6)
         nao = self.mol.nao_nr()
         self.auxmol = df.make_auxmol(self.mol, auxbasis)
@@ -109,7 +105,7 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         self.small_grid = small_grid
         self.mo_aux_mat_generator = get_aux_mat_generator(
                                     self.auxmol, small_grid.coords,
-                                    self.aux_num_chunks, lam = lam)
+                                    self.aux_num_chunks)
 
     """
     def setup_eps_basis(self):
@@ -219,12 +215,13 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         tst = np.dot(self.aux_ao, C)
         return C, tst
 
-    def get_loc_fx_energy_density(self, lam = 0.5, overwrite = False):
+    def get_loc_fx_energy_density(self):
         #tot_loc = np.einsum('pij,qij,i,j->pq', self.mo_to_aux, self.mo_to_aux,
         #                                    self.mo_occ, self.mo_occ)
         #tot_loc = -0.25 * np.einsum('pq,pq', tot_loc, self.augJ)
-        if overwrite or (self.loc_fx_energy_density is None):
-            self.setup_etb(lam = lam)
+        if self.loc_fx_energy_density is None:
+            if self.auxmol is None:
+                self.setup_etb()
             self.loc_fx_energy_density = get_fx_energy_density_from_aug(
                                             self.mo_aux_mat_generator,
                                             self.mo_to_aux, self.mo_occ
