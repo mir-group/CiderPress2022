@@ -151,6 +151,36 @@ def get_rho_and_edmgga_descriptors4(X, rho_data, num=1):
     X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
     return X
 
+def get_edmgga_descriptors5(X, rho_data, num=1):
+    return np.arcsinh(X[:,(1,2,4,5,8,6,12,16,15,6,12,13,14)[:num]])
+
+def get_rho_and_edmgga_descriptors5(X, rho_data, num=1):
+    X = get_edmgga_descriptors5(X, rho_data, num)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
+def get_edmgga_descriptors6(X, rho_data, num=1):
+    return np.arcsinh(X[:,(2,4,5,8,6,12,16,15,6,12,13,14)[:num]])
+
+def get_rho_and_edmgga_descriptors6(X, rho_data, num=1):
+    X = get_edmgga_descriptors6(X, rho_data, num-1)
+    X = np.append(edmgga(rho_data).reshape(-1,1), X, axis=1)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
+def get_edmgga_descriptors7(X, rho_data, num=1):
+    X = np.arcsinh(X[:,(2,4,5,8,6,12,15,16,6,12,13,14)])
+    X[:,2] -= X[:,1]
+    X[:,6] -= X[:,1]
+    X[:,7] -= X[:,1]
+    return X[:,:num]
+
+def get_rho_and_edmgga_descriptors7(X, rho_data, num=1):
+    X = get_edmgga_descriptors7(X, rho_data, num-1)
+    X = np.append(edmgga(rho_data).reshape(-1,1), X, axis=1)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
 class NoisyEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False):
@@ -162,7 +192,9 @@ class NoisyEDMGPR(EDMGPR):
         #rbf = PartialRBF([0.221, 0.468, 0.4696, 0.4829, 0.5, 0.5, 1.0, 1.0][:num_desc],
         # BELOW INIT WORKS WELL (gpr7_beta_v18b/c)
         #rbf = PartialRBF([0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc],
-        rbf = PartialRBF([0.3, 0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc+1],
+        #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        #rbf = PartialRBF([0.3, 0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc+1],
+        rbf = PartialRBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
@@ -173,7 +205,7 @@ class NoisyEDMGPR(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_rho_and_edmgga_descriptors4,
+                       descriptor_getter = get_rho_and_edmgga_descriptors7,
                        xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
