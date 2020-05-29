@@ -158,14 +158,13 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     #gp = DFTGP(descriptor_data, values, 1e-3)
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False):
+                    Analyzer, spherical_atom = False, locx = False, lam = 0.5):
 
     import time
     from pyscf import scf
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
-    locx = False
 
     for MOL_ID in MOL_IDS:
         print('Working on {}'.format(MOL_ID))
@@ -216,11 +215,11 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         end = time.monotonic()
         print('get descriptor time', end - start)
         if locx:
-            if not restricted:
-                raise ValueError('locx + unrestricted not supported')
             print('Getting loc fx')
-            #values = analyzer.get_loc_fx_energy_density()
-            values = analyzer.get_smooth_fx_energy_density()
+            values = analyzer.get_loc_fx_energy_density(lam = lam, overwrite=True)
+            if not restricted:
+                values = 2 * np.append(analyzer.loc_fx_energy_density_u,
+                                       analyzer.loc_fx_energy_density_d)
         else:
             values = analyzer.get_fx_energy_density()
             if not restricted:
