@@ -8,6 +8,7 @@ import scipy.linalg
 import numpy as np
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
+from mldftdat.workflow_utils import safe_mem_cap_mb
 
 def get_aux_mat_chunks(mol, points, num_chunks, lam = 0.5):
     """
@@ -72,6 +73,19 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         analyzer_dict = super(RHFAnalyzer, self).as_dict()
         analyzer_dict['data']['loc_fx_energy_density'] = self.loc_fx_energy_density
         return analyzer_dict
+
+    def assign_num_chunks(self, ao_vals_shape, ao_vals_dtype):
+        self.max_mem = safe_mem_cap_mb()
+
+        if ao_vals_dtype == np.float32:
+            nbytes = 4
+        elif ao_vals_dtype == np.float64:
+            nbytes = 8
+        else:
+            raise ValueError('Wrong dtype for ao_vals')
+        num_mbytes = nbytes * ao_vals_shape[0] * ao_vals_shape[1]**2 // 1000000
+        self.num_chunks = int(num_mbytes // self.max_mem) + 1
+        return self.num_chunks
 
     def setup_etb(self, lam = 0.5):
         auxbasis = df.aug_etb(self.mol, beta=1.6)
@@ -138,6 +152,19 @@ class UHFAnalyzer(lowmem_analyzers.UHFAnalyzer):
         analyzer_dict['data']['loc_fx_energy_density_u'] = self.loc_fx_energy_density_u
         analyzer_dict['data']['loc_fx_energy_density_d'] = self.loc_fx_energy_density_d
         return analyzer_dict
+
+    def assign_num_chunks(self, ao_vals_shape, ao_vals_dtype):
+        self.max_mem = safe_mem_cap_mb()
+
+        if ao_vals_dtype == np.float32:
+            nbytes = 4
+        elif ao_vals_dtype == np.float64:
+            nbytes = 8
+        else:
+            raise ValueError('Wrong dtype for ao_vals')
+        num_mbytes = nbytes * ao_vals_shape[0] * ao_vals_shape[1]**2 // 1000000
+        self.num_chunks = int(num_mbytes // self.max_mem) + 1
+        return self.num_chunks 
 
     def setup_etb(self, lam = 0.5):
         auxbasis = df.aug_etb(self.mol, beta=1.6)
