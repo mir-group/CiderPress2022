@@ -143,6 +143,15 @@ class TestPyscfUtils(unittest.TestCase):
         assert_raises(AssertionError, assert_almost_equal, lda_He.e_tot, b3lyp_He.e_tot)
         assert_raises(AssertionError, assert_almost_equal, self.hf_He.e_tot, b3lyp_He.e_tot)
 
+    def test_get_gaussian_grid(self):
+        from mldftdat.analyzers import RHFAnalyzer
+        grid = Grids(self.He)
+        grid.level = 0
+        grid.build()
+        ao_data = eval_ao(self.He, grid.coords, deriv=0)
+        rho = eval_rho(self.He, ao_data, self.He_rdm1, xctype='LDA')
+        atm, bas, env = get_gaussian_grid(grid.coords, rho, l = 0)
+
     def test_get_hf_coul_ex_total(self):
         # covered in setup
         jtot, ktot = get_hf_coul_ex_total(self.FH, self.rhf)
