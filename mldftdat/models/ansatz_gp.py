@@ -7,6 +7,7 @@ from mldftdat.data import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
+from sklearn.gaussian_process.kernels import _num_samples
 
 A = 0.704 # maybe replace with sqrt(6/5)?
 B = 2 * np.pi / 9 * np.sqrt(6.0/5)
@@ -30,6 +31,7 @@ Fref = edmgga_from_q(Qref)
 grid = CGrid(Fref)
 
 def f_to_x(f):
+    f = np.maximum(f, 0.81)
     return eval_linear(grid, xref, f.reshape(-1,1))
 
 def x_to_q(x):
@@ -37,22 +39,22 @@ def x_to_q(x):
 
 def xed_to_y_q(xed, rho_data):
     F = get_y_from_xed(xed, rho_data[0])
-    F = np.maximum(F, 0.787)
-    x = eval_linear(grid, xref, F)
+    return x_to_q(f_to_x(F))
 
 def y_to_xed_q(y, rho_data):
     F = edmgga_from_q(y)
     return get_xed_from_y(F, rho_data[0])
 
 def get_edmgga_descriptors(X, num=1):
-    return np.arcsinh(X[:,(1,2,4,5,8,6,12,15,16,13,14)[:num]])
+    X[:,1] = X[:,1]**2
+    return X[:,(1,2,3,4,5,8,6,12,15,16,13,14)[:num]]
 
-def get_rho_and_edmgga_descriptors(X, num=1, xed=None):
-    X = get_edmgga_descriptors(X, rho_data, num)
+def get_rho_and_edmgga_descriptors(X, rho_data, num=1, xed=None):
+    X = get_edmgga_descriptors(X, num)
     if xed is None:
-        X = np.append(np.ones(X.shape[0]), X, axis=1)
+        X = np.append(np.ones(X.shape[0]).reshape(-1,1), X, axis=1)
     else:
-        X = np.append(get_y_from_xed(xed), X, axis=1)
+        X = np.append(get_y_from_xed(xed, rho_data[0]).reshape(-1,1), X, axis=1)
     return X
 
 
@@ -67,7 +69,7 @@ class PartialDot(DotProduct):
         X = X[:,self.start:]
         if Y is not None:
             Y = Y[:,self.start:]
-        return super(PartialRBF4, self).__call__(X, Y, eval_gradient)
+        return super(PartialDot, self).__call__(X, Y, eval_gradient)
 
 
 class DerivNoise(StationaryKernelMixin, GenericKernelMixin,
@@ -92,7 +94,7 @@ class DerivNoise(StationaryKernelMixin, GenericKernelMixin,
 
     def diag(self, X):
         F = X[:,self.index]
-        return (x_to_q(f_to_x(f + self.interval)) - x_to_q(f_to_x(f)))**2
+        return (x_to_q(f_to_x(F + self.interval)) - x_to_q(f_to_x(F)))**2
 
     def __repr__(self):
         return "{0}".format(self.__class__.__name__)
@@ -124,19 +126,19 @@ class FeatureNoise(StationaryKernelMixin, GenericKernelMixin,
         return "{0}".format(self.__class__.__name__)
 
 
-class AnsatzGPR(EDMGPR):
+class AnsatzGPR(DFTGPR):
 
     def __init__(self, num_desc, use_algpr = False):
-        dot = PartialDot(start = 1)
+        dot = Exponentiation(PartialDot(start = 1), 2)
         dn = DerivNoise()
         fn = FeatureNoise()
         wk = WhiteKernel(noise_level=1.0e-4, noise_level_bounds=(1e-06, 1.0e5))
-        wkf = WhiteKernel(noise_level = 0.001, noise_level_bounds=(1e-05, 1.0e5))
+        wkf = WhiteKernel(noise_level = 0.001, noise_level_bounds=(1e-05, 0.1))
         wkd = WhiteKernel(noise_level = 1.0, noise_level_bounds=(1e-05, 1.0e5))
         cov_kernel = dot
-        noise_kernel = wk + dn * wkd + fn * wkf
+        noise_kernel = wk + dn + fn * wkf
         init_kernel = cov_kernel + noise_kernel
-        super(EDMGPR, self).__init__(num_desc,
+        super(AnsatzGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_q, y_to_xed_q),
                        init_kernel = init_kernel, use_algpr = use_algpr)
@@ -147,7 +149,7 @@ class AnsatzGPR(EDMGPR):
         else:
             optimizer = None
         self.gp.optimizer = optimizer
-        self.X = self.get_descriptors(xdesc, num=self.num, xed=xed)
+        self.X = self.get_descriptors(xdesc, rho_data, num=self.num, xed=xed)
         self.y = self.xed_to_y(xed, rho_data)
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
@@ -161,7 +163,7 @@ class AnsatzGPR(EDMGPR):
         # rmse of exchange energy density
         # relative rmse of exchange energy density
         # score of exchange energy density
-        X_test = self.get_descriptors(xdesc, num=self.num)
+        X_test = self.get_descriptors(xdesc, rho_data, num=self.num)
         y_true = self.xed_to_y(xed_true, rho_data)
         y_pred = self.gp.predict(X_test)
         if len(rho_data.shape) == 2:
@@ -177,12 +179,15 @@ class AnsatzGPR(EDMGPR):
         return model_score, model_rmse, xed_rmse, xed_rel_rmse, xed_score
 
     def predict(self, X, rho_data, return_std = False):
-        X = self.get_descriptors(X, num=self.num)
+        X = self.get_descriptors(X, rho_data, num=self.num)
         y = self.gp.predict(X, return_std = return_std)
-        return self.y_to_xed(y, rho_data)
+        if return_std:
+            return self.y_to_xed(y[0], rho_data), y[1] * ldax(rho_data[0])
+        else:
+            return self.y_to_xed(y, rho_data) 
 
     def add_point(self, xdesc, xed, rho_data, threshold_factor = 1.2):
-        x = self.get_descriptors(xdesc, num=self.num)
+        x = self.get_descriptors(xdesc, rho_data, num=self.num)
         y = self.xed_to_y(xed, rho_data)
         if self.is_uncertain(x, y, threshold_factor):
             self.X = np.append(self.X, x, axis=0)
