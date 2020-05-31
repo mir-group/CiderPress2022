@@ -39,7 +39,7 @@ def y_to_xed_lda(y, rho_data):
     return get_xed_from_y(y, rho_data[0])
 
 def get_edmgga_descriptors(X, rho_data, num=1):
-    return np.arcsinh(X[:,(1,2,4,5,8,6,12,13,14)[:num]])
+    return np.arcsinh(X[:,(1,2,4,5,8,6,12,15,16,13,14)[:num]])
 
 class PBEGPR(DFTGPR):
 
@@ -181,6 +181,27 @@ def get_rho_and_edmgga_descriptors7(X, rho_data, num=1):
     X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
     return X
 
+def get_edmgga_descriptors8(X, rho_data, num=1):
+    return np.arcsinh(X[:,(1,2,4,5,8,15,16,12,6,12,13,14)[:num]])
+
+def get_rho_and_edmgga_descriptors8(X, rho_data, num=1):
+    X = get_edmgga_descriptors8(X, rho_data, num)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
+def get_edmgga_descriptors9(X, rho_data, num=1):
+    X[:,1] = X[:,1]**2
+    #X[:,2] = np.sinh(1 / (1 + X[:,2]**2))
+    X[:,5] -= X[:,4]
+    X[:,15] -= X[:,4]
+    X[:,16] -= X[:,4]
+    return np.arcsinh(X[:,(1,2,4,5,8,15,16,6,12,13,14)[:num]])
+
+def get_rho_and_edmgga_descriptors9(X, rho_data, num=1):
+    X = get_edmgga_descriptors9(X, rho_data, num)
+    X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
 class NoisyEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False):
@@ -205,8 +226,8 @@ class NoisyEDMGPR(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_rho_and_edmgga_descriptors7,
-                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
+                       descriptor_getter = get_rho_and_edmgga_descriptors9,
+                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     #def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
