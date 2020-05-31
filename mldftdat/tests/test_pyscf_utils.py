@@ -150,7 +150,7 @@ class TestPyscfUtils(unittest.TestCase):
         grid.build()
         ao_data = eval_ao(self.He, grid.coords, deriv=0)
         rho = eval_rho(self.He, ao_data, self.He_rdm1, xctype='LDA')
-        atm, bas, env = get_gaussian_grid(grid, rho, l = 0)
+        atm, bas, env = get_gaussian_grid(grid.coords, rho, l = 0)
 
     def test_get_hf_coul_ex_total(self):
         # covered in setup
