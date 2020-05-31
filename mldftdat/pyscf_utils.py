@@ -80,6 +80,33 @@ def get_grid(mol):
     grid.kernel()
     return grid
 
+def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+
+    a = np.pi * (rho / 2 + 1e-4)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    if s is not None:
+        scale += fac * s**2
+    if alpha is not None:
+        scale += 3.0 / 5 * fac * (alpha - 1)
+    bas[:,1] = l
+    env[bas[:,5]] = a * scale
+    env[bas[rho<1e-5,5]] = 1e16
+    print(np.sqrt(np.min(env[bas[:,5]])))
+    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+
+    return atm, bas, env
+
 def get_ha_total(rdm1, eeint):
     return np.sum(np.sum(eeint * rdm1, axis=(2,3)) * rdm1)
 
@@ -576,6 +603,16 @@ def get_dft_input(rho_data):
     alpha = get_normalized_tau(rho_data[5], tau_w, tau_unif)
     return rho, s, alpha, tau_w, tau_unif
 
+def get_dft_input2(rho_data):
+    rho = rho_data[0,:]
+    r_s = get_ws_radii(rho)
+    mag_grad = get_gradient_magnitude(rho_data)
+    s = get_normalized_grad(rho, mag_grad)
+    tau_w = get_single_orbital_tau(rho, mag_grad)
+    tau_unif = get_uniform_tau(rho)
+    alpha = (rho_data[5] - tau_w) / (tau_unif + 1e-9)
+    return rho, s, alpha, tau_w, tau_unif
+
 def get_vh(rho, rs, weights):
     return np.dot(rho / rs, weights)
 
@@ -662,8 +699,8 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     OUTPUT:
         0 : INPUT[0] * RHO / (INPUT[0] * RHO + TAU)
         1 : INPUT[1] / INPUT[5]
-        2 : INPUT[2] / INPUT[6]
-        3 : INPUT[3] / TAU_U
+        2 : INPUT[2] / INPUT[7]
+        3 : INPUT[3] / INPUT[6]
         4 : INPUT[4]
     """
     nonlocal_data = nonlocal_data.copy()
@@ -679,5 +716,6 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     nonlocal_data[0,:] = ndvh / (ndvh + rho_data[5,:] + 1e-6)
     nonlocal_data[1,:] /= nonlocal_data[5,:] + 1e-6
     nonlocal_data[2,:] /= nonlocal_data[7,:] + 1e-6
+    # TODO: below value is not normalized properly
     nonlocal_data[3,:] /= nonlocal_data[6,:] + 1e-6
     return nonlocal_data[:5,:]

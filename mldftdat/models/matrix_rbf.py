@@ -186,6 +186,12 @@ class PartialRBF2(RBF):
         return super(PartialRBF2, self).__call__(X, Y, eval_gradient)
 
 
+def celu(vec):
+    vec = vec.copy()
+    vec[vec < 0] = np.exp(vec[vec < 0]) - 1
+    return vec
+
+
 class PartialRBF3(RBF):
 
     def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
@@ -195,28 +201,15 @@ class PartialRBF3(RBF):
     def transform_input(self, X):
         X = np.copy(X)
 
-        nab = np.sinh(X[:,0])
-        alpha = 2 * np.exp(X[:,2]) - 1
-        b = 2 * (3 * np.pi * np.pi)**(1.0/3)
-        a = (3.0/10) * (3*np.pi**2)**(2.0/3)
-        A = 0.704
+        #X[:,2] = np.log(0.1 + 0.4 * np.sqrt(1 / (0.5000001 + X[:,2]) - 0.999)) + np.log(2)
+        #X[:,0] -= 3.999376 * X[:,1] - 1.223388
+        #s = np.exp(X[:,1]) - 1
+        #X[:,1] = np.log(s + 0.2) + np.log(5)
+
+        X[:,2] = np.log(0.1 + 0.4 * np.sqrt(1 / (0.5000001 + X[:,2]) - 0.999)) + np.log(2)
+        X[:,0] -= celu(3.999376 * X[:,1] - 1.223388 - 1) + 1
         s = np.exp(X[:,1]) - 1
-        QB = b**2 / (8 * a) * s**2
-        X[:,0] = nab - alpha
-        X[:,1] = QB
-        X[:,2] = alpha
-
-        X -= np.array([7.52968753, 4.24533034, 1.10285059])
-        X /= np.array([9.54236196, 4.53946865, 1.10346559])
-
-        X = np.dot(X, np.array([[ 0.69407835,  0.67714376,  0.24440044],
-         [-0.09951586, -0.24598502,  0.96415142],
-         [ 0.71298797, -0.69351835, -0.10334633]]).T)
-        X[:,:2] = np.dot(X[:,:2], np.array([[np.cos(np.pi/12), np.sin(np.pi/12)],
-            [-np.sin(np.pi/12), np.cos(np.pi/12)]]))
-        X[:,:2] = np.arcsinh(X[:,:2])
-        X[:,2] /= 1 + X[:,0]**2 * 2
-        X /= np.array([0.92757106, 0.74128336, 0.03151811])
+        X[:,1] = np.log(s + 0.2) + np.log(5)
 
         return X
 
@@ -230,7 +223,7 @@ class PartialRBF3(RBF):
 
 class PartialRBF4(DotProduct):
 
-    def __init__(self, sigma_0=0.0, sigma_0_bounds=(1e-5, 1e5), start = 0):
+    def __init__(self, sigma_0=0.0, sigma_0_bounds=(1e-5, 1e-4), start = 0):
         super(PartialRBF4, self).__init__(sigma_0, sigma_0_bounds)
         self.start = start
 
@@ -260,7 +253,15 @@ class PartialRBF4(DotProduct):
         X[:,1] -= -1.01712
         X[:,:2] = np.arcsinh(10 * X[:,:2])
         X[:,2] /= 1 + 0.25 * (X[:,0]**2  + X[:,1]**2)
-        X /= np.array([0.92757106, 0.74128336, 0.03151811])
+        #X /= np.array([0.92757106, 0.74128336, 0.03151811])
+
+        for i in range(4):
+            for j in range(4):
+                for k in range(4):
+                    if i+j+k > 1:
+                        X = np.append(X,
+                            (X[:,0]**i * X[:,1]**j * X[:,2]**k).reshape(-1,1),
+                            axis=1)
 
         return X
 
@@ -310,6 +311,75 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
     def __repr__(self):
         return "{0}".format(self.__class__.__name__)
+
+
+class PartialRBF5(RBF):
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
+        super(PartialRBF5, self).__init__(length_scale, length_scale_bounds)
+        self.start = start
+
+    def transform_input(self, X):
+        X = np.copy(X)
+
+        nab = np.sinh(X[:,0])
+        alpha = 2 * np.exp(X[:,2]) - 1
+        b = 2 * (3 * np.pi * np.pi)**(1.0/3)
+        a = (3.0/10) * (3*np.pi**2)**(2.0/3)
+        A = 0.704
+        s = np.exp(X[:,1]) - 1
+        QB = b**2 / (8 * a) * s**2
+        lapl_sc_exp = 6 * (alpha - 1) + ( 2.0 * b**2 / (3 * a) ) * s**2
+        X[:,0] = nab
+        X[:,1] = QB
+        X[:,2] = alpha
+
+        comp = np.array([[ 0.920044,    0.37866341,  0.10066313],
+             [ 0.16713229, -0.61164927,  0.77327354],
+              [ 0.35438093, -0.69462162, -0.62603112]]).T
+        X = np.dot(X, comp)
+        X[:,0] = np.arcsinh(X[:,0])
+        X[:,1] = np.arcsinh(X[:,1])
+        X[:,1] /= (1 + np.abs(X[:,0])/2)
+        X[:,2] += 0.75
+        X[:,2] /= (1 + 0.1 * X[:,0]**2)
+
+        return X
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = self.transform_input(X[:,self.start:])
+        if Y is not None:
+            Y = self.transform_input(Y[:,self.start:])
+        return super(PartialRBF5, self).__call__(X, Y, eval_gradient)
+
+
+class PartialDot(DotProduct):
+
+    def __init__(self, sigma_0=1.0, sigma_0_bounds=(1e-5, 1e5), start = 0):
+        super(PartialDot, self).__init__(sigma_0, sigma_0_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = X[:,self.start:]
+        if Y is not None:
+            Y = Y[:,self.start:]
+        return super(PartialDot, self).__call__(X, Y, eval_gradient)
+
+
+class SingleRBF(RBF):
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), index = 1):
+        super(SingleRBF, self).__init__(length_scale, length_scale_bounds)
+        self.index = index
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+
+        X = X[:,self.index:self.index+1]
+        if Y is not None:
+            Y = Y[:,self.index:self.index+1]
+        return super(SingleRBF, self).__call__(X, Y, eval_gradient)    
 
 
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,

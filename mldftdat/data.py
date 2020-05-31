@@ -2,11 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt 
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors, edmgga
+from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
 import os
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+#from mldftdat.models import integral_gps
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -63,7 +65,7 @@ def plot_data_diatomic(mol, coords, values, value_name, units, bounds,
         title = '{}$_2$'.format(mol._atom[0][0])
     else:
         title = mol._atom[0][0] + mol._atom[1][0]
-    plt.title(title)
+    #plt.title(title)
 
 def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
                             bounds, scales = None):
@@ -80,7 +82,8 @@ def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
     ax.set_title('Surface plot')
 
 def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False):
+                    Analyzer, spherical_atom = False, locx = False,
+                    append_all_rho_data = False):
 
     import time
     all_descriptor_data = None
@@ -105,6 +108,18 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
                                                    analyzer.grid.coords,
                                                    analyzer.grid.weights,
                                                    restricted = True)
+        if append_all_rho_data:
+            from mldftdat import pyscf_utils
+            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
+                                                        analyzer.grid,
+                                                        analyzer.rdm1)
+            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
+                                                    analyzer.grid,
+                                                    analyzer.rdm1,
+                                                    ao_data)
+            descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
+            descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
+            descriptor_data = np.append(descriptor_data, ddrho, axis=0)
         end = time.monotonic()
         print('get descriptor time', end - start)
         if locx:
@@ -141,6 +156,103 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     np.savetxt(desc_file, all_descriptor_data)
     np.savetxt(val_file, all_values)
     #gp = DFTGP(descriptor_data, values, 1e-3)
+
+def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+                    Analyzer, spherical_atom = False, locx = False, lam = 0.5):
+
+    import time
+    from pyscf import scf
+    all_descriptor_data = None
+    all_rho_data = None
+    all_values = []
+
+    for MOL_ID in MOL_IDS:
+        print('Working on {}'.format(MOL_ID))
+        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
+        start = time.monotonic()
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        if type(analyzer.calc) == scf.hf.RHF:
+            restricted = True
+        else:
+            restricted = False
+        end = time.monotonic()
+        print('analyzer load time', end - start)
+        if spherical_atom:
+            start = time.monotonic()
+            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
+            end = time.monotonic()
+            print('index scanning time', end - start)
+        start = time.monotonic()
+        if restricted:
+            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True)
+        else:
+            descriptor_data_u, descriptor_data_d = \
+                              get_exchange_descriptors2(analyzer, restricted = False)
+            descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
+                                        axis = 1)
+        """
+        if append_all_rho_data:
+            from mldftdat import pyscf_utils
+            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
+                                                        analyzer.grid,
+                                                        analyzer.rdm1)
+            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
+                                                    analyzer.grid,
+                                                    analyzer.rdm1,
+                                                    ao_data)
+            if restricted:
+                descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
+                descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
+                descriptor_data = np.append(descriptor_data, ddrho, axis=0)
+            else:
+                tmp1 = 2 * np.append(analyzer.rho_data[0], analyzer.rho_data[1], axis=1)
+                tmp2 = 2 * np.append(analyzer.tau_data[0], analyzer.tau_data[1], axis=1)
+                tmp3 = 2 * np.append(ddrho[0], ddrho[1], axis=1)
+                descriptor_data = np.append(descriptor_data, tmp1, axis=0)
+                descriptor_data = np.append(descriptor_data, tmp2, axis=0)
+                descriptor_data = np.append(descriptor_data, tmp3, axis=0)
+        """
+        end = time.monotonic()
+        print('get descriptor time', end - start)
+        if locx:
+            print('Getting loc fx')
+            values = analyzer.get_loc_fx_energy_density(lam = lam, overwrite=True)
+            if not restricted:
+                values = 2 * np.append(analyzer.loc_fx_energy_density_u,
+                                       analyzer.loc_fx_energy_density_d)
+        else:
+            values = analyzer.get_fx_energy_density()
+            if not restricted:
+                values = 2 * np.append(analyzer.fx_energy_density_u,
+                                       analyzer.fx_energy_density_d)
+        rho_data = analyzer.rho_data
+        if not restricted:
+            rho_data = 2 * np.append(rho_data[0], rho_data[1], axis=1)
+        if spherical_atom:
+            values = values[indexes]
+            descriptor_data = descriptor_data[:,indexes]
+            rho_data = rho_data[:,indexes]
+
+        if all_descriptor_data is None:
+            all_descriptor_data = descriptor_data
+        else:
+            all_descriptor_data = np.append(all_descriptor_data, descriptor_data,
+                                            axis = 1)
+        if all_rho_data is None:
+            all_rho_data = rho_data
+        else:
+            all_rho_data = np.append(all_rho_data, rho_data, axis=1)
+        all_values = np.append(all_values, values)
+
+    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    rho_file = os.path.join(save_dir, 'rho.npz')
+    desc_file = os.path.join(save_dir, 'desc.npz')
+    val_file = os.path.join(save_dir, 'val.npz')
+    np.savetxt(rho_file, all_rho_data)
+    np.savetxt(desc_file, all_descriptor_data)
+    np.savetxt(val_file, all_values)
 
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
@@ -295,7 +407,14 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    else:
+    else:# type(model) == integral_gps.NoisyEDMGPR:
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
+        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
+        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    """else:
         xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
                                          weights, restricted = restricted)
         #neps = model.predict(xdesc.transpose(), rho)
@@ -304,12 +423,47 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
-    xef = neps / (ldax(rho) + 1e-7)
+    """
+    xef = neps / (ldax(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
         return xef, eps, neps, fx_total, X
     else:
         return xef, eps, neps, fx_total
+
+def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
+    if isinstance(analyzer, RHFAnalyzer):
+        return predict_exchange(analyzer, model, num)[3]
+    rho_data = analyzer.rho_data
+    tau_data = analyzer.tau_data
+    coords = analyzer.grid.coords
+    weights = analyzer.grid.weights
+    rho = rho_data[:,0,:]
+    if model is None:
+        neps = analyzer.get_fx_energy_density()
+    elif model == 'EDM':
+        fxu = edmgga(2 * rho_data[0])
+        fxd = edmgga(2 * rho_data[1])
+        neps = 0.5 * fxu * ldax(2 * rho[0]) + 0.5 * fxd * ldax(2 * rho[1])
+    elif type(model) == str:
+        eps = eval_xc(model + ',', rho_data, spin=analyzer.mol.spin)[0]
+        #epsu = eval_xc(model + ',', 2 * rho_data[0])[0]
+        #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
+        #print(eps.shape, rho_data.shape, analyzer.mol.spin)
+        neps = eps * (rho[0] + rho[1])
+    else:
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False)
+        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
+        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
+    """
+    else:
+        xdescu, xdescd = get_exchange_descriptors(rho_data, tau_data, coords,
+                                         weights, restricted = False)
+        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
+        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
+    """
+    fx_total = np.dot(neps, weights)
+    return fx_total
 
 def error_table(dirs, Analyzer, mlmodel, num = 1):
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
@@ -454,3 +608,93 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl),\
            data_dict
+
+def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    errlst = [[] for _ in models]
+    ae_errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    ae_fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    ae_fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
+        formula = Counter(atoms)
+        element_analyzers = {}
+        for Z in list(formula.keys()):
+            symbol = chemical_symbols[Z]
+            spin = int(ground_state_magnetic_moments[Z])
+            letter = 'R' if spin == 0 else 'U'
+            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+                        dbpath, letter, Z, symbol, spin)
+            if letter == 'R':
+                element_analyzers[Z] = RHFAnalyzer.load(path)
+            else:
+                element_analyzers[Z] = UHFAnalyzer.load(path)
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-3
+        fx_total_ref_true = 0
+        for Z in list(formula.keys()):
+            fx_total_ref_true += formula[Z] \
+                                 * predict_total_exchange_unrestricted(
+                                        element_analyzers[Z])
+        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
+        fxlst_true.append(fx_total_true)
+        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            fx_total_ref = 0
+            for Z in list(formula.keys()):
+                fx_total_ref += formula[Z] \
+                                * predict_total_exchange_unrestricted(
+                                    element_analyzers[Z],
+                                    model = model, num = num)
+            xef_pred, eps_pred, neps_pred, fx_total_pred = \
+                predict_exchange(analyzer, model = model, num = num)
+            print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
+                                                 - (fx_total_ref - fx_total_ref_true))
+
+            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
+            errlst[i].append(fx_total_pred - fx_total_true)
+            ae_errlst[i].append(fx_total_pred - fx_total_true \
+                                - (fx_total_ref - fx_total_ref_true))
+        print(errlst[-1][-1], ae_errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+    ae_errlst = np.array(ae_errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
+           (columns, rows, errtbl)
