@@ -50,6 +50,9 @@ y_train = np.append(y_train, y_test[::200], axis=0)
 rho_train = np.append(rho_train, rho_test[::200], axis=0)
 rho_data_train = np.append(rho_data_train, rho_data_test[:,::200], axis=1)
 
+init_weight = np.array([-0.2888, -0.9707,  0.2324, -0.0547,
+                        0.0075, -0.0024,  0.0051,  0.0141, 0.0551])
+init_bias = 0.9241
 model = PolyAnsatz(NUM)
 model.double()
 criterion, optimizer = get_traing_obj(model)
