@@ -23,31 +23,33 @@ def edmgga_from_q(Q):
 
 class PolyAnsatz(nn.Module):
 
-    def __init__(self, ndesc, func = edmgga_from_q, quadratic = False):
+    def __init__(self, ndesc, func = edmgga_from_q, quadratic = False,
+                 init_weight = None, init_bias = 1.0):
         super(PolyAnsatz, self).__init__()
         self.func = edmgga_from_q
         if quadratic:
-            ndesc = ndesc**2
+            ndesc = ndesc + ndesc * (ndesc + 1) // 2
         self.linear = nn.Linear(ndesc, 1, bias = True)
         self.quadratic = quadratic
         with torch.no_grad():
             print(self.linear.weight.size())
             print(self.linear.bias.size())
-            #self.linear.weight = nn.Parameter(torch.tensor([[0.0, -1.0, 0.25, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0][:ndesc]], dtype=torch.float64))
-            self.linear.weight = nn.Parameter(torch.tensor([[-0.2765, -0.9667,  0.2315, -0.0504,\
-                                                            0.0052, -0.0024,  0.0046,  0.0142, 0.0555,\
-                                                            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0][:ndesc]],\
-                                                            dtype=torch.float64))
-            #self.linear.bias = nn.Parameter(torch.tensor([1.0], dtype=torch.float64))
-            self.linear.bias = nn.Parameter(torch.tensor([1.0372], dtype=torch.float64))
+            weight = np.zeros(ndesc)
+            if init_weight is not None:
+                init_weight = np.array(init_weight)
+                size = init_weight.shape[0]
+                weight[:size] = init_weight
+            self.linear.weight = nn.Parameter(torch.tensor([weight],
+                                                dtype=torch.float64))
+            self.linear.bias = nn.Parameter(torch.tensor([init_bias], dtype=torch.float64))
             print(self.linear.weight.size())
             print(self.linear.bias.size())
 
     def forward(self, x):
         if self.quadratic:
-            x = torch.ger(x, x)
-            tind = x.triu().nonzero().transpose()
-            x = x[tind[0], tind[1]]
+            x2 = torch.ger(x, x)
+            tind = x2.triu().nonzero().transpose()
+            x = torch.cat([x, x2[tind[0], tind[1]]], dim=1)
         x = self.linear(x)
         return torch.squeeze(self.func(x), dim=1)
 
