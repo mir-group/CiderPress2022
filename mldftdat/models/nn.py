@@ -13,6 +13,33 @@ C2 = 1 - C1
 C3 = 0.19697 * np.sqrt(0.704)
 C4 = (C3**2 - 0.09834 * MU) / C3**3
 
+def get_desc_default(X, rho_data, num = 1):
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    p = X[:,1]**2
+    alpha = X[:,2]
+    nabla = X[:,3]
+    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
+    desc = np.zeros((X.shape[0], 18))
+    desc[:,0] = X[:,4] * scale
+    desc[:,1] = X[:,4] * scale**3
+    desc[:,2] = X[:,4] * scale**5
+    desc[:,3] = X[:,5] * scale
+    desc[:,4] = X[:,5] * scale**3
+    desc[:,5] = X[:,5] * scale**5
+    desc[:,6] = X[:,8] * scale
+    desc[:,7] = X[:,8] * scale**3
+    desc[:,8] = X[:,8] * scale**5
+    desc[:,9] = X[:,15] * scale
+    desc[:,10] = X[:,15] * scale**3
+    desc[:,11] = X[:,15] * scale**5
+    desc[:,12] = X[:,16] * scale
+    desc[:,13] = X[:,16] * scale**3
+    desc[:,14] = X[:,16] * scale**5
+    desc[:,15] = p**2
+    desc[:,16] = p * alpha
+    desc[:,17] = alpha**2
+    return np.append(X[:,1:4], desc, axis=1)[:,:num]
+
 def asinh(x):
     return torch.log(x+(x**2+1)**0.5)
 

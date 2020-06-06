@@ -572,7 +572,7 @@ def load_analyzer_data(fname):
     return lib.chkfile.load(data_file, 'analyzer/data')
 
 def get_ws_radii(rho):
-    return (3.0 / (4 * np.pi * rho + 1e-7))**(1.0/3)
+    return (3.0 / (4 * np.pi * rho + 1e-16))**(1.0/3)
 
 def get_gradient_magnitude(rho_data):
     return np.linalg.norm(rho_data[1:4,:], axis=0)
@@ -580,11 +580,11 @@ def get_gradient_magnitude(rho_data):
 def get_normalized_grad(rho, mag_grad):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho**(4.0/3)
-    s = mag_grad / (sprefac * n43 + 1e-7)
+    s = mag_grad / (sprefac * n43 + 1e-16)
     return s
 
 def get_single_orbital_tau(rho, mag_grad):
-    return mag_grad**2 / (8 * rho + 1e-7)
+    return mag_grad**2 / (8 * rho + 1e-16)
 
 def get_uniform_tau(rho):
     return (3.0/10) * (3*np.pi**2)**(2.0/3) * rho**(5.0/3)
@@ -610,7 +610,7 @@ def get_dft_input2(rho_data):
     s = get_normalized_grad(rho, mag_grad)
     tau_w = get_single_orbital_tau(rho, mag_grad)
     tau_unif = get_uniform_tau(rho)
-    alpha = (rho_data[5] - tau_w) / (tau_unif + 1e-9)
+    alpha = (rho_data[5] - tau_w) / (tau_unif + 1e-16)
     return rho, s, alpha, tau_w, tau_unif
 
 def get_vh(rho, rs, weights):
