@@ -8,7 +8,7 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
-#from mldftdat.models import integral_gps
+from mldftdat.models.nn import Predictor
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -407,6 +407,12 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
+    elif type(model) == Predictor:
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
+        neps = model.predict(xdesc.transpose(), rho_data)
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     else:# type(model) == integral_gps.NoisyEDMGPR:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
@@ -612,7 +618,7 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
 def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    models = ['MGGA_X_GVT4', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -643,7 +649,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
                 element_analyzers[Z] = UHFAnalyzer.load(path)
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-3
+        condition = rho > 3e-5
         fx_total_ref_true = 0
         for Z in list(formula.keys()):
             fx_total_ref_true += formula[Z] \
