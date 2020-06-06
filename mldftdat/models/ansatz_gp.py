@@ -38,19 +38,53 @@ def x_to_q(x):
     return np.sinh(np.log(np.sinh(x)))
 
 def xed_to_y_q(xed, rho_data):
-    F = get_y_from_xed(xed, rho_data[0])
+    F = get_y_from_xed(xed, rho_data[0]) + 1.0
     return x_to_q(f_to_x(F))
 
 def y_to_xed_q(y, rho_data):
     F = edmgga_from_q(y)
-    return get_xed_from_y(F, rho_data[0])
+    return get_xed_from_y(F - 1, rho_data[0])
 
 def get_edmgga_descriptors(X, num=1):
     X[:,1] = X[:,1]**2
     return X[:,(1,2,3,4,5,8,6,12,15,16,13,14)[:num]]
 
+def get_descriptors(X, num = 1):
+    #X[:,1] = X[:,1]**2
+    #return X[:,(1,2,3,4,5,8,6,12,15,16,13,14)[:num]]
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    X[:,1] = X[:,1]**2
+    p = X[:,1]
+    alpha = X[:,2]
+    nabla = X[:,3]
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
+    desc = np.zeros((X.shape[0], 27))
+    desc[:,0] = X[:,4] * scale
+    desc[:,1] = X[:,4] * scale**3
+    desc[:,2] = X[:,4] * scale**5
+    desc[:,3] = X[:,5] * scale
+    desc[:,4] = X[:,5] * scale**3
+    desc[:,5] = X[:,5] * scale**5
+    desc[:,6] = np.sqrt(X[:,8]) * scale
+    desc[:,7] = np.sqrt(X[:,8]) * scale**3
+    desc[:,8] = np.sqrt(X[:,8]) * scale**5
+    desc[:,9] = X[:,15] * scale
+    desc[:,10] = X[:,15] * scale**3
+    desc[:,11] = X[:,15] * scale**5
+    desc[:,12] = X[:,16] * scale
+    desc[:,13] = X[:,16] * scale**3
+    desc[:,14] = X[:,16] * scale**5
+    desc[:,15] = p**2
+    desc[:,16] = p * alpha
+    desc[:,17] = alpha**2
+    desc[:,18:21] = desc[:,0:3]**2
+    desc[:,21:24] = desc[:,9:12]**2
+    desc[:,24:27] = desc[:,12:15]**2
+    return np.append(X[:,1:4], desc, axis=1)[:,:num]
+
+
 def get_rho_and_edmgga_descriptors(X, rho_data, num=1, xed=None):
-    X = get_edmgga_descriptors(X, num)
+    X = get_descriptors(X, num)
     if xed is None:
         X = np.append(np.ones(X.shape[0]).reshape(-1,1), X, axis=1)
     else:
@@ -75,8 +109,8 @@ class PartialDot(DotProduct):
 class DerivNoise(StationaryKernelMixin, GenericKernelMixin,
                    Kernel):
 
-    def __init__(self, interval = 0.001, index = 0):
-        self.interval = 0.001
+    def __init__(self, interval = 0.006, index = 0):
+        self.interval = interval
         self.index = index
 
     def __call__(self, X, Y=None, eval_gradient=False):
@@ -129,11 +163,12 @@ class FeatureNoise(StationaryKernelMixin, GenericKernelMixin,
 class AnsatzGPR(DFTGPR):
 
     def __init__(self, num_desc, use_algpr = False):
-        dot = Exponentiation(PartialDot(start = 1), 2)
+        #dot = Exponentiation(PartialDot(start = 1), 2)
+        dot = PartialDot(start = 1)
         dn = DerivNoise()
         fn = FeatureNoise()
         wk = WhiteKernel(noise_level=1.0e-4, noise_level_bounds=(1e-06, 1.0e5))
-        wkf = WhiteKernel(noise_level = 0.001, noise_level_bounds=(1e-05, 0.1))
+        wkf = WhiteKernel(noise_level = 0.004, noise_level_bounds=(1e-05, 0.1))
         wkd = WhiteKernel(noise_level = 1.0, noise_level_bounds=(1e-05, 1.0e5))
         cov_kernel = dot
         noise_kernel = wk + dn + fn * wkf
