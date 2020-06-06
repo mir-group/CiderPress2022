@@ -46,11 +46,11 @@ def project_xc_basis_l0(dedb, auxmol, grid):
     if N % num_chunks != 0:
         chunk_size += 1
     vbas = np.zeros(N)
-    for chunk in num_chunks:
+    for chunk in range(num_chunks):
         # consider making a mask?
         # shape (N, norb)
         min_ind = chunk * chunk_size 
-        max_ind = np.min((chunk+1) * chunk_size, N)
+        max_ind = min((chunk+1) * chunk_size, N)
         non0tab = make_mask(auxmol, grid.coords,
                             shls_slice = (min_ind, max_ind))
         ao = eval_ao(auxmol, grid.coords, shls_slice = (min_ind, max_ind),
@@ -77,19 +77,23 @@ def project_xc_basis(dedb, auxmol, grid, l = 0):
     chunk_size = N // num_chunks
     if N % num_chunks != 0:
         chunk_size += 1
-    vbas = np.zeros(N * 2*l+1)
+    vbas = np.zeros(N * (2*l+1))
     # has shape (N, 2l+1)
     energy_deriv = (dedb * grid.weights).T.flatten()
-    for chunk in num_chunks:
+    r = np.linalg.norm(grid.coords, axis=1)
+    for chunk in range(num_chunks):
         # consider making a mask?
         # shape (N, norb)
         min_ind = chunk * chunk_size
-        max_ind = np.min((chunk+1) * chunk_size, N)
+        max_ind = min((chunk+1) * chunk_size, N)
+        print(min_ind, max_ind)
         non0tab = make_mask(auxmol, grid.coords,
                             shls_slice = (min_ind, max_ind))
         # ao has shape (N, nao) so (N, chunk_size * (2l+1))
-        ao = eval_ao(auxmol, grid.coords, shls_slice = (min_ind, max_ind),
-                     non0tab = non0tab)
+        ao = eval_ao(auxmol, grid.coords, shls_slice = (min_ind, max_ind))
+                     #non0tab = non0tab)
+        print(np.dot(grid.weights, ao))
+        print(np.einsum('ii->i', ao[min_ind:max_ind,:]))
         vbas += np.dot(ao, energy_deriv[min_ind * (2*l+1) : max_ind * (2*l+1)])
     return np.sum(vbas.reshape(N, 2*l+1), axis=1)
 
@@ -234,9 +238,10 @@ def v_basis_transform(rho_data, v_npalpha):
     v_nst[3] = v_npalpha[3] * dadtau
     return v_nst
 
-def v_nonlocal(rho_data, grid, dfdg, ao_to_aux, rdm1, auxmol, g, l = 0, mul = 1.0):
+def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     # g should have shape (2l+1, N)
-    elda = LDA_FACTOR * rho**(4.0/3)
+    elda = LDA_FACTOR * rho_data[0]**(4.0/3)
+    N = grid.weights.shape[0]
     lc = get_dft_input2(rho_data)[:3]
     if l == 0:
         dedb = elda * dfdg
@@ -251,8 +256,6 @@ def v_nonlocal(rho_data, grid, dfdg, ao_to_aux, rdm1, auxmol, g, l = 0, mul = 1.
     # dE/dn line 2
     vbas = project_xc_basis(dedb, gridmol, grid, l)
 
-    density = np.einsum('npq,pq->n', ao_to_aux, rdm1)
-    desc = np.append(rho_data, ddrho, axis=0)
     # (ngrid * (2l+1), naux)
     ovlp = gto.mole.intor_cross('int1e_ovlp', auxmol, gridmol).transpose()
     ovlp_deriv = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).transpose()
@@ -261,11 +264,21 @@ def v_nonlocal(rho_data, grid, dfdg, ao_to_aux, rdm1, auxmol, g, l = 0, mul = 1.
     dgda = l / (2 * a) * g - gr2
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 2 * a / (3 * n)
-    dadp = np.pi * fac * (n/2)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (n/2)**(2.0/3)
+    dadn = 2 * a / (3 * lc[0])
+    dadp = np.pi * fac * (lc[0] / 2)**(2.0/3)
+    print('dadp', dadn, dgda, dedb)
+    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
-    return vbas + dgda * dadn, dgda * dadp, dgda * dadalpha
+    v_npa = np.zeros((4, N))
+    print('hi', dedb * dgda * dadn)
+    print('hi', vbas)
+    v_npa[0] = vbas + dedb * dgda * dadn
+    v_npa[1] = dedb * dgda * dadp
+    v_npa[3] = dedb * dgda * dadalpha
+    return v_npa
+
+def get_density_in_basis(ao_to_aux, rdm1):
+    return np.einsum('npq,pq->n', ao_to_aux, rdm1)
 
 def arcsinh_deriv(x):
     return 1 / np.sqrt(x * x + 1)
