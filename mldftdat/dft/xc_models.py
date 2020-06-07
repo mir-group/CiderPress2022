@@ -38,7 +38,7 @@ class Descriptor():
         self._transform = transform
         self._transform_deriv = transform_deriv
         self.code = code
-    
+
     def transform_descriptor(self, desc, deriv = 0):
         if deriv == 0:
             return self._transform(desc[:,self.code])
@@ -53,11 +53,14 @@ class MLFunctional(ABC):
         pass
 
     @abstractmethod
-    def get_
+    def get_derivative(self, X):
+        pass
 
-class GPFunctional():
+class GPFunctional(MLFunctional):
+    # TODO: This setup currently assumes that the gp directly
+    # predict F_X - 1. This will not always be the case.
 
-    def __init__(self, gpr, desc_list, y_to_f, muls):
+    def __init__(self, gpr, desc_list, y_to_f):
         """
         desc_type_list should have the l value of each nonlocal
         descriptor, -1 for p, -2 for alpha
@@ -73,20 +76,17 @@ class GPFunctional():
         # in front.
         self.kernel = gpr.gp.kernel_.k1
         self.get_descriptors = gpr.get_descriptors
-        self.desc_type_list = desc_type_list
-        self.muls = muls
+        self.desc_list = desc_list
         self.y_to_f = y_to_f
 
     def get_F(self, X):
         k = self.kernel(X, self.X_train_)
         y_mean = k.dot(self.alpha_)
         y = y_mean * self._y_train_std + self._y_train_mean
-        F = self.y_to_f(y)
+        return y + 1
+        #F = self.y_to_f(y)
 
-    def get_eps(self, X, rho_data):
-        return LDA_FACTOR * self.get_F(X) * rho_data[0]**(1.0/3)
-
-    def get_derivative(self, X, rho_data):
+    def get_derivative(self, X):
         # shape n_test, n_train
         k = self.kernel(X, self.X_train_)
         # X has shape n_test, n_desc
@@ -97,14 +97,19 @@ class GPFunctional():
         kda = np.dot(k, self.alpha_)
         return (kaxt - X * kda) / self.length_scale**2
 
+    def get_eps(self, X, rho_data):
+        return LDA_FACTOR * self.get_F(X) * rho_data[0]**(1.0/3)
+
     def get_potential(self, X, gp_deriv, rho_data):
         v_npa = np.zeros(4, rho_data.shape[1])
         F = self.get_F(X)
+        dgpdp = np.zeros(rho_data.shape[1])
+        dgpda = np.zeros(rho_data.shape[1])
         for i, l in enumerate(self.desc_type_list):
             if l == -1:
-                dgpdp = gp_deriv[:,i]
+                dgpdp += gp_deriv[:,i]
             elif l == -2:
-                dgpda = gp_deriv[:,i]
+                dgpda += gp_deriv[:,i]
             else:
                 v_npa += v_nonlocal(rho_data, grid, gp_deriv[:,i],
                                     ao_to_aux, rdm1, auxmol, g, l = l,
