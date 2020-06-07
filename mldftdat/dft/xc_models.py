@@ -39,6 +39,7 @@ class Descriptor():
         self._transform = transform
         self._transform_deriv = transform_deriv
         self.code = code
+        self.mul = mul
 
     def transform_descriptor(self, desc, deriv = 0):
         if deriv == 0:
@@ -61,22 +62,21 @@ class GPFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
 
-    def __init__(self, gpr, desc_list, y_to_f):
+    def __init__(self, kernel, alpha, X_train, desc_list, y_to_f):
         """
         desc_type_list should have the l value of each nonlocal
         descriptor, -1 for p, -2 for alpha
         """
-        self.ndesc = gpr.num
+        self.ndesc = len(kernel.length_scale)
         #self._y_train_mean = gpr.gp._y_train_mean
         #self._y_train_std = gpr.gp._y_train_std
-        self.X_train_ = gpr.gp.X_train_
-        self.alpha_ = gpr.gp.alpha_
+        self.X_train_ = X_train
+        self.alpha_ = alpha
         # assume that k1 is the covariance
         # and that k2 is the noise kernel
         # TODO: take into account the constant kernel
         # in front.
-        self.kernel = gpr.gp.kernel_.k1
-        self.get_descriptors = gpr.get_descriptors
+        self.kernel = kernel
         self.desc_list = desc_list
         self.y_to_f = y_to_f
 
@@ -96,7 +96,8 @@ class GPFunctional(MLFunctional):
         # shape n_test, n_desc
         kaxt = np.dot(ka, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        return (kaxt - X * kda) / self.length_scale**2
+        print(kaxt.shape, kda.shape)
+        return (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
 
     """
     def get_eps(self, X, rho_data):
