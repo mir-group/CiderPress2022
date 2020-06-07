@@ -43,7 +43,7 @@ class Descriptor():
         if deriv == 0:
             return self._transform(desc[:,self.code])
         else:
-            return self._transform(desc[:,self.code]),
+            return self._transform(desc[:,self.code]),\
                    self._transform_deriv(desc[:,self.code])
 
 class MLFunctional(ABC):
