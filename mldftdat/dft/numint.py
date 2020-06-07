@@ -1,17 +1,21 @@
 import pyscf.dft.numint as pyscf_numint
 from pyscf import df, dft
 import numpy as np
-from mldftdat.density import get_x_helper_full, LDA_FACTOR
+from mldftdat.density import get_x_helper_full, LDA_FACTOR, contract_exchange_descriptors
+import scipy.linalg
+from scipy.linalg.lapack import dgetrf, dgetri
+from scipy.linalg.blas import dgemm, dgemv
+from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
     make_rho, nset, nao = ni._gen_rho_evaluator(mol, dms, hermi)
     shls_slice = (0, mol.nbas)
-    ao_loc = mol.nao_loc_nr()
+    ao_loc = mol.ao_loc_nr()
 
     nelec = np.zeros(nset)
-    excsum = np.zerps(nset)
+    excsum = np.zeros(nset)
     vmat = np.zeros((nset, nao, nao))
     aow = None
 
@@ -19,16 +23,17 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
     for ao, mask, weight, coords \
             in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
         ngrid = weight.size
-        aow = numpy.ndarray(ao[0].shape, order='F', buffer=aow)
+        aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
         for idm in range(nset):
+            print(dms.shape)
             rho = make_rho(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(mol, rho, grids, dms[idm],
+            exc, vxc = ni.eval_xc(mol, rho, grids, dms,
                                   0, relativity, 1,
                                   verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau = vxc[:4]
             den = rho[0] * weight
             nelec[idm] += den.sum()
-            excsum[idm] += numpy.dot(den, exc)
+            excsum[idm] += np.dot(den, exc)
 
             wv = _rks_gga_wv0(rho, vxc, weight)
             #:aow = numpy.einsum('npi,np->pi', ao[:4], wv, out=aow)
@@ -53,6 +58,8 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
     return nelec, excsum, vmat
 
 class NLNumInt(pyscf_numint.NumInt):
+
+    nr_rks = nr_rks
 
     def eval_xc(self, mol, rho_data, grid, rdm1, spin = 0,
                 relativity = 0, deriv = 1, omega = None,
@@ -97,13 +104,16 @@ class NLNumInt(pyscf_numint.NumInt):
             
 
 def _eval_xc_0(mol, rho_data, grid, rdm1):
+    mlfunc = mol.mlfunc
+    auxmol = mol.auxmol
+    ao_to_aux = mol.ao_to_aux
     N = grid.weights.shape[0]
-    desc  = np.zeros((N, len(mlfunc.ndesc)))
-    ddesc = np.zeros((N, len(mlfunc.ndesc)))
+    desc  = np.zeros((N, len(mlfunc.desc_list)))
+    ddesc = np.zeros((N, len(mlfunc.desc_list)))
     ao_data, rho_data = get_mgga_data(mol, grid, rdm1)
     ddrho = get_rho_second_deriv(mol, grid, rdm1, ao_data)
-    raw_desc = get_x_helper_full(auxmol, rho_data, ddrho, analyzer.grid,
-                                 analyzer.rdm1, ao_to_aux)
+    raw_desc = get_x_helper_full(auxmol, rho_data, ddrho, grid,
+                                 rdm1, ao_to_aux)
     contracted_desc = contract_exchange_descriptors(raw_desc)
     for i, d in enumerate(mol.mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
@@ -116,7 +126,9 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
     for i, d in enumerate(mlfunc.desc_list):
-        if d.code == 1:
+        if d.code == 0:
+            continue
+        elif d.code == 1:
             dgpdp += gp_deriv[:,i]
         elif d.code == 2:
             dgpda += gp_deriv[:,i]
@@ -149,7 +161,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
 
 def setup_aux(mol, beta):
     auxbasis = df.aug_etb(mol, beta = beta)
-    nao = analyzer.mol.nao_nr()
+    nao = mol.nao_nr()
     auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric

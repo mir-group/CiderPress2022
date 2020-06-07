@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod, abstractproperty
+import numpy as np
 
 """
 NORMALIZED_GRAD_CODE = -1
@@ -41,10 +42,10 @@ class Descriptor():
 
     def transform_descriptor(self, desc, deriv = 0):
         if deriv == 0:
-            return self._transform(desc[:,self.code])
+            return self._transform(desc[self.code])
         else:
-            return self._transform(desc[:,self.code]),\
-                   self._transform_deriv(desc[:,self.code])
+            return self._transform(desc[self.code]),\
+                   self._transform_deriv(desc[self.code])
 
 class MLFunctional(ABC):
 
@@ -66,8 +67,8 @@ class GPFunctional(MLFunctional):
         descriptor, -1 for p, -2 for alpha
         """
         self.ndesc = gpr.num
-        self._y_train_mean = gpr.gp._y_train_mean
-        self._y_train_std = gpr.gp._y_train_std
+        #self._y_train_mean = gpr.gp._y_train_mean
+        #self._y_train_std = gpr.gp._y_train_std
         self.X_train_ = gpr.gp.X_train_
         self.alpha_ = gpr.gp.alpha_
         # assume that k1 is the covariance
@@ -82,8 +83,8 @@ class GPFunctional(MLFunctional):
     def get_F(self, X):
         k = self.kernel(X, self.X_train_)
         y_mean = k.dot(self.alpha_)
-        y = y_mean * self._y_train_std + self._y_train_mean
-        return y + 1
+        #y = y_mean * self._y_train_std + self._y_train_mean
+        return y_mean + 1
         #F = self.y_to_f(y)
 
     def get_derivative(self, X):
@@ -97,6 +98,7 @@ class GPFunctional(MLFunctional):
         kda = np.dot(k, self.alpha_)
         return (kaxt - X * kda) / self.length_scale**2
 
+    """
     def get_eps(self, X, rho_data):
         return LDA_FACTOR * self.get_F(X) * rho_data[0]**(1.0/3)
 
@@ -116,5 +118,5 @@ class GPFunctional(MLFunctional):
                                     mul = self.muls[i])
         v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
         return v_basis_transform(rho_data, v_npa)
-            
+    """     
 
