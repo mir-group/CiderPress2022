@@ -1,4 +1,5 @@
 import pyscf.dft.numint as pyscf_numint
+from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao
 from pyscf import df, dft
 import numpy as np
 from mldftdat.density import get_x_helper_full, LDA_FACTOR, contract_exchange_descriptors
@@ -6,6 +7,7 @@ import scipy.linalg
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
+from mldftdat.dft.utils import *
 
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
@@ -104,6 +106,7 @@ class NLNumInt(pyscf_numint.NumInt):
             
 
 def _eval_xc_0(mol, rho_data, grid, rdm1):
+    density = np.einsum('npq,pq->n', mol.ao_to_aux, rdm1)
     mlfunc = mol.mlfunc
     auxmol = mol.auxmol
     ao_to_aux = mol.ao_to_aux
@@ -113,25 +116,26 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     ao_data, rho_data = get_mgga_data(mol, grid, rdm1)
     ddrho = get_rho_second_deriv(mol, grid, rdm1, ao_data)
     raw_desc = get_x_helper_full(auxmol, rho_data, ddrho, grid,
-                                 rdm1, ao_to_aux)
+                                 density, ao_to_aux)
     contracted_desc = contract_exchange_descriptors(raw_desc)
     for i, d in enumerate(mol.mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
                                   contracted_desc, deriv = 1)
+    print(desc.shape)
     F = mol.mlfunc.get_F(desc)
     # shape (N, ndesc)
     dF = mol.mlfunc.get_derivative(desc)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
-    v_npa = np.zerps(4, N)
+    v_npa = np.zeros((4, N))
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
     for i, d in enumerate(mlfunc.desc_list):
         if d.code == 0:
             continue
         elif d.code == 1:
-            dgpdp += gp_deriv[:,i]
+            dgpdp += dF[:,i]
         elif d.code == 2:
-            dgpda += gp_deriv[:,i]
+            dgpda += dF[:,i]
         else:
             if d.code in [4, 15, 16]:
                 g = contracted_desc[d.code]
@@ -151,7 +155,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
             else:
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
             v_npa += v_nonlocal(rho_data, grid, dF[:,i],
-                                mol.ao_to_aux, density,
+                                density,
                                 mol.auxmol, g, l = l,
                                 mul = d.mul)
     v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)

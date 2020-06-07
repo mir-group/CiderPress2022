@@ -50,7 +50,7 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
         return np.append(lcu, nlcu, axis=0),\
                np.append(lcd, nlcd, axis=0)
 
-def get_x_helper_full(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
+def get_x_helper_full(auxmol, rho_data, ddrho, grid, density, ao_to_aux):
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
     # desc[12:13] = g0
@@ -62,7 +62,6 @@ def get_x_helper_full(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     # g2 order: xy, yz, z^2, xz, x^2-y^2
     lc = get_dft_input2(rho_data)[:3]
     # size naux
-    density = np.einsum('npq,pq->n', ao_to_aux, rdm1)
     desc = np.append(rho_data, ddrho, axis=0)
     N = grid.weights.shape[0]
     for l in range(3):
