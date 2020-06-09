@@ -27,7 +27,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         ngrid = weight.size
         aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
         for idm in range(nset):
-            print(dms.shape)
+            print('dm shape', dms.shape)
             rho = make_rho(idm, ao, mask, 'MGGA')
             exc, vxc = ni.eval_xc(mol, rho, grids, dms,
                                   0, relativity, 1,
@@ -121,7 +121,6 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     for i, d in enumerate(mol.mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
                                   contracted_desc, deriv = 1)
-    print(desc.shape)
     F = mol.mlfunc.get_F(desc)
     # shape (N, ndesc)
     dF = mol.mlfunc.get_derivative(desc)
@@ -129,13 +128,14 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     v_npa = np.zeros((4, N))
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
+    dFddesc = dF * ddesc
     for i, d in enumerate(mlfunc.desc_list):
         if d.code == 0:
             continue
         elif d.code == 1:
-            dgpdp += dF[:,i]
+            dgpdp += dFddesc[:,i]
         elif d.code == 2:
-            dgpda += dF[:,i]
+            dgpda += dFddesc[:,i]
         else:
             if d.code in [4, 15, 16]:
                 g = contracted_desc[d.code]
@@ -154,7 +154,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
             #    g = raw_desc[(1,2,3,16,17,18,19,20)]
             else:
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
-            v_npa += v_nonlocal(rho_data, grid, dF[:,i],
+            v_npa += v_nonlocal(rho_data, grid, dFddesc[:,i],
                                 density,
                                 mol.auxmol, g, l = l,
                                 mul = d.mul)

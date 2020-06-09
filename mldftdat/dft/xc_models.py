@@ -67,6 +67,22 @@ class MLFunctional(ABC):
     def get_derivative(self, X):
         pass
 
+
+class PBEFunctional(MLFunctional):
+
+    def __init__(self):
+        self.desc_list = [Descriptor(1)]
+
+    def get_F(self, X):
+        p = X.flatten()
+        return 1 + kappa - kappa / (1 + mu * p / kappa)
+        
+    def get_derivative(self, X):
+        
+        return mu / (1 + mu * p / kappa)**2
+
+
+
 class GPFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
@@ -105,7 +121,6 @@ class GPFunctional(MLFunctional):
         # shape n_test, n_desc
         kaxt = np.dot(ka, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        print(kaxt.shape, kda.shape)
         return (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
 
     """
