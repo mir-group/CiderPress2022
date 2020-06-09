@@ -205,10 +205,10 @@ def get_rho_and_edmgga_descriptors9(X, rho_data, num=1):
 def get_edmgga_descriptors10(X, rho_data, num=1):
     #X[:,1] = X[:,1]**2
     #X[:,2] = np.sinh(1 / (1 + X[:,2]**2))
-    X[:,5] -= X[:,4]
-    X[:,15] -= X[:,4]
-    X[:,16] -= X[:,4]
-    return np.arcsinh(X[:,(1,2,4,5,8,15,14,16,12,13,14)[:num]])
+    #X[:,5] -= X[:,4]
+    #X[:,15] -= X[:,4]
+    #X[:,16] -= X[:,4]
+    return np.arcsinh(X[:,(1,2,4,5,8,15,16,14,12,13,14)[:num]])
 
 def get_rho_and_edmgga_descriptors10(X, rho_data, num=1):
     X = get_edmgga_descriptors10(X, rho_data, num)
@@ -250,7 +250,7 @@ class NoisyEDMGPR(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_rho_and_edmgga_descriptors11,
+                       descriptor_getter = get_rho_and_edmgga_descriptors10,
                        xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
