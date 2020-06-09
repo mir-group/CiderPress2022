@@ -14,6 +14,15 @@ L2_CONTRACT_CODE = 4
 def identity(x):
     return x
 
+def extract_kernel_components(kernel):
+    """
+    For an sklearn Kernel object composed of
+    three kernels of the form:
+    kernel = (const * comp) + (noise),
+    extract the three components
+    """
+    return kernel.k1.k1, kernel.k1.k2, kernel.k2
+
 # res
 # 0:  rho
 # 1:  s
