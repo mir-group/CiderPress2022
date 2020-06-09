@@ -7,6 +7,12 @@ def dtauw(rho_data):
     return - get_gradient_magnitude(rho_data)**2 / (8 * rho_data[0,:]**2 + 1e-16),\
            1 / (8 * rho_data[0,:] + 1e-16)
 
+def dsdp(s):
+    return 1 / (2 * s)
+
+def dasinhsdp(s):
+    return arcsinh_deriv(s) / (2 * s)
+
 def ds2(rho_data):
     # s = |nabla n| / (b * n)
     rho = rho_data[0,:]
@@ -77,7 +83,7 @@ def project_xc_basis(dedb, auxmol, grid, l = 0):
     chunk_size = N // num_chunks
     if N % num_chunks != 0:
         chunk_size += 1
-    vbas = np.zeros(N * (2*l+1))
+    vbas = np.zeros(N)
     # has shape (N, 2l+1)
     energy_deriv = (dedb * grid.weights).T.flatten()
     r = np.linalg.norm(grid.coords, axis=1)
@@ -86,16 +92,14 @@ def project_xc_basis(dedb, auxmol, grid, l = 0):
         # shape (N, norb)
         min_ind = chunk * chunk_size
         max_ind = min((chunk+1) * chunk_size, N)
-        print(min_ind, max_ind)
         non0tab = make_mask(auxmol, grid.coords,
                             shls_slice = (min_ind, max_ind))
         # ao has shape (N, nao) so (N, chunk_size * (2l+1))
         ao = eval_ao(auxmol, grid.coords, shls_slice = (min_ind, max_ind))
                      #non0tab = non0tab)
-        print(np.dot(grid.weights, ao))
-        print(np.einsum('ii->i', ao[min_ind:max_ind,:]))
+        #print(vbas.shape, ao.shape, energy_deriv.shape, energy_deriv[min_ind * (2*l+1) : max_ind * (2*l+1)].shape)
         vbas += np.dot(ao, energy_deriv[min_ind * (2*l+1) : max_ind * (2*l+1)])
-    return np.sum(vbas.reshape(N, 2*l+1), axis=1)
+    return vbas
 
 def get_grid_nuc_distances(mol, grid):
     # shape (natm, 3)
@@ -244,11 +248,14 @@ def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     N = grid.weights.shape[0]
     lc = get_dft_input2(rho_data)[:3]
     if l == 0:
-        dedb = elda * dfdg
+        dedb = (elda * dfdg).reshape(1, -1)
     elif l == 1:
-        dedb = 2 * elda * g * dfdg
+        #dedb = 2 * elda * g * dfdg
+        dedb = elda * g * dfdg / np.linalg.norm(g, axis=0)
     elif l == 2:
         dedb = 2 * elda * g * dfdg / np.sqrt(5)
+    else:
+        raise ValueError('angular momentum code l=%d unknown' % l)
     atm, bas, env = get_gaussian_grid(grid.coords, mul * rho_data[0],
                                       l = l, s = lc[1], alpha=lc[2])
     a = env[bas[:,5]]
@@ -266,15 +273,14 @@ def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     dadn = 2 * a / (3 * lc[0])
     dadp = np.pi * fac * (lc[0] / 2)**(2.0/3)
-    print('dadp', dadn, dgda, dedb)
     dadalpha = 0.6 * np.pi * fac * (lc[0] / 2)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
-    print('hi', dedb * dgda * dadn)
-    print('hi', vbas)
-    v_npa[0] = vbas + dedb * dgda * dadn
-    v_npa[1] = dedb * dgda * dadp
-    v_npa[3] = dedb * dgda * dadalpha
+    #print('shapes', dedb.shape, dgda.shape)
+    deda = np.einsum('mi,mi->i', dedb, dgda)
+    v_npa[0] = vbas + deda * dadn
+    v_npa[1] = deda * dadp
+    v_npa[3] = deda * dadalpha
     return v_npa
 
 def get_density_in_basis(ao_to_aux, rdm1):
