@@ -171,6 +171,46 @@ def get_exchange_descriptors2(analyzer, restricted = True):
                               2*analyzer.rdm1[1], ao_to_aux)
         return desc0, desc1
 
+# TODO: Check the math
+def contract21(t2, t1):
+    # xy, yz, z2, xz, x2-y2
+    # x, y, z
+    t2c = np.zeros(t2.shape, dtype=np.complex128)
+    t2c[4] = (t2[4] + 1j * t2[0]) / np.sqrt(2) # +2
+    t2c[3] = (-t2[3] - 1j * t2[1]) / np.sqrt(2) # +1
+    t2c[2] = t2[2] # 0
+    t2c[1] = (t2[3] - 1j * t2[1]) / np.sqrt(2) # -1
+    t2c[0] = (t2[4] - 1j * t2[0]) / np.sqrt(2) # -2
+
+    t1c = np.zeros(t1.shape, dtype=np.complex128)
+    t1c[2] = -(t1[0] + 1j * t1[1]) / np.sqrt(2) # +1
+    t1c[1] = t1[2] # 0
+    t1c[0] = (t1[0] - 1j * t1[1]) / np.sqrt(2) # -1
+
+    res = np.zeros(t1.shape, dtype=np.complex128)
+    res[0] = np.sqrt(0.6) * t2c[0] * t1c[2]\
+             - np.sqrt(0.3) * t2c[1] * t1c[1]\
+             + np.sqrt(0.1) * t2c[2] * t1c[0] # -1
+    res[1] = np.sqrt(0.3) * t2c[1] * t1c[2]\
+             - np.sqrt(0.4) * t2c[2] * t1c[1]\
+             + np.sqrt(0.3) * t2c[3] * t1c[0]
+    res[2] = np.sqrt(0.6) * t2c[4] * t1c[0]\
+             - np.sqrt(0.3) * t2c[3] * t1c[1]\
+             + np.sqrt(0.1) * t2c[2] * t1c[2]
+
+    xterm = (res[0] - res[2]) / np.sqrt(2)
+    yterm = 1j * (res[0] + res[2]) / np.sqrt(2)
+    zterm = res[1]
+
+    return np.real(np.array([xterm, yterm, zterm]))
+
+def contract21_deriv(t1):
+    tmp = np.identity(5)
+    derivs = np.zeros((5, 3, t1.shape[1]))
+    for i in range(5):
+        derivs[i] = contract21(tmp[i], t1)
+    return np.einsum('map,ap->mp', derivs, t1)
+
 def contract_exchange_descriptors(desc):
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
@@ -256,39 +296,6 @@ def contract_exchange_descriptors(desc):
     res[9] = np.einsum('pn,pqn,qn->n', svec, ddrho_mat, svec)
     res[10] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, svec)
     res[11] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, g1)
-
-    # TODO: Check the math
-    def contract21(t2, t1):
-        # xy, yz, z2, xz, x2-y2
-        # x, y, z
-        t2c = np.zeros(t2.shape, dtype=np.complex128)
-        t2c[4] = (t2[4] + 1j * t2[0]) / np.sqrt(2) # +2
-        t2c[3] = (-t2[3] - 1j * t2[1]) / np.sqrt(2) # +1
-        t2c[2] = t2[2] # 0
-        t2c[1] = (t2[3] - 1j * t2[1]) / np.sqrt(2) # -1
-        t2c[0] = (t2[4] - 1j * t2[0]) / np.sqrt(2) # -2
-
-        t1c = np.zeros(t1.shape, dtype=np.complex128)
-        t1c[2] = -(t1[0] + 1j * t1[1]) / np.sqrt(2) # +1
-        t1c[1] = t1[2] # 0
-        t1c[0] = (t1[0] - 1j * t1[1]) / np.sqrt(2) # -1
-
-        res = np.zeros(t1.shape, dtype=np.complex128)
-        res[0] = np.sqrt(0.6) * t2c[0] * t1c[2]\
-                 - np.sqrt(0.3) * t2c[1] * t1c[1]\
-                 + np.sqrt(0.1) * t2c[2] * t1c[0] # -1
-        res[1] = np.sqrt(0.3) * t2c[1] * t1c[2]\
-                 - np.sqrt(0.4) * t2c[2] * t1c[1]\
-                 + np.sqrt(0.3) * t2c[3] * t1c[0]
-        res[2] = np.sqrt(0.6) * t2c[4] * t1c[0]\
-                 - np.sqrt(0.3) * t2c[3] * t1c[1]\
-                 + np.sqrt(0.1) * t2c[2] * t1c[2]
-
-        xterm = (res[0] - res[2]) / np.sqrt(2)
-        yterm = 1j * (res[0] + res[2]) / np.sqrt(2)
-        zterm = res[1]
-
-        return np.real(np.array([xterm, yterm, zterm]))
 
     sgc = contract21(g2, svec)
     sgg = contract21(g2, g1)
