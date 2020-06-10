@@ -168,9 +168,9 @@ def get_big_desc(X, rho_data, num = 1):
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
     u = gammax * ssigma**2 / (1 + gammax * ssigma**2)
-    t = rho_data[5] / get_uniform_tau(rho_data[0])
+    t = get_uniform_tau(rho_data[0]) / (rho_data[5] + 1e-9)
     w = (t - 1) / (t + 1)
-    desc = np.zeros((X.shape[0], 65))
+    desc = np.zeros((X.shape[0], 71))
     desc[:,0] = X[:,0]
     # c_ij, i->w, j->u
     desc[:,1]  = w
@@ -188,9 +188,10 @@ def get_big_desc(X, rho_data, num = 1):
     desc[:,13] = (X[:,8]) / (1 + gammax * ssigma**2)
     desc[:,14] = (X[:,8]) * scale**3 / (1 + gammax * ssigma**2)
     i = 15
-    for indset in [[5, 7, 9, 11, 13], [6, 8, 10, 12, 14]]:
-        for ind1 in indset:
-            for ind2 in indset:
+    for indset in [[1, 2, 5, 7, 9, 11, 13], [1, 2, 6, 8, 10, 12, 14]]:
+        for j, ind1 in enumerate(indset):
+            for k in range(j+1, len(indset)):
+                ind2 = indset[k]
                 desc[:,i] = desc[:,ind1] * desc[:,ind2]
                 i += 1
     return desc
