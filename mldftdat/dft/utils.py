@@ -254,6 +254,12 @@ def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
         dedb = elda * g * dfdg / np.linalg.norm(g, axis=0)
     elif l == 2:
         dedb = 2 * elda * g * dfdg / np.sqrt(5)
+    elif l == -2:
+        dedb = elda * dfdg
+        l = 2
+    elif l == -1:
+        dedb = elda * dfdg
+        l = 1
     else:
         raise ValueError('angular momentum code l=%d unknown' % l)
     atm, bas, env = get_gaussian_grid(grid.coords, mul * rho_data[0],
