@@ -8,7 +8,7 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
-from mldftdat.models.nn import Predictor
+#from mldftdat.models.nn import Predictor
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -704,3 +704,87 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
 
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
            (columns, rows, errtbl)
+
+def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
+                                 FUNCTIONAL = None, mol = None,
+                                 use_db = True,
+                                 save_atom_analyzer = False,
+                                 save_mol_analyzer = False,
+                                 full_analysis = False):
+
+    if FUNCTIONAL is not None:
+        CALC_NAME = os.path.join(CALC_TYPE, FUNCTIONAL)
+    else:
+        CALC_NAME = CALC_TYPE
+
+    if CALC_TYPE == 'CCSD':
+        Analyzer = lowmem_analyzers.CCSDAnalyzer
+    elif CALC_TYPE == 'UCCSD':
+        Analyzer = lowmem_analyzers.UCCSDAnalyzer
+    elif CALC_TYPE in ['RKS', 'RHF']:
+        Analyzer = lowmem_analyzers.RHFAnalyzer
+    elif CALC_TYPE in ['UKS', 'UHF']:
+        Analyzer = lowmem_analyzers.UHFAnalyzer
+
+    def run_calc(path, calc_type, Analyzer, save):
+        if os.path.isfile(path) and use_db:
+            return Analyzer.load(path).calc.e_tot
+
+        else:
+            elif FUNCTIONAL is None:
+                mf = run_scf(mol, calc_type)
+            elif type(FUNCTIONAL) == str:
+                mf = run_scf(mol, calc_type, functional = functional)
+            elif isinstance(FUNCTIONAL, MLFunctional):
+                if 'RKS' in path:
+                    from mldftdat.dft.numint2 import setup_rks_calc
+                    mf = setup_rks_calc(mol, FUNCTIONAL)
+                else:
+                    from mldftdat.dft.numint2 import setup_uks_calc
+                    mf = setup_uks_calc(mol, FUNCTIONAL)
+                mf.kernel()
+
+            if save:
+                analyzer = Analyzer(mf)
+                if full_analysis:
+                    analyzer.perform_full_analysis()
+                analyzer.dump(path)
+            return mf.e_tot
+
+    mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
+    if mol is None:
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+    mol_energy = run_calc(mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
+
+    atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
+    formula = Counter(atoms)
+    element_analyzers = {}
+    atomic_energies = []
+
+    atomization_energy = mol_energy
+    for Z in list(formula.keys()):
+        symbol = chemical_symbols[Z]
+        spin = int(ground_state_magnetic_moments[Z])
+        if CALC_TYPE in ['CCSD', 'UCCSD']:
+            ATOM_CALC_TYPE = 'CCSD' if spin == 0 else 'UCCSD'
+            AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
+                           else lowmem_analyzers.UCCSDAnalyzer
+        elif CALC_TYPE in ['RKS', 'UKS']:
+            ATOM_CALC_TYPE = 'RKS' if spin == 0 else 'UKS'
+            AtomAnalyzer = lowmem_analyzers.RHFAnalyzer if spin == 0\
+                           else lowmem_analyzers.UHFAnalyzer
+        else:
+            ATOM_CALC_TYPE = 'RHF' if spin == 0 else 'UHF'
+            AtomAnalyzer = lowmem_analyzers.RHFAnalyzer if spin == 0\
+                           else lowmem_analyzers.UHFAnalyzer
+        path = os.path.join(
+                            DBPATH, ATOM_CALC_TYPE, BASIS,
+                            'atoms/{}-{}-{}/data.hdf5'.format(
+                                Z, symbol, spin)
+                           )
+        atomic_energies.append(run_calc(path, ATOM_CALC_TYPE,
+                                        AtomAnalyzer, save_atom_analyzer))
+        atomization_energy -= formula[Z] * atomic_energies[-1]
+
+    return atomization_energy, mol_energy, atomic_energies
+    
