@@ -15,7 +15,7 @@ from mldftdat.dft.utils import *
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
     ngrid = vrho.size
-    wv = numpy.empty((4,ngrid))
+    wv = np.empty((4,ngrid))
     wv[0]  = weight * vrho
     wv[1:] = (weight * vgamma * 2) * rho[1:4]
     # anisotropic component of the gradient derivative
@@ -46,7 +46,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             exc, vxc = ni.eval_xc(xc_code, mol, rho, grids, dms,
                                   0, relativity, 1,
                                   verbose=verbose)[:2]
-            vrho, vsigma, vlapl, vtau, vgrad = vxc[:4]
+            vrho, vsigma, vlapl, vtau, vgrad = vxc[:5]
             den = rho[0] * weight
             nelec[idm] += den.sum()
             excsum[idm] += np.dot(den, exc)
@@ -93,8 +93,8 @@ class NLNumInt(pyscf_numint.NumInt):
             rdm1: density matrix
         """
         N = grid.weights.shape[0]
-        exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
-                                   omega, verbose)
+        #exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
+        #                           omega, verbose)
         if spin == 0:
             exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
         else:
@@ -124,11 +124,11 @@ class NLNumInt(pyscf_numint.NumInt):
             vgrad[:,:,1] = dterms[1][4]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad)
-        exc += exc0
-        vxc[0] += vxc0[0]
-        vxc[1] += vxc0[1]
-        vxc[2] += vxc0[2]
-        vxc[3] += vxc0[3]
+        #exc += exc0
+        #vxc[0][:] += vxc0[0]
+        #vxc[1][:] += vxc0[1]
+        #vxc[2][:] += vxc0[2]
+        #vxc[3][:] += vxc0[3]
         return exc, vxc, None, None 
 
 
@@ -152,6 +152,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     # shape (N, ndesc)
     dF = mol.mlfunc.get_derivative(desc)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
+    elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
@@ -159,7 +160,8 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho_data[0]**(4.0/3)
-    svec = desc[1:4] / (sprefac * n43 + 1e-9)
+    svec = rho_data[1:4] / (sprefac * n43 + 1e-9)
+    v_aniso = np.zeros((3,N))
 
     for i, d in enumerate(mlfunc.desc_list):
         if d.code == 0:
@@ -181,14 +183,14 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
             elif d.code == 6:
                 g = raw_desc[13:16]
                 dfmul = svec
-                v_aniso += dFddesc[:,i] * g
+                v_aniso += elda * dFddesc[:,i] * g
                 l = -1
             elif d.code == 12:
                 l = -2
                 g = raw_desc[16:21]
                 dfmul = contract21_deriv(svec)
                 ddesc_dsvec = contract21(g, svec)
-                v_aniso += dFddesc[:,i] * 2 * ddesc_dsvec
+                v_aniso += elda * dFddesc[:,i] * 2 * ddesc_dsvec
             else:
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
 
