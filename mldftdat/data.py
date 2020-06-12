@@ -711,8 +711,14 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                  save_atom_analyzer = False,
                                  save_mol_analyzer = False,
                                  full_analysis = False):
+    from mldftdat import lowmem_analyzers
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    from mldftdat.pyscf_utils import run_scf
+    from pyscf import gto
+    from mldftdat.dft.xc_models import MLFunctional
 
-    if FUNCTIONAL is not None:
+    if type(FUNCTIONAL) == str:
         CALC_NAME = os.path.join(CALC_TYPE, FUNCTIONAL)
     else:
         CALC_NAME = CALC_TYPE
@@ -726,15 +732,15 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     elif CALC_TYPE in ['UKS', 'UHF']:
         Analyzer = lowmem_analyzers.UHFAnalyzer
 
-    def run_calc(path, calc_type, Analyzer, save):
+    def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
             return Analyzer.load(path).calc.e_tot
 
         else:
-            elif FUNCTIONAL is None:
+            if FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
             elif type(FUNCTIONAL) == str:
-                mf = run_scf(mol, calc_type, functional = functional)
+                mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint2 import setup_rks_calc
@@ -753,10 +759,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-    mol_energy = run_calc(mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
+        analyzer = Analyzer.load(mol_path)
+        mol = analyzer.mol
+    mol_energy = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
 
-    atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
+    atoms = [atomic_numbers[a[0]] for a in mol._atom]
     formula = Counter(atoms)
     element_analyzers = {}
     atomic_energies = []
@@ -765,6 +772,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     for Z in list(formula.keys()):
         symbol = chemical_symbols[Z]
         spin = int(ground_state_magnetic_moments[Z])
+        atm = gto.Mole()
+        atm.atom = symbol
+        atm.spin = spin
+        atm.basis = BASIS
+        atm.build()
         if CALC_TYPE in ['CCSD', 'UCCSD']:
             ATOM_CALC_TYPE = 'CCSD' if spin == 0 else 'UCCSD'
             AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
@@ -777,14 +789,19 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             ATOM_CALC_TYPE = 'RHF' if spin == 0 else 'UHF'
             AtomAnalyzer = lowmem_analyzers.RHFAnalyzer if spin == 0\
                            else lowmem_analyzers.UHFAnalyzer
+        if type(FUNCTIONAL) == str:
+            ATOM_CALC_NAME = os.path.join(ATOM_CALC_TYPE, FUNCTIONAL)
+        else:
+            ATOM_CALC_NAME = ATOM_CALC_TYPE
         path = os.path.join(
-                            DBPATH, ATOM_CALC_TYPE, BASIS,
+                            DBPATH, ATOM_CALC_NAME, BASIS,
                             'atoms/{}-{}-{}/data.hdf5'.format(
                                 Z, symbol, spin)
                            )
-        atomic_energies.append(run_calc(path, ATOM_CALC_TYPE,
+        print(path)
+        atomic_energies.append(run_calc(atm, path, ATOM_CALC_TYPE,
                                         AtomAnalyzer, save_atom_analyzer))
         atomization_energy -= formula[Z] * atomic_energies[-1]
 
-    return atomization_energy, mol_energy, atomic_energies
+    return mol, atomization_energy, mol_energy, atomic_energies
     
