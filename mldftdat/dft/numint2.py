@@ -149,6 +149,8 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_rks = nr_rks
 
+    nr_uks = nr_uks
+
     def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin = 0,
                 relativity = 0, deriv = 1, omega = None,
                 verbose = None):
