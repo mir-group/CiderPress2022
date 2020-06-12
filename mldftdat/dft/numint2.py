@@ -23,6 +23,11 @@ def _rks_gga_wv0a(rho, vxc, weight):
     wv[0] *= .5  # v+v.T should be applied in the caller
     return wv
 
+def _uks_gga_wv0a(rho, vxc, weight):
+    wva = _rks_gga_wv0a(rho[0], vxc, weight)
+    wvb = _rks_gga_wv0a(rho[1], vxc, weight)
+    return wva, wvb
+
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
@@ -71,6 +76,72 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         nelec = nelec[0]
         excsum = excsum[0]
         vmat = vmat.reshape(nao,nao)
+    return nelec, excsum, vmat
+
+
+def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
+           max_memory = 2000, verbose = None):
+
+    xctype = ni._xc_type(xc_code)
+
+    shls_slice = (0, mol.nbas)
+    ao_loc = mol.ao_loc_nr()
+
+    dma, dmb = _format_uks_dm(dms)
+    nao = dma.shape[-1]
+    make_rhoa, nset = ni._gen_rho_evaluator(mol, dma, hermi)[:2]
+    make_rhob       = ni._gen_rho_evaluator(mol, dmb, hermi)[0]
+
+    nelec = np.zeros((2,nset))
+    excsum = np.zeros(nset)
+    vmat = np.zeros((2,nset,nao,nao))
+    aow = None
+    ao_deriv = 2
+    for ao, mask, weight, coords \
+            in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
+        ngrid = weight.size
+        aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
+        for idm in range(nset):
+            rho_a = make_rhoa(idm, ao, mask, xctype)
+            rho_b = make_rhob(idm, ao, mask, xctype)
+            exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
+                                  grids, (dma, dmb),
+                                  1, relativity, 1, verbose=verbose)[:2]
+            vrho, vsigma, vlapl, vtau, vgrad = vxc[:5]
+            den = rho_a[0]*weight
+            nelec[0,idm] += den.sum()
+            excsum[idm] += np.dot(den, exc)
+            den = rho_b[0]*weight
+            nelec[1,idm] += den.sum()
+            excsum[idm] += np.dot(den, exc)
+
+            wva, wvb = _uks_gga_wv0a((rho_a,rho_b), vxc, weight)
+            #:aow = np.einsum('npi,np->pi', ao[:4], wva, out=aow)
+            aow = _scale_ao(ao[:4], wva, out=aow)
+            vmat[0,idm] += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
+            #:aow = np.einsum('npi,np->pi', ao[:4], wvb, out=aow)
+            aow = _scale_ao(ao[:4], wvb, out=aow)
+            vmat[1,idm] += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
+
+# FIXME: .5 * .5   First 0.5 for v+v.T symmetrization.
+# Second 0.5 is due to the Libxc convention tau = 1/2 \nabla\phi\dot\nabla\phi
+            wv = (.25 * weight * vtau[:,0]).reshape(-1,1)
+            vmat[0,idm] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
+            vmat[0,idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
+            vmat[0,idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
+            wv = (.25 * weight * vtau[:,1]).reshape(-1,1)
+            vmat[1,idm] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
+            vmat[1,idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
+            vmat[1,idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
+            rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
+
+    for i in range(nset):
+        vmat[0,i] = vmat[0,i] + vmat[0,i].T
+        vmat[1,i] = vmat[1,i] + vmat[1,i].T
+    if isinstance(dma, np.ndarray) and dma.ndim == 2:
+        vmat = vmat[:,0]
+        nelec = nelec.reshape(2)
+        excsum = excsum[0]
     return nelec, excsum, vmat
 
 
