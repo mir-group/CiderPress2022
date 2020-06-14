@@ -381,6 +381,7 @@ def predict_exchange(analyzer, model=None, num=1,
             If str, evaluate the exchange energy of that functional.
             Otherwise, assume sklearn model and run predict function.
     """
+    from mldftdat.models.nn import Predictor
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -745,9 +746,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 if 'RKS' in path:
                     from mldftdat.dft.numint2 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
+                    mf.xc = ',MGGA_C_M11'
                 else:
                     from mldftdat.dft.numint2 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
+                    mf.xc = ',MGGA_C_M11'
                 mf.kernel()
 
             if save:
