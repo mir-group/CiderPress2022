@@ -731,7 +731,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             return Analyzer.load(path).calc.e_tot
 
         else:
-            elif FUNCTIONAL is None:
+            if FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
             elif type(FUNCTIONAL) == str:
                 mf = run_scf(mol, calc_type, functional = functional)
