@@ -189,8 +189,8 @@ class NLNumInt(pyscf_numint.NumInt):
             vrho[:,0] = uterms[1][0]
             vrho[:,1] = dterms[1][0]
 
-            vsigma[:,0] = uterms[1][1]
-            vsigma[:,2] = dterms[1][1]
+            vsigma[:,0] = 2 * uterms[1][1]
+            vsigma[:,2] = 2 * dterms[1][1]
 
             vlapl[:,0] = uterms[1][2]
             vlapl[:,1] = dterms[1][2]
