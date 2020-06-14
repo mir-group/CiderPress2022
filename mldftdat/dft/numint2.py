@@ -1,5 +1,5 @@
 import pyscf.dft.numint as pyscf_numint
-from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao
+from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao, _format_uks_dm
 from pyscf.dft.libxc import eval_xc
 from pyscf import df, dft
 import numpy as np
@@ -24,8 +24,10 @@ def _rks_gga_wv0a(rho, vxc, weight):
     return wv
 
 def _uks_gga_wv0a(rho, vxc, weight):
-    wva = _rks_gga_wv0a(rho[0], vxc, weight)
-    wvb = _rks_gga_wv0a(rho[1], vxc, weight)
+    vxca = (vxc[0][:,0], vxc[1][:,0], vxc[2][:,0], vxc[3][:,0], vxc[4][:,:,0])
+    vxcb = (vxc[0][:,1], vxc[1][:,2], vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1])
+    wva = _rks_gga_wv0a(rho[0], vxca, weight)
+    wvb = _rks_gga_wv0a(rho[1], vxcb, weight)
     return wva, wvb
 
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
@@ -82,8 +84,6 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
-    xctype = ni._xc_type(xc_code)
-
     shls_slice = (0, mol.nbas)
     ao_loc = mol.ao_loc_nr()
 
@@ -102,8 +102,9 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         ngrid = weight.size
         aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
         for idm in range(nset):
-            rho_a = make_rhoa(idm, ao, mask, xctype)
-            rho_b = make_rhob(idm, ao, mask, xctype)
+            print('dm shape', dma.shape, dmb.shape)
+            rho_a = make_rhoa(idm, ao, mask, 'MGGA')
+            rho_b = make_rhob(idm, ao, mask, 'MGGA')
             exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
                                   grids, (dma, dmb),
                                   1, relativity, 1, verbose=verbose)[:2]
@@ -166,20 +167,24 @@ class NLNumInt(pyscf_numint.NumInt):
             rdm1: density matrix
         """
         N = grid.weights.shape[0]
-        #exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
-        #                           omega, verbose)
+        print('XCCODE', xc_code)
+        has_base_xc = (xc_code is not None) and (xc_code != '')
+        if has_base_xc:
+            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
+                                       omega, verbose)
         if spin == 0:
             exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
         else:
-            uterms = _eval_xc_0(mol, rho_data[0], grid, rdm1[0])
-            dterms = _eval_xc_0(mol, rho_data[1], grid, rdm1[1])
+            uterms = _eval_xc_0(mol, 2 * rho_data[0], grid, 2 * rdm1[0])
+            dterms = _eval_xc_0(mol, 2 * rho_data[1], grid, 2 * rdm1[1])
             exc  = uterms[0] * rho_data[0][0,:]
-            exc += dterms[1] * rho_data[1][1,:]
-            vrho = np.zeros(N, 2)
+            exc += dterms[0] * rho_data[1][0,:]
+            exc /= (rho_data[0][0,:] + rho_data[1][0,:])
+            vrho = np.zeros((N, 2))
             vsigma = np.zeros((N, 3))
             vlapl = np.zeros((N, 2))
             vtau = np.zeros((N, 2))
-            vgrad = np.zeros((N, 3, 2))
+            vgrad = np.zeros((3, N, 2))
 
             vrho[:,0] = uterms[1][0]
             vrho[:,1] = dterms[1][0]
@@ -197,11 +202,16 @@ class NLNumInt(pyscf_numint.NumInt):
             vgrad[:,:,1] = dterms[1][4]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad)
-        #exc += exc0
-        #vxc[0][:] += vxc0[0]
-        #vxc[1][:] += vxc0[1]
-        #vxc[2][:] += vxc0[2]
-        #vxc[3][:] += vxc0[3]
+        if has_base_xc:
+            exc += exc0
+            if vxc0[0] is not None:
+                vxc[0][:] += vxc0[0]
+            if vxc0[1] is not None:
+                vxc[1][:] += vxc0[1]
+            if vxc0[2] is not None:
+                vxc[2][:] += vxc0[2]
+            if vxc0[3] is not None:
+                vxc[3][:] += vxc0[3]
         return exc, vxc, None, None 
 
 
@@ -308,6 +318,7 @@ def setup_rks_calc(mol, mlfunc, beta = 1.6):
     mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
     mol.mlfunc = mlfunc
     rks = dft.RKS(mol)
+    rks.xc = None
     rks._numint = NLNumInt()
     return rks
 
@@ -316,5 +327,6 @@ def setup_uks_calc(mol, mlfunc, beta = 1.6):
     mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
     mol.mlfunc = mlfunc
     uks = dft.UKS(mol)
+    uks.xc = None
     uks._numint = NLNumInt()
     return uks
