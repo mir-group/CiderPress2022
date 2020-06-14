@@ -173,8 +173,8 @@ def get_big_desc(X, rho_data, num = 1):
     desc = np.zeros((X.shape[0], 71))
     desc[:,0] = X[:,0]
     # c_ij, i->w, j->u
-    desc[:,1]  = w
-    desc[:,2]  = u
+    desc[:,1]  = np.arcsinh(ssigma)
+    desc[:,2]  = np.arcsinh(alpha)
     desc[:,3]  = w * u
     desc[:,4]  = u**2
     desc[:,5]  = (X[:,4]  - 2.0) / (1 + gammax * ssigma**2)
@@ -223,3 +223,35 @@ class SmoothEDMGPR(EDMGPR):
         threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
+
+
+class SmoothEDMGPR2(EDMGPR):
+
+    def __init__(self, num_desc, use_algpr = False):
+        const = ConstantKernel(0.2)
+        #rbf = PartialRBF([1.0] * (num_desc + 1),
+        #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
+        #rbf = PartialRBF([0.395, 0.232, 0.297, 0.157, 0.468, 1.0][:num_desc+1],
+        #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        rbf1 = SingleRBF(length_scale=0.4, index = 1)
+        rbf2 = SingleRBF(length_scale=0.4, index = 2)
+        dot = PartialDot(start = 1)
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=1.0e-4, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        #cov_kernel = const * rbf1 * rbf2 * Exponentiation(dot, 3)
+        cov_kernel = const * rbf1 * rbf2 * dot
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(EDMGPR, self).__init__(num_desc,
+                       descriptor_getter = get_big_desc,
+                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
+                       init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred = self.gp.predict(x)
+        return np.abs(y - y_pred) > threshold
+
