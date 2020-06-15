@@ -133,17 +133,17 @@ def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     desc = rho_data.copy()
     N = grid.weights.shape[0]
     for l in range(3):
-        atm, bas, env, inv_rs, sacle = get_gaussian_grid(
+        atm, bas, env, inv_rs, scale = get_gaussian_grid_b(
                                         grid.coords, rho_data[0],
                                         l = l, s = lc[1], alpha=lc[2])
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         # (ngrid * (2l+1), naux)
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         mer2 = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).transpose()
-        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose() * scale**3
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose() * scale**1.5
         desc = np.append(desc, proj, axis=0)
-        proj = np.dot(mer2, density).reshape(N, 2*l+1).transpose() * scale**3 * inv_rs**2
-        desc = np.append(mer2, proj, axis=0)
+        proj = np.dot(mer2, density).reshape(N, 2*l+1).transpose() * scale**1.5 * inv_rs**2
+        desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors_b(desc)
 
 def get_exchange_descriptors2(analyzer, restricted = True, version = 'a'):

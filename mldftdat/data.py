@@ -158,7 +158,8 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     #gp = DFTGP(descriptor_data, values, 1e-3)
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False, lam = 0.5):
+                    Analyzer, spherical_atom = False, locx = False, lam = 0.5,
+                    version = 'a'):
 
     import time
     from pyscf import scf
@@ -184,10 +185,10 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             print('index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True)
+            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True, version=version)
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer, restricted = False)
+                              get_exchange_descriptors2(analyzer, restricted = False, version=version)
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
         """
