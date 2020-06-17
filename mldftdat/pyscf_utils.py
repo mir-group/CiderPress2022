@@ -128,7 +128,7 @@ def get_gaussian_grid_b(coords, rho, l = 0, s = None, alpha = None):
         scale += 3.0 / 5 * fac * (alpha - 1)
     bas[:,1] = l
     env[bas[:,5]] = a * scale
-    env[bas[rho<1e-5,5]] = 1e16
+    env[bas[rho<1e-8,5]] = 1e16
     print(np.sqrt(np.min(env[bas[:,5]])))
     env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
 
