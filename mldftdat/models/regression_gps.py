@@ -6,6 +6,13 @@ import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
 
+def xed_to_y_tail(xed, rho_data):
+    y = xed / (ldax(rho_data[0]) - 1e-10)
+    return y / tail_fx(rho_data) - 1
+
+def y_to_xed_tail(y, rho_data):
+    return (y + 1) * tail_fx(rho_data) * ldax(rho_data[0])
+
 def xed_to_y_edmgga(xed, rho_data):
     y = xed / (ldax(rho_data[0]) - 1e-7)
     return y - edmgga(rho_data)
@@ -277,6 +284,8 @@ def get_big_desc2(X, rho_data, num = 1):
     desc = np.zeros((X.shape[0], 71))
     desc = X.copy()
     desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    desc[:,1] = u
+    desc[:,2] = 1 / (1 + alpha**2)
     desc[:,(3,4)] /= scale**3
     desc[:,5:10] /= scale**6
     desc[:,10:16] /= scale**9
@@ -285,7 +294,35 @@ def get_big_desc2(X, rho_data, num = 1):
     #desc[:,3] -= 2
     #desc[:,4] -= 3.939
     # c_ij, i->w, j->u
-    return desc[:,[0,1,2,3,4,5,7,9,10,6,8,11,12,13,14,15,16][:num+1]]
+    return desc[:,[0,1,2,3,4,5,7,10,9,6,8,11,12,13,14,15,16][:num+1]] / (1 + gammax * ssigma**2).reshape(-1,1)
+
+def get_big_desc3(X, rho_data, num = 1):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    gammax = 0.004
+    ssigma = 2**(1.0/3) * sprefac * X[:,1]
+    p, alpha = X[:,1]**2, X[:,2]
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1)).reshape(-1,1)
+    desc = np.zeros((X.shape[0], 71))
+    desc = X.copy()
+    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    desc[:,1] = np.arcsinh(desc[:,1])
+    desc[:,2] = 1 / (1 + alpha**2)
+    desc[:,(3,4)] /= scale**3
+    desc[:,(5,6,9)] /= scale**8
+    desc[:,(7,8,16)] /= scale**10
+    desc[:,10:16] /= scale**13
+    #desc[:,16:] /= scale**6
+    #desc[:,3:] = np.arcsinh(desc[:,3:])
+    #desc[:,3] -= 2
+    #desc[:,4] -= 3.939
+    # c_ij, i->w, j->u
+    desc[:,3:] /= (1 + gammax * ssigma**2).reshape(-1,1)
+    desc[:,3:] /= np.array([[  0.98705586,   1.86278409,  15.84986931,  59.38764836,  15.85273698,
+  65.28117628,  30.80285635, 108.30579585, 205.16873174, 388.54096809,
+ 216.71798354, 410.54856388, 777.91829647,  32.26364096]])
+    #return desc
+    return desc[:,[0,1,2,3,5,7,4,10,9,6,8,11,12,13,14,15,16][:num+1]]
 
 
 class SmoothEDMGPR3(EDMGPR):
@@ -298,6 +335,7 @@ class SmoothEDMGPR3(EDMGPR):
         #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rbf1 = SingleRBF(length_scale=0.5, index = 1)
         rbf2 = SingleRBF(length_scale=0.3, index = 2)
+        rbf3 = SingleRBF(length_scale=0.3, index = 3)
         dot = PartialDot(start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
@@ -305,12 +343,12 @@ class SmoothEDMGPR3(EDMGPR):
         wk1 = WhiteKernel(noise_level = 0.003, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
         #cov_kernel = const * rbf1 * rbf2 * Exponentiation(dot, 3)
-        cov_kernel = const * rbf1 * rbf2 * dot
+        cov_kernel = const * rbf1 * rbf2 * rbf3 * dot
         noise_kernel = wk + wk1 * rhok1 #+ wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_big_desc2,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       descriptor_getter = get_big_desc3,
+                       xed_y_converter = (xed_to_y_tail, y_to_xed_tail),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
@@ -322,7 +360,7 @@ class SmoothEDMGPR3(EDMGPR):
 class NoisyEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False):
-        const = ConstantKernel(0.2)
+        const = ConstantKernel(0.01)
         #rbf = PartialRBF([1.0] * (num_desc + 1),
         #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
         #rbf = PartialRBF([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0][:num_desc],
@@ -332,7 +370,8 @@ class NoisyEDMGPR(EDMGPR):
         #rbf = PartialRBF([0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc],
         #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         #rbf = PartialRBF([0.3, 0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc+1],
-        rbf = PartialRBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+        #rbf = PartialRBF([0.5, 0.282, 0.124, 0.202, 0.379, 0.441, 0.707, 0.613, 0.567, 1.0][:num_desc],
+        rbf = PartialRBF([0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0][:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
@@ -343,8 +382,8 @@ class NoisyEDMGPR(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_big_desc2,
-                       xed_y_converter = (xed_to_y_b88, y_to_xed_b88),
+                       descriptor_getter = get_big_desc3,
+                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     #def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
