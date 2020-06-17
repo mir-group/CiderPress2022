@@ -494,3 +494,25 @@ def edmgga_loc(rho_data):
     x = A * QB + np.sqrt(1 + (A*QB)**2)
     FX = C1 + (C2 * x) / (1 + C3 * np.sqrt(x) * np.arcsinh(C4 * (x-1)))
     return FX
+
+sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
+hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+
+def tail_fx(rho_data):
+    gradn = np.linalg.norm(rho_data[1:4], axis=0)
+    s = get_normalized_grad(rho_data[0], gradn)
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
+    term1 = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp)
+    term3 = 2 + sp**2 / 12 - 17 * s**4 / 2880 + 367 * s**6 / 483840\
+            - 27859 * s**8 / 232243200 + 1295803 * s**10 / 61312204800
+    term3 *= hprefac * 2.0 / 3
+    mu = 0.21951
+    l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
+    a = 1 - hprefac * 4 / 3
+    b = mu - l**2 * hprefac / 18
+    term2 = (a + b * s**2) / (1 + (l*s/2)**4)
+    f = term2 + term3
+    f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
+    return f
+
