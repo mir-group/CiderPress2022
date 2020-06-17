@@ -107,6 +107,33 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
 
     return atm, bas, env
 
+def get_gaussian_grid_b(coords, rho, l = 0, s = None, alpha = None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+
+    a = np.pi * (rho / 2 + 1e-6)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    if s is not None:
+        scale += fac * s**2
+    if alpha is not None:
+        scale += 3.0 / 5 * fac * (alpha - 1)
+    bas[:,1] = l
+    env[bas[:,5]] = a * scale
+    env[bas[rho<1e-8,5]] = 1e16
+    print(np.sqrt(np.min(env[bas[:,5]])))
+    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+
+    return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
+
 def get_ha_total(rdm1, eeint):
     return np.sum(np.sum(eeint * rdm1, axis=(2,3)) * rdm1)
 

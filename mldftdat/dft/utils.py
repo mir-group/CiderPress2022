@@ -11,7 +11,7 @@ def dsdp(s):
     return 1 / (2 * s)
 
 def dasinhsdp(s):
-    return arcsinh_deriv(s) / (2 * s)
+    return arcsinh_deriv(s) / (2 * s + 1e-10)
 
 def ds2(rho_data):
     # s = |nabla n| / (b * n)
@@ -251,9 +251,15 @@ def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
         dedb = (elda * dfdg).reshape(1, -1)
     elif l == 1:
         #dedb = 2 * elda * g * dfdg
-        dedb = elda * g * dfdg / np.linalg.norm(g, axis=0)
+        dedb = elda * g * dfdg / (np.linalg.norm(g, axis=0) + 1e-10)
     elif l == 2:
         dedb = 2 * elda * g * dfdg / np.sqrt(5)
+    elif l == -2:
+        dedb = elda * dfdg
+        l = 2
+    elif l == -1:
+        dedb = elda * dfdg
+        l = 1
     else:
         raise ValueError('angular momentum code l=%d unknown' % l)
     atm, bas, env = get_gaussian_grid(grid.coords, mul * rho_data[0],
@@ -271,7 +277,7 @@ def v_nonlocal(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     dgda = l / (2 * a) * g - gr2
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 2 * a / (3 * lc[0])
+    dadn = 2 * a / (3 * lc[0] + 1e-10)
     dadp = np.pi * fac * (lc[0] / 2)**(2.0/3)
     dadalpha = 0.6 * np.pi * fac * (lc[0] / 2)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
