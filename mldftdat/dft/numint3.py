@@ -226,6 +226,10 @@ class NLNumInt(pyscf_numint.NumInt):
 
 
 def _eval_xc_0(mol, rho_data, grid, rdm1):
+    import time
+
+    chkpt = time.monotonic()
+
     density = np.einsum('npq,pq->n', mol.ao_to_aux, rdm1)
     mlfunc = mol.mlfunc
     auxmol = mol.auxmol
@@ -242,6 +246,10 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     for i, d in enumerate(mol.mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
                                   contracted_desc, deriv = 1)
+
+    print('desc setup', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
+
     F = mol.mlfunc.get_F(desc)
     # shape (N, ndesc)
     dF = mol.mlfunc.get_derivative(desc)
@@ -251,6 +259,9 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
     dFddesc = dF * ddesc
+
+    print('run GP', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho_data[0]**(4.0/3)
@@ -299,6 +310,9 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                                          mul = d.mul)
             v_npa += vtmp
             v_aux += dedaux
+
+    print('v_nonlocal', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
 
     vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
     v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
