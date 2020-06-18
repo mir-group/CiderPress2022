@@ -319,7 +319,7 @@ def v_nonlocal_fast(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     ovlp_deriv = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).transpose()
     g = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     gr2 = np.dot(ovlp_deriv, density).reshape(N, 2*l+1).transpose()
-    dedaux = np.dot(dedb.T.flatten(), ovlp)
+    dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
@@ -327,14 +327,13 @@ def v_nonlocal_fast(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     dadp = np.pi * fac * (lc[0] / 2)**(2.0/3)
     dadalpha = 0.6 * np.pi * fac * (lc[0] / 2)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
-    v_npab = np.zeros((5, N))
+    v_npa = np.zeros((4, N))
     #print('shapes', dedb.shape, dgda.shape)
     deda = np.einsum('mi,mi->i', dedb, dgda)
-    v_npab[0] = deda * dadn
-    v_npab[1] = deda * dadp
-    v_npab[3] = deda * dadalpha
-    v_npab[4] = dedaux
-    return v_npab
+    v_npa[0] = deda * dadn
+    v_npa[1] = deda * dadp
+    v_npa[3] = deda * dadalpha
+    return v_npa, dedaux
 
 def get_density_in_basis(ao_to_aux, rdm1):
     return np.einsum('npq,pq->n', ao_to_aux, rdm1)

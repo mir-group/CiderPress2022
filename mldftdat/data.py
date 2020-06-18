@@ -745,11 +745,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint2 import setup_rks_calc
+                    from mldftdat.dft.numint3 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
                     mf.xc = ',MGGA_C_M11'
                 else:
-                    from mldftdat.dft.numint2 import setup_uks_calc
+                    from mldftdat.dft.numint3 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = ',MGGA_C_M11'
                 mf.kernel()

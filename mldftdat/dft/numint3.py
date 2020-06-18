@@ -70,7 +70,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             vmat[idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
             vmat[idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
 
-            vmat[idm] += vmol
+            vmat[idm] += 0.5 * vmol
 
             rho = exc = vxc = vrho = vsigma = wv = None
 
@@ -137,8 +137,8 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             vmat[1,idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
             vmat[1,idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
 
-            vmat[0,idm] += vmol[0,:,:]
-            vmat[1,idm] += vmol[1,:,:]
+            vmat[0,idm] += 0.5 * vmol[0,:,:]
+            vmat[1,idm] += 0.5 * vmol[1,:,:]
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
@@ -229,6 +229,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     density = np.einsum('npq,pq->n', mol.ao_to_aux, rdm1)
     mlfunc = mol.mlfunc
     auxmol = mol.auxmol
+    naux = auxmol.nao_nr()
     ao_to_aux = mol.ao_to_aux
     N = grid.weights.shape[0]
     desc  = np.zeros((N, len(mlfunc.desc_list)))
@@ -255,6 +256,7 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     n43 = rho_data[0]**(4.0/3)
     svec = rho_data[1:4] / (sprefac * n43 + 1e-9)
     v_aniso = np.zeros((3,N))
+    v_aux = np.zeros(naux)
 
     for i, d in enumerate(mlfunc.desc_list):
         if d.code == 0:
@@ -288,16 +290,18 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
 
             if d.code in [6, 12]:
-                v_npab += v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
-                                          density, mol.auxmol, g, l = l,
-                                          mul = d.mul)
+                vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g, l = l,
+                                         mul = d.mul)
             else:
-                v_npab += v_nonlocal_fast(rho_data, grid, dFddesc[:,i],
-                                          density, mol.auxmol, g, l = l,
-                                          mul = d.mul)
+                vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i],
+                                         density, mol.auxmol, g, l = l,
+                                         mul = d.mul)
+            v_npa += vtmp
+            v_aux += dedaux
 
-    vmol = np.dot(v_npab[4], mol.ao_to_aux)
-    v_npab[:4] += v_semilocal(rho_data, F, dgpdp, dgpda)
+    vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
+    v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
     v_nst = v_basis_transform(rho_data, v_npa)
     v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-10), v_aniso)
     v_grad = v_aniso / (sprefac * n43 + 1e-10)
