@@ -286,13 +286,15 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None):
+def load_descriptors(dirname, count=None, val_dirname = None):
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
     else:
         count = X.shape[0]
-    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
+    if val_dirname is None:
+        val_dirname = dirname
+    y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
     return X, y, rho_data
 
