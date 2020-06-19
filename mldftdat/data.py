@@ -22,15 +22,24 @@ def get_unique_coord_indexes_spherical(coords):
             indexes.append(i)
     return indexes
 
-def plot_data_atom(mol, coords, values, value_name, rmax, units):
+def plot_data_atom(mol, coords, values, value_name, rmax, units,
+                   ax=None):
     mol.build()
     rs = np.linalg.norm(coords, axis=1)
-    plt.scatter(rs, values, label=value_name)
-    plt.xlim(0, rmax)
-    plt.xlabel('$r$ (Bohr radii)')
-    plt.ylabel(units)
-    plt.legend()
-    plt.title(mol._atom[0][0])
+    if ax is None:
+        plt.scatter(rs, values, label=value_name)
+        plt.xlim(0, rmax)
+        plt.xlabel('$r$ (Bohr radii)')
+        plt.ylabel(units)
+        plt.legend()
+        plt.title(mol._atom[0][0])
+    else:
+        ax.scatter(rs, values, label=value_name)
+        ax.set_xlim(0, rmax)
+        ax.set_xlabel('$r$ (Bohr radii)')
+        ax.set_ylabel(units)
+        ax.legend()
+        #plt.title(mol._atom[0][0])
 
 def get_zr_diatomic(mol, coords):
     mol.build()

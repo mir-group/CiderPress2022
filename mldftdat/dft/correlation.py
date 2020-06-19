@@ -2,6 +2,7 @@ from pyscf.dft.numint import _vv10nlc
 from pyscf.dft.libxc import eval_xc
 from pyscf.dft import numint as pyscf_numint
 import numpy as np
+from pyscf.dft.numint import _vv10nlc, _rks_gga_wv0, _scale_ao, _dot_ao_ao
 
 # (w exponent, u exponent)
 # (kinetic, grad)
@@ -138,7 +139,7 @@ class ProjNumInt(pyscf_numint.NumInt):
             u, dudna, dudgrada = ures[2]
             u, dudnb, dudgradb = ures[3]
             w, dwdna, dwdtaua = wres[2]
-            w, dwdnb, dwdtaub = wres[2]
+            w, dwdnb, dwdtaub = wres[3]
             g += c * w**i * u**j
             if i > 0:
                 dgdna += c * i * w**(i-1) * u**j * dwdna
@@ -159,6 +160,9 @@ class ProjNumInt(pyscf_numint.NumInt):
         vca_tau += ec0os * dgdtaua
         vcb_tau += ec0os * dgdtaub
 
+        print(Eca, Ecb, Ecos, Exa, Exb)
+
+        ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
         ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
         #vc_rho = vc0os * gos.reshape(-1,1) + vc0a * ga * vc0b * gb
         #vc_rho += ec0os * dgosdn + ec0a * dgadn + ec0b * dgbdn
@@ -174,6 +178,7 @@ class ProjNumInt(pyscf_numint.NumInt):
 
 def nr_rks_vv10(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
                 max_memory=2000, verbose=None, b = 5.9, c = 0.0093):
+    import numpy
     xctype = ni._xc_type(xc_code)
     make_rho, nset, nao = ni._gen_rho_evaluator(mol, dms, hermi)
 
@@ -224,6 +229,14 @@ def nr_rks_vv10(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
             rho = exc = vxc = wv = None
     vvrho = vvweight = vvcoords = None
 
+    for i in range(nset):
+        vmat[i] = vmat[i] + vmat[i].T
+    if nset == 1:
+        nelec = nelec[0]
+        excsum = excsum[0]
+        vmat = vmat.reshape(nao,nao)
+    return nelec, excsum, vmat
+
 def corr_term(u, w, du, dw, i, j):
     term = w**i * u**j
     if i > 0:
@@ -237,8 +250,8 @@ def corr_term(u, w, du, dw, i, j):
     return term, dterm_i, dterm_j
 
 def get_s2_ss(rho_data):
-    rho83 = rho_data[0]**(8.0 / 3) + 1e-10
-    rho113 = rho_data[0]**(11.0 / 3) + 1e-10
+    rho83 = rho_data[0]**(8.0 / 3) + 1e-12
+    rho113 = rho_data[0]**(11.0 / 3) + 1e-12
     gradn2 = np.linalg.norm(rho_data[1:4], axis=0)**2
     s2 = gradn2 / rho83
     ds2dgrad = 1 / rho83
@@ -280,9 +293,9 @@ def get_u(rho_data_u, rho_data_d):
 
 def get_t_ss(rho, tau):
     tau0 = 0.3 * (6 * np.pi**2)**(2.0/3) * rho**(5.0/3)
-    t = tau0 / (tau + 1e-10)
-    dtdn = 0.5 * (6 * np.pi**2)**(2.0/3) * rho**(2.0/3) / (tau + 1e-10)
-    dtdtau = - tau0 / (tau**2 + 1e-10)
+    t = tau0 / (tau + 1e-12)
+    dtdn = 0.5 * (6 * np.pi**2)**(2.0/3) * rho**(2.0/3) / (tau + 1e-12)
+    dtdtau = - tau0 / (tau**2 + 1e-12)
     return t, dtdn, dtdtau
 
 def get_w(rho_data_u, rho_data_d):
