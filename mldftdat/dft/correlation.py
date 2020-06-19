@@ -31,15 +31,17 @@ class ProjNumInt(pyscf_numint.NumInt):
         else:
             rhoa, rhob = rho[0], rho[1]
 
+        print(rhoa.shape, rhob.shape)
+
         ures = get_u(rhoa, rhob)
         wres = get_w(rhoa, rhob)
         zeros = 0 * rhob
 
         ex0a, vx0a, _, _ = eval_xc('LDA,', (rhoa[0], zeros), spin=1)
         ex0b, vx0b, _, _ = eval_xc('LDA,', (zeros, rhob[0]), spin=1)
-        ec0t, vc0t, _, _ = eval_xc(',VWN', (rhoa[0], rhob[0]), spin=1)
-        ec0a, vc0a, _, _ = eval_xc(',VWN', (rhoa[0], zeros), spin=1)
-        ec0b, vc0b, _, _ = eval_xc(',VWN', (zeros, rhob[0]), spin=1)
+        ec0t, vc0t, _, _ = eval_xc(',LDA_C_PW', (rhoa[0], rhob[0]), spin=1)
+        ec0a, vc0a, _, _ = eval_xc(',LDA_C_PW', (rhoa[0], zeros), spin=1)
+        ec0b, vc0b, _, _ = eval_xc(',LDA_C_PW', (zeros, rhob[0]), spin=1)
         vx0a = vx0a[0][:,0]
         vx0b = vx0b[0][:,1]
         vc0t = vc0t[0]
@@ -52,105 +54,49 @@ class ProjNumInt(pyscf_numint.NumInt):
         vc0os[:,0] -= vc0a
         vc0os[:,1] -= vc0b
 
-        g = 1
-        dgdn = 0
-        dgdgrad = 0
-        dgdtau = 0
-        for c, i, j in self.xterms:
-            u, dudn, dudgrad = ures[4]
-            w, dwdn, dwdtau = wres[0]
-            g += c * w**i * u**j
-            if i > 0:
-                dgdn += c * i * w**(i-1) * u**j * dwdn
-                dgdtau += c * i * w**(i-1) * u**j * dwdtau
-            if j > 0:
-                dgdn += c * j * w**i * u**(j-1) * dudn
-                dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+        def sum_terms(uterms, wterms, terms):
+            g = 1
+            dgdn = 0
+            dgdgrad = 0
+            dgdtau = 0
+            u, dudn, dudgrad = uterms
+            w, dwdn, dwdtau = wterms
+            for c, i, j in terms:
+                g += c * w**i * u**j
+                if i > 0:
+                    dgdn += c * i * w**(i-1) * u**j * dwdn
+                    dgdtau += c * i * w**(i-1) * u**j * dwdtau
+                if j > 0:
+                    dgdn += c * j * w**i * u**(j-1) * dudn
+                    dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+            return g, dgdn, dgdgrad, dgdtau
+
+        g, dgdn, dgdgrad, dgdtau = sum_terms(ures[4], wres[0], self.xterms)
         Exa = ex0a * g * rhoa[0]
         vxa_rho = vx0a * g + ex0a * dgdn
         vxa_grad = ex0a * dgdgrad
         vxa_tau = ex0a * dgdtau
 
-        g = 1
-        dgdn = 0
-        dgdgrad = 0
-        dgdtau = 0
-        for c, i, j in self.xterms:
-            u, dudn, dudgrad = ures[5]
-            w, dwdn, dwdtau = wres[1]
-            g += c * w**i * u**j
-            if i > 0:
-                dgdn += c * i * w**(i-1) * u**j * dwdn
-                dgdtau += c * i * w**(i-1) * u**j * dwdtau
-            if j > 0:
-                dgdn += c * j * w**i * u**(j-1) * dudn
-                dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+        g, dgdn, dgdgrad, dgdtau = sum_terms(ures[5], wres[1], self.xterms)
         Exb = ex0b * g * rhob[0]
         vxb_rho = vx0b * g + ex0b * dgdn
         vxb_grad = ex0b * dgdgrad
         vxb_tau = ex0b * dgdtau
 
-        g = 1
-        dgdn = 0
-        dgdtau = 0
-        dgdgrad = 0
-        for c, i, j in self.ssterms:
-            u, dudn, dudgrad = ures[0]
-            w, dwdn, dwdtau = wres[0]
-            g += c * w**i * u**j
-            if i > 0:
-                dgdn += c * i * w**(i-1) * u**j * dwdn
-                dgdtau += c * i * w**(i-1) * u**j * dwdtau
-            if j > 0:
-                dgdn += c * j * w**i * u**(j-1) * dudn
-                dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+        g, dgdn, dgdgrad, dgdtau = sum_terms(ures[0], wres[0], self.ssterms)
         Eca = ec0a * g * rhoa[0]
         vca_rho = vc0a * g + ec0a * dgdn
         vca_grad = ec0a * dgdgrad
         vca_tau = ec0a * dgdtau
 
-        g = 1
-        dgdn = 0
-        dgdtau = 0
-        dgdgrad = 0
-        for c, i, j in self.ssterms:
-            u, dudn, dudgrad = ures[1]
-            w, dwdn, dwdtau = wres[1]
-            g += c * w**i * u**j
-            if i > 0:
-                dgdn += c * i * w**(i-1) * u**j * dwdn
-                dgdtau += c * i * w**(i-1) * u**j * dwdtau
-            if j > 0:
-                dgdn += c * j * w**i * u**(j-1) * dudn
-                dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+        g, dgdn, dgdgrad, dgdtau = sum_terms(ures[1], wres[1], self.ssterms)
         Ecb = ec0b * g * rhob[0]
         vcb_rho = vc0b * g + ec0b * dgdn
         vcb_grad = ec0b * dgdgrad
         vcb_tau = ec0b * dgdtau
 
-        g = 1
-        dgdna = 0
-        dgdnb = 0
-        dgdtaua = 0
-        dgdtaub = 0
-        dgdgrada = 0
-        dgdgradb = 0
-        for c, i, j in self.osterms:
-            u, dudna, dudgrada = ures[2]
-            u, dudnb, dudgradb = ures[3]
-            w, dwdna, dwdtaua = wres[2]
-            w, dwdnb, dwdtaub = wres[3]
-            g += c * w**i * u**j
-            if i > 0:
-                dgdna += c * i * w**(i-1) * u**j * dwdna
-                dgdnb += c * i * w**(i-1) * u**j * dwdnb
-                dgdtaua += c * i * w**(i-1) * u**j * dwdtaua
-                dgdtaub += c * i * w**(i-1) * u**j * dwdtaub
-            if j > 0:
-                dgdna += c * j * w**i * u**(j-1) * dudna
-                dgdnb += c * j * w**i * u**(j-1) * dudnb
-                dgdgrada += c * j * w**i * u**(j-1) * dudgrada
-                dgdgradb += c * j * w**i * u**(j-1) * dudgradb
+        g, dgdna, dgdgrada, dgdtaua = sum_terms(ures[2], wres[2], self.osterms)
+        _, dgdnb, dgdgradb, dgdtaub = sum_terms(ures[3], wres[3], self.osterms)
 
         Ecos = ec0os * g * (rhoa[0] + rhob[0])
         vca_rho += ec0os * dgdna + vc0os[:,0] * g
@@ -159,8 +105,6 @@ class ProjNumInt(pyscf_numint.NumInt):
         vcb_grad += ec0os * dgdgradb
         vca_tau += ec0os * dgdtaua
         vcb_tau += ec0os * dgdtaub
-
-        print(Eca, Ecb, Ecos, Exa, Exb)
 
         ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
         ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
@@ -172,6 +116,12 @@ class ProjNumInt(pyscf_numint.NumInt):
                             0 * vca_grad, vcb_grad + vxb_grad)).T
         vc_nabla = 0 * vcb_rho
         vc_tau = np.vstack((vca_tau + vxa_tau, vcb_tau + vxb_tau)).T
+
+        if spin == 0:
+            vc_rho = np.sum(vc_rho, axis=-1)
+            vc_grad = np.sum(vc_grad, axis=-1)
+            vc_nabla = np.sum(vc_grad, axis=-1)
+            vc_tau = np.sum(vc_tau, axis=-1)
 
         return ec, (vc_rho, vc_grad, vc_nabla, vc_tau), None, None
 
