@@ -16,10 +16,10 @@ ao_data, rho_data = get_mgga_data(mol, rks.grids, rks.make_rdm1())
 numint = ProjNumInt()
 e, v, _, _ = numint.eval_xc('', rho_data)
 
+print(rks._numint.nlc_coeff('B97M-V'))
+
 eref, vref, _, _ = eval_xc('B97M-V', rho_data)
-nr_rks_vv10(rks._numint, mol, grids, xc_code, dms, relativity=0, hermi=0,
-                max_memory=2000, verbose=None, b = 5.9, c = 0.0093):
-eref -= evv
+_, Evv, _ = nr_rks_vv10(rks._numint, mol, rks.grids, 'B97M-V', rks.make_rdm1(), b = 6.0, c = 0.01)
 
 print(e.shape, eref.shape, rks.grids.weights.shape)
 print(np.dot(np.abs(e - eref) * rho_data[0], rks.grids.weights))
@@ -36,3 +36,4 @@ Eref = np.dot(eref * rho_data[0], rks.grids.weights)
 print(np.dot(eref * rho_data[0], rks.grids.weights))
 print(eb97 - Eref)
 print(eest - Eref)
+print(eb97 - (Evv + eest))
