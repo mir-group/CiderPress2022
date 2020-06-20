@@ -32,17 +32,15 @@ class ProjNumInt(pyscf_numint.NumInt):
         else:
             rhoa, rhob = rho[0], rho[1]
 
-        print(rhoa.shape, rhob.shape)
-
         ures = get_u(rhoa, rhob)
         wres = get_w(rhoa, rhob)
         zeros = 0 * rhob[0]
 
         ex0a, vx0a, _, _ = eval_xc('LDA,', (rhoa[0], zeros), spin=1)
         ex0b, vx0b, _, _ = eval_xc('LDA,', (zeros, rhob[0]), spin=1)
-        ec0t, vc0t, _, _ = eval_xc(',LDA_C_PW', (rhoa[0], rhob[0]), spin=1)
-        ec0a, vc0a, _, _ = eval_xc(',LDA_C_PW', (rhoa[0], zeros), spin=1)
-        ec0b, vc0b, _, _ = eval_xc(',LDA_C_PW', (zeros, rhob[0]), spin=1)
+        ec0t, vc0t, _, _ = eval_xc(',LDA_C_PW_MOD', (rhoa[0], rhob[0]), spin=1)
+        ec0a, vc0a, _, _ = eval_xc(',LDA_C_PW_MOD', (rhoa[0], zeros), spin=1)
+        ec0b, vc0b, _, _ = eval_xc(',LDA_C_PW_MOD', (zeros, rhob[0]), spin=1)
         vx0a = vx0a[0][:,0]
         vx0b = vx0b[0][:,1]
         vc0t = vc0t[0]
@@ -111,8 +109,8 @@ class ProjNumInt(pyscf_numint.NumInt):
         vca_tau += Ec0os * dgdtaua
         vcb_tau += Ec0os * dgdtaub
 
-        ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
-        ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-12)
+        ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-30)
+        ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-30)
         #vc_rho = vc0os * gos.reshape(-1,1) + vc0a * ga * vc0b * gb
         #vc_rho += ec0os * dgosdn + ec0a * dgadn + ec0b * dgbdn
 
@@ -207,8 +205,8 @@ def corr_term(u, w, du, dw, i, j):
 
 def get_s2_ss(rho_data):
     b = 2 * (3 * np.pi * np.pi)**(1.0/3)
-    rho83 = rho_data[0]**(8.0 / 3) + 1e-15
-    rho113 = rho_data[0]**(11.0 / 3) + 1e-15
+    rho83 = rho_data[0]**(8.0 / 3) + 1e-30
+    rho113 = rho_data[0]**(11.0 / 3) + 1e-30
     gradn2 = get_gradient_magnitude(rho_data)**2
     #s2 = gradn2 / (b**2 * rho83)
     #ds2dgrad = 1 / (b**2 * rho83)
@@ -253,9 +251,9 @@ def get_u(rho_data_u, rho_data_d):
 
 def get_t_ss(rho, tau):
     tau0 = 0.3 * (6 * np.pi**2)**(2.0/3) * rho**(5.0/3)
-    t = tau0 / (tau + 1e-12)
-    dtdn = 0.5 * (6 * np.pi**2)**(2.0/3) * rho**(2.0/3) / (tau + 1e-12)
-    dtdtau = - tau0 / (tau**2 + 1e-12)
+    t = tau0 / (tau + 1e-30)
+    dtdn = 0.5 * (6 * np.pi**2)**(2.0/3) * rho**(2.0/3) / (tau + 1e-30)
+    dtdtau = - tau0 / (tau**2 + 1e-30)
     return t, dtdn, dtdtau
 
 def get_w(rho_data_u, rho_data_d):
