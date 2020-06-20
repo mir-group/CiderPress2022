@@ -2,6 +2,7 @@ from pyscf.dft.numint import _vv10nlc
 from pyscf.dft.libxc import eval_xc
 from pyscf.dft import numint as pyscf_numint
 import numpy as np
+from mldftdat.pyscf_utils import get_gradient_magnitude
 from pyscf.dft.numint import _vv10nlc, _rks_gga_wv0, _scale_ao, _dot_ao_ao
 
 # (w exponent, u exponent)
@@ -35,7 +36,7 @@ class ProjNumInt(pyscf_numint.NumInt):
 
         ures = get_u(rhoa, rhob)
         wres = get_w(rhoa, rhob)
-        zeros = 0 * rhob
+        zeros = 0 * rhob[0]
 
         ex0a, vx0a, _, _ = eval_xc('LDA,', (rhoa[0], zeros), spin=1)
         ex0b, vx0b, _, _ = eval_xc('LDA,', (zeros, rhob[0]), spin=1)
@@ -124,7 +125,7 @@ class ProjNumInt(pyscf_numint.NumInt):
         if spin == 0:
             vc_rho = np.sum(vc_rho, axis=-1) / 2
             # TODO this will not be correct when cross term is nonzero
-            vc_grad = np.sum(vc_grad[:,(0,1,2)], axis=-1) / 2
+            vc_grad = np.sum(vc_grad[:,(0,2)], axis=-1) / 4
             vc_nabla = np.sum(vc_grad, axis=-1) / 2
             vc_tau = np.sum(vc_tau, axis=-1) / 2
 
@@ -205,12 +206,16 @@ def corr_term(u, w, du, dw, i, j):
     return term, dterm_i, dterm_j
 
 def get_s2_ss(rho_data):
-    rho83 = rho_data[0]**(8.0 / 3) + 1e-12
-    rho113 = rho_data[0]**(11.0 / 3) + 1e-12
-    gradn2 = np.linalg.norm(rho_data[1:4], axis=0)**2
-    s2 = gradn2 / rho83
-    ds2dgrad = 1 / rho83
-    ds2dn = (-8.0/3) * gradn2 / rho113
+    b = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    rho83 = rho_data[0]**(8.0 / 3) + 1e-15
+    rho113 = rho_data[0]**(11.0 / 3) + 1e-15
+    gradn2 = get_gradient_magnitude(rho_data)**2
+    #s2 = gradn2 / (b**2 * rho83)
+    #ds2dgrad = 1 / (b**2 * rho83)
+    #ds2dn = (-8.0/3) * gradn2 / (b**2 * rho83)
+    s2 = gradn2 / (rho83)
+    ds2dgrad = 1 / (rho83)
+    ds2dn = (-8.0/3) * gradn2 / (rho113)
     return s2, ds2dn, ds2dgrad
 
 def get_u(rho_data_u, rho_data_d):
