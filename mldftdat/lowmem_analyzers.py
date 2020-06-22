@@ -357,6 +357,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['calc']['e_corr'] = self.calc.e_corr
         analyzer_dict['data']['ee_total'] = self.ee_total
         analyzer_dict['data']['ecorr_dens'] = self.ecorr_dens
+        analyzer_dict['data']['e_tri'] = self.e_tri
         return analyzer_dict
 
     @classmethod
@@ -389,6 +390,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
                                                     self.jmat, self.kmat)
 
         self.ecorr_dens = None
+        self.e_tri = None
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -427,6 +429,10 @@ class CCSDAnalyzer(ElectronAnalyzer):
             self.ecorr_dens = ecorr_dens
         return self.ecorr_dens
 
+    def calc_pert_triples(self):
+        self.e_tri = self.calc.ccsd_t()
+        return self.e_tri
+
     def perform_full_analysis(self):
         super(CCSDAnalyzer, self).perform_full_analysis()
         self.get_corr_energy_density()
@@ -454,6 +460,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['data']['ecorr_dens_uu'] = self.ecorr_dens_uu
         analyzer_dict['data']['ecorr_dens_ud'] = self.ecorr_dens_ud
         analyzer_dict['data']['ecorr_dens_dd'] = self.ecorr_dens_dd
+
+        analyzer_dict['data']['e_tri'] = self.e_tri
 
         return analyzer_dict
 
@@ -512,6 +520,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.ecorr_dens_uu = None
         self.ecorr_dens_ud = None
         self.ecorr_dens_dd = None
+
+        self.e_tri = None
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -590,6 +600,10 @@ class UCCSDAnalyzer(ElectronAnalyzer):
             self.ecorr_dens_dd = ecorr_dens_dd
 
         return self.ecorr_dens
+
+    def calc_pert_triples(self):
+        self.e_tri = self.calc.ccsd_t()
+        return self.e_tri
 
     def perform_full_analysis(self):
         super(UCCSDAnalyzer, self).perform_full_analysis()
