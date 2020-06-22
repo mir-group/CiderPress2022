@@ -286,13 +286,15 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None):
+def load_descriptors(dirname, count=None, val_dirname = None):
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
     else:
         count = X.shape[0]
-    y = np.loadtxt(os.path.join(dirname, 'val.npz'))[:count]
+    if val_dirname is None:
+        val_dirname = dirname
+    y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
     return X, y, rho_data
 
@@ -337,7 +339,7 @@ def get_x(y, rho):
 
 def get_y_from_xed(xed, rho):
     #return np.log(xed / (ldax(rho) - 1e-7) + 1e-7)
-    return xed / (ldax(rho) - 1e-7) - 1
+    return xed / (ldax(rho) - 1e-12) - 1
 
 def true_metric(y_true, y_pred, rho):
     """
@@ -376,7 +378,7 @@ def quick_plot(rho, v_true, v_pred, name = None):
         plt.cla()
 
 def predict_exchange(analyzer, model=None, num=1,
-                     restricted = True, return_desc = False):
+                     restricted = True, return_desc = False, version = 'a'):
     """
     model:  If None, return exact exchange results
             If str, evaluate the exchange energy of that functional.
@@ -410,13 +412,13 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = get_x(y_pred, rho)
         neps = rho * eps
     elif type(model) == Predictor:
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     else:# type(model) == integral_gps.NoisyEDMGPR:
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted)
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
         print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
         eps = neps / rho
@@ -439,9 +441,9 @@ def predict_exchange(analyzer, model=None, num=1,
     else:
         return xef, eps, neps, fx_total
 
-def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
+def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = 'a'):
     if isinstance(analyzer, RHFAnalyzer):
-        return predict_exchange(analyzer, model, num)[3]
+        return predict_exchange(analyzer, model, num, version = version)[3]
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
     coords = analyzer.grid.coords
@@ -460,7 +462,7 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1):
         #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
     else:
-        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False)
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
         neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
         neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
     """
@@ -617,7 +619,7 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
            (columns, rows, errtbl),\
            data_dict
 
-def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
+def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
     models = ['MGGA_X_GVT4', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
@@ -656,8 +658,8 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
         for Z in list(formula.keys()):
             fx_total_ref_true += formula[Z] \
                                  * predict_total_exchange_unrestricted(
-                                        element_analyzers[Z])
-        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
+                                        element_analyzers[Z], version=version)
+        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer, version = version)
         print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
         ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
@@ -668,9 +670,9 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1):
                 fx_total_ref += formula[Z] \
                                 * predict_total_exchange_unrestricted(
                                     element_analyzers[Z],
-                                    model = model, num = num)
+                                    model = model, num = num, version = version)
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
-                predict_exchange(analyzer, model = model, num = num)
+                predict_exchange(analyzer, model = model, num = num, version = version)
             print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
                                                  - (fx_total_ref - fx_total_ref_true))
 
@@ -745,11 +747,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint2 import setup_rks_calc
+                    from mldftdat.dft.numint3 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
                     mf.xc = ',MGGA_C_M11'
                 else:
-                    from mldftdat.dft.numint2 import setup_uks_calc
+                    from mldftdat.dft.numint3 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = ',MGGA_C_M11'
                 mf.kernel()

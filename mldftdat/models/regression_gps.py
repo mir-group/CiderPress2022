@@ -306,7 +306,7 @@ def get_big_desc3(X, rho_data, num = 1):
     desc = np.zeros((X.shape[0], 71))
     desc = X.copy()
     #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
-    desc[:,1] = np.arcsinh(desc[:,1])
+    desc[:,1] = tail_fx(rho_data)
     desc[:,2] = 1 / (1 + alpha**2)
     desc[:,(3,4)] /= scale**3
     desc[:,(5,6,9)] /= scale**8
@@ -317,10 +317,11 @@ def get_big_desc3(X, rho_data, num = 1):
     #desc[:,3] -= 2
     #desc[:,4] -= 3.939
     # c_ij, i->w, j->u
-    desc[:,3:] /= (1 + gammax * ssigma**2).reshape(-1,1)
+    #desc[:,3:] /= (1 + gammax * ssigma**2).reshape(-1,1)
     desc[:,3:] /= np.array([[  0.98705586,   1.86278409,  15.84986931,  59.38764836,  15.85273698,
   65.28117628,  30.80285635, 108.30579585, 205.16873174, 388.54096809,
  216.71798354, 410.54856388, 777.91829647,  32.26364096]])
+    desc[:,3:] = np.arcsinh(desc[:,3:])
     #return desc
     return desc[:,[0,1,2,3,5,7,4,10,9,6,8,11,12,13,14,15,16][:num+1]]
 
@@ -348,7 +349,7 @@ class SmoothEDMGPR3(EDMGPR):
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_big_desc3,
-                       xed_y_converter = (xed_to_y_tail, y_to_xed_tail),
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
@@ -383,7 +384,7 @@ class NoisyEDMGPR(EDMGPR):
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_big_desc3,
-                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     #def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
