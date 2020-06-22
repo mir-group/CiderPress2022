@@ -736,9 +736,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     else:
         CALC_NAME = CALC_TYPE
 
-    if CALC_TYPE == 'CCSD':
+    if CALC_TYPE in ['CCSD', 'CCSD_T']:
         Analyzer = lowmem_analyzers.CCSDAnalyzer
-    elif CALC_TYPE == 'UCCSD':
+    elif CALC_TYPE in ['UCCSD', 'UCCSD_T']:
         Analyzer = lowmem_analyzers.UCCSDAnalyzer
     elif CALC_TYPE in ['RKS', 'RHF']:
         Analyzer = lowmem_analyzers.RHFAnalyzer
@@ -747,13 +747,39 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
-            return Analyzer.load(path).calc.e_tot
+            analyzer = Analyzer.load(path)
+            if '_T' in calc_type:
+                if analyzer.e_tri is None:
+                    analyzer.calc_pert_triples()
+                return analyzer.calc.e_tot + analyzer.e_tri
+            else:
+                return analyzer.calc.e_tot
 
         else:
-            if FUNCTIONAL is None:
+            if calc_type == 'CCSD':
+                mf = run_scf(mol, 'RHF')
+                mycc = run_cc(mf)
+                e_tot = mycc.e_tot
+            elif calc_type == 'UCCSD':
+                mf = run_scf(mol, 'UHF')
+                mycc = run_cc(mf)
+                e_tot = mycc.e_tot
+            elif calc_type == 'CCSD_T':
+                mf = run_scf(mol, 'RHF')
+                mycc = run_cc(mf)
+                e_tri = mycc.ccsd_t()
+                e_tot = mycc.e_tot + e_tri
+            elif calc_type == 'UCCSD_T':
+                mf = run_scf(mol, 'UHF')
+                mycc = run_cc(mf)
+                e_tri = mycc.ccsd_t()
+                e_tot = mycc.e_tot + e_tri
+            elif FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
+                e_tot = mf.e_tot
             elif type(FUNCTIONAL) == str:
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
+                e_tot = mf.e_tot
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint3 import setup_rks_calc
@@ -764,6 +790,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = ',MGGA_C_M11'
                 mf.kernel()
+                e_tot = mf.e_tot
 
             if save:
                 analyzer = Analyzer(mf)
