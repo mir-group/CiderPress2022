@@ -727,7 +727,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     from mldftdat import lowmem_analyzers
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    from mldftdat.pyscf_utils import run_scf
+    from mldftdat.pyscf_utils import run_scf, run_cc
     from pyscf import gto
     from mldftdat.dft.xc_models import MLFunctional
 
@@ -749,18 +749,18 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
         if os.path.isfile(path) and use_db:
             analyzer = Analyzer.load(path)
             if '_T' in calc_type:
-                if analyzer.e_tri is None:
+                if analyzer.e_tri is None and mol.nelectron > 2:
                     analyzer.calc_pert_triples()
                 return analyzer.calc.e_tot + analyzer.e_tri
             else:
                 return analyzer.calc.e_tot
 
         else:
-            if calc_type == 'CCSD':
+            if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
                 mf = run_scf(mol, 'RHF')
                 mycc = run_cc(mf)
                 e_tot = mycc.e_tot
-            elif calc_type == 'UCCSD':
+            elif (calc_type == 'UCCSD') or (calc_type == 'UCCSD_T' and mol.nelectron < 3):
                 mf = run_scf(mol, 'UHF')
                 mycc = run_cc(mf)
                 e_tot = mycc.e_tot
@@ -797,12 +797,14 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 if full_analysis:
                     analyzer.perform_full_analysis()
                 analyzer.dump(path)
-            return mf.e_tot
+            return e_tot
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
         analyzer = Analyzer.load(mol_path)
         mol = analyzer.mol
+    mol.basis = BASIS
+    mol.build() 
     mol_energy = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
 
     atoms = [atomic_numbers[a[0]] for a in mol._atom]
@@ -821,6 +823,10 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
         atm.build()
         if CALC_TYPE in ['CCSD', 'UCCSD']:
             ATOM_CALC_TYPE = 'CCSD' if spin == 0 else 'UCCSD'
+            AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
+                           else lowmem_analyzers.UCCSDAnalyzer
+        elif CALC_TYPE in ['CCSD_T', 'UCCSD_T']:
+            ATOM_CALC_TYPE = 'CCSD_T' if spin == 0 else 'UCCSD_T'
             AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
                            else lowmem_analyzers.UCCSDAnalyzer
         elif CALC_TYPE in ['RKS', 'UKS']:
