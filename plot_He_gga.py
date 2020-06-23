@@ -1,6 +1,7 @@
 import jax.numpy as np 
 from jax import grad, jit, vmap
 import matplotlib.pyplot as plt 
+from mldftdat.density import tail_fx, tail_fx_direct, tail_fx_deriv, tail_fx_deriv_direct
 
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
@@ -54,22 +55,7 @@ y2 = hex2(s2)
 #y3 = hex2(s2) - hex3(s2)
 y3 = hex2(s2) + hexc(s2)
 y4 = hex4(s2)
-y5= hex5(s2) + hexc(s2)
-
-def tail_fx(s):
-    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
-    term1 = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp)
-    term3 = 2 + sp**2 / 12 - 17 * s**4 / 2880 + 367 * s**6 / 483840\
-            - 27859 * s**8 / 232243200 + 1295803 * s**10 / 61312204800
-    term3 *= hprefac * 2.0 / 3
-    mu = 0.21951
-    l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
-    a = 1 - hprefac * 4 / 3
-    b = mu - l**2 * hprefac / 18
-    term2 = (a + b * s**2) / (1 + (l*s/2)**4)
-    f = term2 + term3
-    f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
-    return f
+y5 = hex5(s2) + hexc(s2)
 
 def hexsum(s):
     return np.sum(hex(s))
@@ -129,16 +115,23 @@ plt.plot(s, y, label='exact')
 #plt.plot(s, ddy, label='d2yds2')
 #plt.plot(s2, y2, label='approx1')
 #plt.plot(s2, y3, label='approx2')
-plt.plot(s2, y6, label='approx5')
-plt.plot(s2, tail_fx(numpy.array(s2)), label='func')
+plt.plot(s2, y5, label='approx5')
+plt.plot(s2, tail_fx_direct(numpy.array(s2)), label='func')
+plt.plot(s2, tail_fx_deriv_direct(numpy.array(s2)), label='deriv')
 plt.plot(s2[s2<1], nheg(s2[s2<1]), label='NHEG')
 #plt.plot(s2, y4, label='approx3')
 plt.scatter(s0, hex(s0+1e-5))
+plt.ylim(0,4)
 plt.legend()
 plt.show()
 
+print(np.trapz(tail_fx_deriv_direct(numpy.array(s2[s2<4])), s2[s2<4]))
+print(tail_fx_direct(numpy.array([4])))
+
+"""
 x = np.linspace(0, 1, 100)
 y = (x**2 + 3 * x**3) / (1 + x**3)**2
 y = 0.5 - np.cos(np.pi * x) / 2
 plt.plot(x,y)
 plt.show()
+"""

@@ -500,15 +500,15 @@ def edmgga_loc(rho_data):
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
 hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+mu = 0.2195
 l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
 a = 1 - hprefac * 4 / 3
 b = mu - l**2 * hprefac / 18
-mu = 0.2195
 
 def tail_fx(rho_data):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
     s = get_normalized_grad(rho_data[0], gradn)
-    return tail_fx_direct(rho_data)
+    return tail_fx_direct(s)
 
 def tail_fx_direct(s):
     sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
@@ -521,7 +521,12 @@ def tail_fx_direct(s):
     f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
     return f
 
-def tail_fx_deriv(s):
+def tail_fx_deriv(rho_data):
+    gradn = np.linalg.norm(rho_data[1:4], axis=0)
+    s = get_normalized_grad(rho_data[0], gradn)
+    return tail_fx_deriv_direct(s)
+
+def tail_fx_deriv_direct(s):
     sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3) 
     sfac = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
     term1 = hprefac * 2.0 / 3 * sfac * (1.0 / np.arcsinh(0.5 * sp)\
