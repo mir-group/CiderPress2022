@@ -239,12 +239,14 @@ def contract21(t2, t1):
 
     return np.real(np.array([xterm, yterm, zterm]))
 
-def contract21_deriv(t1):
+def contract21_deriv(t1, t1b = None):
+    if t1b is None:
+        t1b = t1
     tmp = np.identity(5)
     derivs = np.zeros((5, 3, t1.shape[1]))
     for i in range(5):
         derivs[i] = contract21(tmp[i], t1)
-    return np.einsum('map,ap->mp', derivs, t1)
+    return np.einsum('map,ap->mp', derivs, t1b)
 
 def contract_exchange_descriptors(desc):
     # desc[0:6]   = rho_data
@@ -498,20 +500,37 @@ def edmgga_loc(rho_data):
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
 hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
+a = 1 - hprefac * 4 / 3
+b = mu - l**2 * hprefac / 18
+mu = 0.2195
 
 def tail_fx(rho_data):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
     s = get_normalized_grad(rho_data[0], gradn)
+    return tail_fx_direct(rho_data)
+
+def tail_fx_direct(s):
     sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
     term1 = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp)
-    term3 = 2 + sp**2 / 12 - 17 * s**4 / 2880 + 367 * s**6 / 483840\
-            - 27859 * s**8 / 232243200 + 1295803 * s**10 / 61312204800
+    term3 = 2 + sp**2 / 12 - 17 * sp**4 / 2880 + 367 * sp**6 / 483840\
+            - 27859 * sp**8 / 232243200 + 1295803 * sp**10 / 61312204800
     term3 *= hprefac * 2.0 / 3
-    mu = 0.21951
-    l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
-    a = 1 - hprefac * 4 / 3
-    b = mu - l**2 * hprefac / 18
     term2 = (a + b * s**2) / (1 + (l*s/2)**4)
+    f = term2 + term3
+    f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
+    return f
+
+def tail_fx_deriv(s):
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3) 
+    sfac = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
+    term1 = hprefac * 2.0 / 3 * sfac * (1.0 / np.arcsinh(0.5 * sp)\
+            - sp / (2 * np.sqrt(1+sp**2/4) * np.arcsinh(sp/2)**2))
+    term3 = sp / 6 - 17 * sp**3 / 720 + 367 * sp**5 / 80640 - 27859 * sp**7 / 29030400\
+            + 1295803 * sp**9 / 6131220480
+    term3 *= hprefac * 2.0 / 3 * sfac
+    denom = (1 + (l*s/2)**4)
+    term2 = 2 * b * s / denom - l**4 * s**3 * (a + b * s**2) / (4 * denom**2)
     f = term2 + term3
     f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
     return f

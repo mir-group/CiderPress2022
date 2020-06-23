@@ -297,6 +297,21 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                 dfmul = contract21_deriv(svec)
                 ddesc_dsvec = contract21(g, svec)
                 v_aniso += elda * dFddesc[:,i] * 2 * ddesc_dsvec
+            elif d.code == 13:
+                g2 = raw_desc[16:21]
+                g1 = raw_desc[13:16]
+                dfmul = contract21_deriv(svec, g1)
+                ddesc_dsvec = contract21(g2, g1)
+                ddesc_dg1 = contract21(g2, svec)
+                v_aniso += elda * dFddesc[:,i] * ddesc_dsvec
+                vtmp1, dedaux1 = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * ddesc_dg1,
+                                         density, mol.auxmol, g1, l = -1,
+                                         mul = d.mul)
+                vtmp2, dedaux2 = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g2, l = -2,
+                                         mul = d.mul)
+                vtmp = vtmp1 + vtmp2
+                dedaux = dedaux1 + dedaux2
             else:
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
 
