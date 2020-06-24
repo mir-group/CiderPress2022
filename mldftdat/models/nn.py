@@ -108,7 +108,37 @@ class PolyAnsatz(nn.Module):
         x = self.linear(x)
         return torch.squeeze(self.func(x, self.C3param, self.C4param), dim=1)
 
-def get_traing_obj(model, lr = 0.005):
+
+class BayesianLinearFeat(nn.Module):
+
+    def __init__(self, ndesc, X_train, y_train, train_weights):
+        super(BayesianLinearFeat, self).__init__()
+        self.linear = nn.Linear(ndesc, ndesc, bias = False)
+        self.X_train = torch.tensor(X_train, requires_grad = False)
+        self.y_train = torch.tensor(y_train, requires_grad = False)
+        self.sigmoid = nn.Sigmoid()
+        self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
+        self.train_weights = torch.tensor(train_weights, requires_grad = False)
+
+    def transform_descriptors(self, X):
+        return self.sigmoid(self.linear(X)) - 0.5
+
+    def compute_weights(self):
+        X = self.transform_descriptors(self.X_train)
+        y = self.y_train * self.train_weights
+        #print(X.size(), y.size())
+        A = torch.matmul(X.T, self.train_weights * X) + self.noise
+        Xy = torch.matmul(X.T, y)
+        #print(A.size(), Xy.size())
+        return torch.matmul(torch.inverse(A), Xy)
+
+    def forward(self, X):
+        w = self.compute_weights()
+        X = self.transform_descriptors(X)
+        return torch.matmul(X, w)
+
+
+def get_training_obj(model, lr = 0.005):
     criterion = nn.MSELoss()
     #optimizer = torch.optim.SGD(model.parameters(), lr = lr)
     optimizer = torch.optim.LBFGS(model.parameters(), lr = lr, max_iter = 2000, history_size=2000)
@@ -120,6 +150,7 @@ def train(x, y_true, criterion, optimizer, model):
     y_true = torch.tensor(y_true)
     optimizer.zero_grad()
     y_pred = model(x)
+    print(y_pred.size(), y_true.size())
     loss = criterion(y_pred, y_true)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
