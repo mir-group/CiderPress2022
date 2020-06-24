@@ -540,3 +540,6 @@ def tail_fx_deriv_direct(s):
     f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
     return f
 
+def tail_fx_deriv_p(s):
+    return tail_fx_deriv_direct(s) / (2 * s + 1e-16)
+

@@ -394,6 +394,7 @@ def predict_exchange(analyzer, model=None, num=1,
             Otherwise, assume sklearn model and run predict function.
     """
     from mldftdat.models.nn import Predictor
+    from mldftdat.dft.xc_models import MLFunctional
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -426,6 +427,16 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    elif isinstance(model, MLFunctional):
+        N = analyzer.grid.weights.shape[0]
+        desc  = np.zeros((N, len(model.desc_list)))
+        ddesc = np.zeros((N, len(model.desc_list)))
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        for i, d in enumerate(model.desc_list):
+            desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+        xef = model.get_F(desc)
+        eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
+        neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
     else:# type(model) == integral_gps.NoisyEDMGPR:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
@@ -453,6 +464,8 @@ def predict_exchange(analyzer, model=None, num=1,
 def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = 'a'):
     if isinstance(analyzer, RHFAnalyzer):
         return predict_exchange(analyzer, model, num, version = version)[3]
+    from mldftdat.models.nn import Predictor
+    from mldftdat.dft.xc_models import MLFunctional
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
     coords = analyzer.grid.coords
@@ -470,6 +483,17 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
         #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
         #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
+    elif isinstance(model, MLFunctional):
+        N = analyzer.grid.weights.shape[0]
+        neps = 0
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
+        for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
+            desc  = np.zeros((N, len(model.desc_list)))
+            ddesc = np.zeros((N, len(model.desc_list)))
+            for i, d in enumerate(model.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+            xef = model.get_F(desc)
+            neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
         neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
@@ -784,11 +808,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 if 'RKS' in path:
                     from mldftdat.dft.numint3 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',MGGA_C_M11'
+                    mf.xc = ',GGA_C_PBE'
                 else:
                     from mldftdat.dft.numint3 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',MGGA_C_M11'
+                    mf.xc = ',GGA_C_PBE'
                 mf.kernel()
                 e_tot = mf.e_tot
 

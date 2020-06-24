@@ -319,6 +319,8 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                 vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
                                          density, mol.auxmol, g, l = l,
                                          mul = d.mul)
+            elif d.code == 13:
+                pass
             else:
                 vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i],
                                          density, mol.auxmol, g, l = l,

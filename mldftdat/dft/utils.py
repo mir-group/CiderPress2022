@@ -341,6 +341,9 @@ def get_density_in_basis(ao_to_aux, rdm1):
 def arcsinh_deriv(x):
     return 1 / np.sqrt(x * x + 1)
 
+def get_chi(alpha):
+    return 1 / (1 + alpha**2)
+
 def chi_deriv(alpha):
     return -2 * alpha / (1 + alpha**2)**2
 
