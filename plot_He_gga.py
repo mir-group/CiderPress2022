@@ -128,10 +128,10 @@ plt.show()
 print(np.trapz(tail_fx_deriv_direct(numpy.array(s2[s2<4])), s2[s2<4]))
 print(tail_fx_direct(numpy.array([4])))
 
-"""
+
 x = np.linspace(0, 1, 100)
 y = (x**2 + 3 * x**3) / (1 + x**3)**2
-y = 0.5 - np.cos(np.pi * x) / 2
+y = 0.5 - np.cos(2 * np.pi * x) / 2
 plt.plot(x,y)
 plt.show()
-"""
+
