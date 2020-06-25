@@ -175,6 +175,8 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
+    all_weights = []
+    cutoffs = []
 
     for MOL_ID in MOL_IDS:
         print('Working on {}'.format(MOL_ID))
@@ -253,6 +255,8 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         else:
             all_rho_data = np.append(all_rho_data, rho_data, axis=1)
         all_values = np.append(all_values, values)
+        all_weights = np.append(all_weights, analyzer.grid.weights)
+        cutoffs.append(all_values.shape[0])
 
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
     if not os.path.isdir(save_dir):
@@ -260,9 +264,13 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     rho_file = os.path.join(save_dir, 'rho.npz')
     desc_file = os.path.join(save_dir, 'desc.npz')
     val_file = os.path.join(save_dir, 'val.npz')
+    wt_file = os.path.join(save_dir, 'wt.npz')
+    cut_file = os.path.join(save_dir, 'cut.npz')
     np.savetxt(rho_file, all_rho_data)
     np.savetxt(desc_file, all_descriptor_data)
     np.savetxt(val_file, all_values)
+    np.savetxt(wt_file, all_weights)
+    np.savetxt(cut_file, np.array(cutoffs))
 
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
