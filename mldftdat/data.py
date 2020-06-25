@@ -256,6 +256,9 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             all_rho_data = np.append(all_rho_data, rho_data, axis=1)
         all_values = np.append(all_values, values)
         all_weights = np.append(all_weights, analyzer.grid.weights)
+        if not restricted:
+            # two copies for unrestricted case
+            all_weights = np.append(all_weights, analyzer.grid.weights)
         cutoffs.append(all_values.shape[0])
 
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
@@ -314,7 +317,7 @@ def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False):
     y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
     if load_wt:
-        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:,:count]
+        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
         return X, y, rho_data, wt
     return X, y, rho_data
 
