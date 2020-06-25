@@ -4,6 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
 from sklearn.linear_model import LinearRegression
+from pyscf.dft.numint import NumInt
 
 def get_sl_contribs(pbe_dir, restricted):
 
@@ -62,6 +63,7 @@ def get_vv10_contribs(pbe_dir, restricted, NLC_COEFS):
     mol = pbe_analyzer.mol
     rdm1 = pbe_analyzer.rdm1
     E_pbe = pbe_analyzer.e_tot
+    numint = NumInt()
 
     vv10_contribs = []
 
@@ -175,6 +177,8 @@ def store_sl_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
+        print(mol_id)
+
         if is_restricted:
             pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
             ccsd_dir = get_save_dir(ROOT, 'CCSD', 'aug-cc-pvtz', mol_id)
@@ -182,7 +186,7 @@ def store_sl_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
             pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
             ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
 
-        sl_contribs = get_sl_contribs(pbe_dir, is_restricted, NLC_COEFS)
+        sl_contribs = get_sl_contribs(pbe_dir, is_restricted)
 
         X = np.vstack([X, sl_contribs])
 
@@ -193,6 +197,8 @@ def store_nlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC)
     x = []
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        print(mol_id)
 
         if is_restricted:
             pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
@@ -221,7 +227,7 @@ def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
         pbe_ccsd = get_etot_contribs(pbe_dir, ccsd_dir, is_restricted)
 
-        X = np.vstack([X, pbe_ccsd])
+        y = np.vstack([y, pbe_ccsd])
 
     np.save(FNAME, y)
 
@@ -230,6 +236,8 @@ def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_CO
     X = np.zeros([0, len(NLC_COEFS)])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        print(mol_id)
 
         if is_restricted:
             pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
