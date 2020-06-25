@@ -96,7 +96,7 @@ def get_nlx_contribs(pbe_dir, restricted, mlfunc):
 
     return ml_numint.eval_xc(None, mol, rho_data, grid, rdm1, spin = spin)[0]
 
-def get_nlx_contribs(pbe_dir, restricted):
+def get_etot_contribs(pbe_dir, ccsd_dir, restricted):
 
     if restricted:
         pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
@@ -219,7 +219,7 @@ def store_total_energies_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST):
             pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
             ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
 
-        pbe_ccsd = get_etot_contribs(pbe_dir, is_restricted)
+        pbe_ccsd = get_etot_contribs(pbe_dir, ccsd_dir, is_restricted)
 
         X = np.vstack([X, pbe_ccsd])
 
