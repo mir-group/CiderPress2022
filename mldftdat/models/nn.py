@@ -40,6 +40,39 @@ def get_desc_default(X, rho_data, num = 1):
     desc[:,17] = alpha**2
     return np.append(X[:,1:4], desc, axis=1)[:,:num]
 
+def get_desc2(X):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    p = X[:,1]**2
+    gammax = 0.004 * (2**(1.0/3) * sprefac)**2
+    u = gammax * p / (1 + gammax * p)
+    alpha = X[:,2]
+    chi = 1 / (1 + alpha**2)
+    nabla = X[:,3]
+    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1))
+    desc = np.zeros((X.shape[0], 48))
+    desc0 = np.zeros((X.shape[0], 8))
+    afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
+    afilter_low = 1 - afilter_mid
+    afilter_low[chi > 0.5] = 0
+    afilter_high = 1 - afilter_mid
+    afilter_high[chi < 0.5] = 0
+    desc0[:,0] = u
+    desc0[:,1] = X[:,4]  - 2.0 / scale**3
+    desc0[:,2] = X[:,15] - 8.0 / scale**3
+    desc0[:,3] = X[:,16] - 0.5 / scale**3
+    desc0[:,4] = X[:,5]
+    desc0[:,5] = X[:,8]
+    desc0[:,6] = X[:,6]
+    desc0[:,7] = X[:,12]
+    desc[:,0:8]   = desc0 * afilter_low * u
+    desc[:,8:16]  = desc0 * afilter_low * (1-u)
+    desc[:,16:24] = desc0 * afilter_mid * u
+    desc[:,24:32] = desc0 * afilter_mid * (1-u)
+    desc[:,32:40] = desc0 * afilter_high * u
+    desc[:,40:48] = desc0 * afilter_high * (1-u)
+    return desc
+
 def asinh(x):
     return torch.log(x+(x**2+1)**0.5)
 
@@ -144,7 +177,7 @@ class BayesianLinearFeat(nn.Module):
             XT = torch.cat((XT, X2.reshape(X2.size(0),-1)[:,self.order2_inds]), dim=1)
         if self.order > 2:
             X3 = torch.einsum('bij,bk->bijk', X2, X1)
-            XT = torch.cat((XT, X3[self.order3_inds]), dim=1)
+            XT = torch.cat((XT, X3.reshape(X3.size(0),-1)[:,self.order3_inds]), dim=1)
         return XT
 
     def compute_weights(self):
