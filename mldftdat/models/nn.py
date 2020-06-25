@@ -111,17 +111,41 @@ class PolyAnsatz(nn.Module):
 
 class BayesianLinearFeat(nn.Module):
 
-    def __init__(self, ndesc, X_train, y_train, train_weights):
+    def __init__(self, ndesc_in, ndesc_out, X_train, y_train, train_weights, order = 1):
         super(BayesianLinearFeat, self).__init__()
-        self.linear = nn.Linear(ndesc, ndesc, bias = False)
+        self.linear = nn.Linear(ndesc_in, ndesc_out, bias = False)
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
         self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
+        self.order = order
+        if order > 3:
+            raise ValueError('order must not be higher than 3')
+        if order > 1:
+            order2_inds = []
+            for i in range(ndesc_out):
+                for j in range(i,ndesc_out):
+                    order2_inds.append(i*ndesc_out+j)
+            self.order2_inds = order2_inds
+        if order > 2:
+            order3_inds = []
+            for i in range(ndesc_out):
+                for j in range(i,ndesc_out):
+                    for k in range(j,ndesc_out):
+                        order3_inds.append(i*ndesc_out*ndesc_out+j*ndesc_out+k)
+            self.order3_inds = order3_inds
 
     def transform_descriptors(self, X):
-        return self.sigmoid(self.linear(X)) - 0.5
+        X1 = self.sigmoid(self.linear(X)) - 0.5
+        XT = 1 * X1
+        if self.order > 1:
+            X2 = torch.einsum('bi,bj->bij', X1, X1)
+            XT = torch.cat((XT, X2.reshape(X2.size(0),-1)[:,self.order2_inds]), dim=1)
+        if self.order > 2:
+            X3 = torch.einsum('bij,bk->bijk', X2, X1)
+            XT = torch.cat((XT, X3[self.order3_inds]), dim=1)
+        return XT
 
     def compute_weights(self):
         X = self.transform_descriptors(self.X_train)
@@ -141,7 +165,7 @@ class BayesianLinearFeat(nn.Module):
 def get_training_obj(model, lr = 0.005):
     criterion = nn.MSELoss()
     #optimizer = torch.optim.SGD(model.parameters(), lr = lr)
-    optimizer = torch.optim.LBFGS(model.parameters(), lr = lr, max_iter = 2000, history_size=2000)
+    optimizer = torch.optim.LBFGS(model.parameters(), lr = lr, max_iter = 200, history_size=200)
     return criterion, optimizer
 
 def train(x, y_true, criterion, optimizer, model):

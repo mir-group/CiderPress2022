@@ -323,9 +323,9 @@ def v_nonlocal_fast(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     dgda = l / (2 * a) * g - gr2
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-4))
-    dadp = np.pi * fac * (lc[0] / 2 + 1e-4)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-4)**(2.0/3)
+    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-6))
+    dadp = np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
     #print('shapes', dedb.shape, dgda.shape)

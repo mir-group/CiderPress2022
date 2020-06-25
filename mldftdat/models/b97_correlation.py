@@ -1,24 +1,34 @@
-from pyscf.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
+from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
+from mldftdat.dft.numint3 import setup_uks_calc, setup_rks_calc
+from pyscf.dft.libxc import eval_xc
+from mldftdat.dft.correlation import *
+from mldftdat.workflow_utils import get_save_dir
+from sklearn.linear_model import LinearRegression
 
 def get_b97_data_and_targets(pbe_dir, ccsd_dir, restricted,
-                             b_test, c_test, ml_numint):
+                             b_test, c_test, mlfunc):
 
     if restricted:
-        pbe_analyzer = RHFAnalyzer.load(pbe_dir)
-        ccsd_analyzer = CCSDAnalyzer.load(ccsd_dir)
+        pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        ccsd_analyzer = CCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
         rhot = pbe_analyzer.rho_data[0]
         rdm1_nsp = pbe_analyzer.rdm1
+        ml_numint = setup_rks_calc(pbe_analyzer.mol, mlfunc)._numint
     else:
-        pbe_analyzer = UHFAnalyzer.load(pbe_dir)
-        ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir)
+        pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
         rhot = pbe_analyzer.rho_data[0][0] + pbe_analyzer.rho_data[1][0]
         rdm1_nsp = pbe_analyzer.rdm1[0] + pbe_analyzer.rdm1[1]
+        ml_numint = setup_uks_calc(pbe_analyzer.mol, mlfunc)._numint
 
     rho_data = pbe_analyzer.rho_data
     weights = pbe_analyzer.grid.weights
+    grid = pbe_analyzer.grid
     spin = pbe_analyzer.mol.spin
     mol = pbe_analyzer.mol
     rdm1 = pbe_analyzer.rdm1
+    E_pbe = pbe_analyzer.e_tot
+    E_ccsd = ccsd_analyzer.e_tot
 
     numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
     exc0 = numint0.eval_xc(None, rho_data, spin = spin)[0]
@@ -54,7 +64,7 @@ def get_b97_data_and_targets(pbe_dir, ccsd_dir, restricted,
     return sl_contribs, target
 
 
-def solve_b97_coeff(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, ML_NUMINT):
+def solve_b97_coef(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, MLFUNC):
 
     coef_sets = []
     scores = []
@@ -74,7 +84,8 @@ def solve_b97_coeff(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, ML_NUMINT):
                 ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
 
             sl_contribs, target = get_b97_data_and_targets(pbe_dir, ccsd_dir,
-                                                           is_restricted, ML_NUMINT)
+                                                           is_restricted,
+                                                           b_test, c_test, MLFUNC)
 
             X = np.vstack([X, sl_contribs])
             y.append(target)
