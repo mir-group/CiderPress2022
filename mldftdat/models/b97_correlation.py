@@ -169,7 +169,7 @@ def get_b97_data_and_targets(pbe_dir, ccsd_dir, restricted,
     return sl_contribs, target
 
 
-def store_sl_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+def store_sl_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
     X = np.zeros([0,8])
 
@@ -186,9 +186,9 @@ def store_sl_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
         X = np.vstack([X, sl_contribs])
 
-    return X
+    np.save(FNAME, X)
 
-def store_nlx_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
+def store_nlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
 
     x = []
 
@@ -203,9 +203,9 @@ def store_nlx_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
 
         x.append(get_nlx_contribs(pbe_dir, is_restricted))
 
-    return x
+    np.save(FNAME, x)
 
-def store_total_energies_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
     # PBE, CCSD
     y = np.zeros([0, 2])
@@ -223,9 +223,9 @@ def store_total_energies_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
         X = np.vstack([X, pbe_ccsd])
 
-    return X
+    np.save(FNAME, y)
 
-def store_vv10_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS):
+def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS):
 
     X = np.zeros([0, len(NLC_COEFS)])
 
@@ -242,7 +242,7 @@ def store_vv10_contribs_dataset(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS):
 
         X = np.vstack([X, vv10_contribs])
 
-    return X
+    np.save(FNAME, X)
 
 def solve_b97_coef(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, MLFUNC):
 
