@@ -295,3 +295,104 @@ def get_corr_terms(mol, rho_data, coords, weights):
         e_terms.append(etot)
         v_terms.append(vtot)
     return e_terms, v_terms
+
+def eval_custom_corr(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
+                     verbose=None, ss_terms = None, os_terms = None):
+    deriv = 1
+    relativity = 0
+    omega = None
+
+    if ss_terms is None:
+        ss_terms = default_ss_terms
+    if os_terms is None:
+        os_terms = default_os_terms
+
+    if spin == 0:
+        rhoa, rhob = rho / 2, rho / 2
+    else:
+        rhoa, rhob = rho[0], rho[1]
+
+    ures = get_u(rhoa, rhob)
+    wres = get_w(rhoa, rhob)
+    zeros = 0 * rhob[0]
+
+    ex0a, vx0a, _, _ = eval_xc('LDA,', (rhoa[0], zeros), spin=1)
+    ex0b, vx0b, _, _ = eval_xc('LDA,', (zeros, rhob[0]), spin=1)
+    ec0t, vc0t, _, _ = eval_xc(',LDA_C_PW_MOD', (rhoa[0], rhob[0]), spin=1)
+    ec0a, vc0a, _, _ = eval_xc(',LDA_C_PW_MOD', (rhoa[0], zeros), spin=1)
+    ec0b, vc0b, _, _ = eval_xc(',LDA_C_PW_MOD', (zeros, rhob[0]), spin=1)
+    vx0a = vx0a[0][:,0]
+    vx0b = vx0b[0][:,1]
+    vc0t = vc0t[0]
+    vc0a = vc0a[0][:,0]
+    vc0b = vc0b[0][:,1]
+
+    Ec0os = ec0t * (rhoa[0] + rhob[0]) - ec0a * rhoa[0] - ec0b * rhob[0]
+    vc0os = vc0t.copy()
+    vc0os[:,0] -= vc0a
+    vc0os[:,1] -= vc0b
+
+    Ec0a = ec0a * rhoa[0]
+    Ec0b = ec0b * rhob[0]
+    Ex0a = ex0a * rhoa[0]
+    Ex0b = ex0b * rhob[0]
+
+    def sum_terms(uterms, wterms, terms):
+        g = 1
+        dgdn = 0
+        dgdgrad = 0
+        dgdtau = 0
+        u, dudn, dudgrad = uterms
+        w, dwdn, dwdtau = wterms
+        for c, i, j in terms:
+            g += c * w**i * u**j
+            if i > 0:
+                dgdn += c * i * w**(i-1) * u**j * dwdn
+                dgdtau += c * i * w**(i-1) * u**j * dwdtau
+            if j > 0:
+                dgdn += c * j * w**i * u**(j-1) * dudn
+                dgdgrad += c * j * w**i * u**(j-1) * dudgrad
+        return g, dgdn, dgdgrad, dgdtau
+
+    g, dgdn, dgdgrad, dgdtau = sum_terms(ures[0], wres[0], ss_terms)
+    Eca = Ec0a * g
+    vca_rho = vc0a * g + Ec0a * dgdn
+    vca_grad = Ec0a * dgdgrad
+    vca_tau = Ec0a * dgdtau
+
+    g, dgdn, dgdgrad, dgdtau = sum_terms(ures[1], wres[1], ss_terms)
+    Ecb = Ec0b * g
+    vcb_rho = vc0b * g + Ec0b * dgdn
+    vcb_grad = Ec0b * dgdgrad
+    vcb_tau = Ec0b * dgdtau
+
+    g, dgdna, dgdgrada, dgdtaua = sum_terms(ures[2], wres[2], os_terms)
+    _, dgdnb, dgdgradb, dgdtaub = sum_terms(ures[3], wres[3], os_terms)
+
+    Ecos = Ec0os * g
+    vca_rho += Ec0os * dgdna + vc0os[:,0] * g
+    vcb_rho += Ec0os * dgdnb + vc0os[:,1] * g
+    vca_grad += Ec0os * dgdgrada
+    vcb_grad += Ec0os * dgdgradb
+    vca_tau += Ec0os * dgdtaua
+    vcb_tau += Ec0os * dgdtaub
+
+    ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-30)
+    ec = (Eca + Ecb + Ecos + Exa + Exb) / (rhoa[0] + rhob[0] + 1e-30)
+    #vc_rho = vc0os * gos.reshape(-1,1) + vc0a * ga * vc0b * gb
+    #vc_rho += ec0os * dgosdn + ec0a * dgadn + ec0b * dgbdn
+
+    vc_rho = np.vstack((vca_rho + vxa_rho, vcb_rho + vxb_rho)).T
+    vc_grad = np.vstack((vca_grad + vxa_grad,\
+                        0 * vca_grad, vcb_grad + vxb_grad)).T
+    vc_nabla = 0 * vcb_rho
+    vc_tau = np.vstack((vca_tau + vxa_tau, vcb_tau + vxb_tau)).T
+
+    if spin == 0:
+        vc_rho = np.sum(vc_rho, axis=-1) / 2
+        # TODO this will not be correct when cross term is nonzero
+        vc_grad = np.sum(vc_grad[:,(0,2)], axis=-1) / 4
+        vc_nabla = np.sum(vc_grad, axis=-1) / 2
+        vc_tau = np.sum(vc_tau, axis=-1) / 2
+
+    return ec, (vc_rho, vc_grad, vc_nabla, vc_tau), None, None
