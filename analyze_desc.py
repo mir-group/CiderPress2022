@@ -38,13 +38,13 @@ rho_data[0] = rho
 rho, s, alpha, tau_w, tau_unif = get_dft_input2(rho_data)
 alpha += 1
 rho_data[5] = tau_unif
-atm, bas, env, inv_rs, _ = get_gaussian_grid_b(grid.coords, rho[0] * 1.00, l = 0, s = s, alpha = alpha)
+atm, bas, env, inv_rs, _ = get_gaussian_grid_b(grid.coords, rho[0] * 4.00, l = 0, s = s, alpha = alpha)
 gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
 a = gridmol._env[gridmol._bas[:,5]]
 norm = mol.intor('int1e_ovlp')
 print(norm**0.5)
-#ovlp = gto.mole.intor_cross('int1e_ovlp', mol, gridmol).transpose() 
-ovlp = gto.mole.intor_cross('int1e_r2_origj', mol, gridmol).transpose() * inv_rs**2
+ovlp = gto.mole.intor_cross('int1e_ovlp', mol, gridmol).transpose() 
+#ovlp = gto.mole.intor_cross('int1e_r2_origj', mol, gridmol).transpose() * inv_rs**2
 proj = ovlp
 print('proj', np.max(proj), np.max(inv_rs), np.max(a))
 
