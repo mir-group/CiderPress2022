@@ -18,7 +18,7 @@ def get_desc_default(X, rho_data, num = 1):
     p = X[:,1]**2
     alpha = X[:,2]
     nabla = X[:,3]
-    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
     desc = np.zeros((X.shape[0], 18))
     desc[:,0] = X[:,4] * scale
     desc[:,1] = X[:,4] * scale**3
@@ -49,7 +49,7 @@ def get_desc2(X):
     alpha = X[:,2]
     chi = 1 / (1 + alpha**2)
     nabla = X[:,3]
-    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1))
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
     desc = np.zeros((X.shape[0], 48))
     desc0 = np.zeros((X.shape[0], 8))
     afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
@@ -65,12 +65,14 @@ def get_desc2(X):
     desc0[:,5] = X[:,8]
     desc0[:,6] = X[:,6]
     desc0[:,7] = X[:,12]
-    desc[:,0:8]   = desc0 * afilter_low * u
-    desc[:,8:16]  = desc0 * afilter_low * (1-u)
-    desc[:,16:24] = desc0 * afilter_mid * u
-    desc[:,24:32] = desc0 * afilter_mid * (1-u)
-    desc[:,32:40] = desc0 * afilter_high * u
-    desc[:,40:48] = desc0 * afilter_high * (1-u)
+    desc0[:,1:] /= np.array([2.45332986, 6.11010142, 0.56641113, 4.34577285, 75.42829791, 6.10420534, 10.65421971])
+    #print('std', np.std(desc0, axis=0))
+    desc[:,0:8]   = desc0 * (afilter_low * u).reshape(-1,1)
+    desc[:,8:16]  = desc0 * (afilter_low * (1-u)).reshape(-1,1)
+    desc[:,16:24] = desc0 * (afilter_mid * u).reshape(-1,1)
+    desc[:,24:32] = desc0 * (afilter_mid * (1-u)).reshape(-1,1)
+    desc[:,32:40] = desc0 * (afilter_high * u).reshape(-1,1)
+    desc[:,40:48] = desc0 * (afilter_high * (1-u)).reshape(-1,1)
     return desc
 
 def asinh(x):
@@ -153,6 +155,12 @@ class BayesianLinearFeat(nn.Module):
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
         self.order = order
+        weight = 0 * self.linear.weight
+        print(weight.size())
+        for i in range(8):
+            for j in range(6):
+                weight[i,6*j+i] = 1.0
+        self.linear.weight = nn.Parameter(weight)
         if order > 3:
             raise ValueError('order must not be higher than 3')
         if order > 1:
