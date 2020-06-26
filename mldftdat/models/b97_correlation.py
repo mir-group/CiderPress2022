@@ -330,3 +330,41 @@ def solve_b97_coef(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, MLFUNC):
         scores.append(score)
 
     return coef_sets, scores
+
+def solve_b97_from_stored(DATA_ROOT):
+
+    coef_sets = []
+    scores = []
+
+    etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
+    nlx = np.load(os.path.join(DATA_ROOT, 'nlx.npy'))
+    pbexc = np.load(os.path.join(DATA_ROOT, 'pbe.npy'))
+    X = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
+    vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+
+    N = etot.shape[0]
+    num_vv10 = vv10.shape[-1]
+
+    for i in range(num_vv10):
+        E_vv10 = vv10[:,i]
+        E_pbe = etot[:,0]
+        E_ccsd = etot[:,1]
+
+        diff = nlx - pbexc
+
+        # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
+        # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
+        # not an exact relationship, but should give a decent fit
+
+        y = E_ccsd - E_pbe - diff - E_vv10
+
+        lr = LinearRegression(fit_intercept = False)
+        lr.fit(X, y)
+
+        score = lr.score(X, y)
+
+        coef_sets.append(lr.coef_)
+        scores.append(score)
+
+    return coef_sets, scores
+
