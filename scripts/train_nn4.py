@@ -52,7 +52,7 @@ rho_train = np.append(rho_train, rho_test[::100], axis=0)
 rho_data_train = np.append(rho_data_train, rho_data_test[:,::100], axis=1)
 wttrain = np.append(wttrain, wttest[::100], axis=0)
 
-train_weights = LDA_FACTOR * rho_train**(1.0 / 3) * wttrain
+train_weights = np.abs(LDA_FACTOR * rho_train**(1.0 / 3) * wttrain)
 
 print(np.isnan(X_train).any(), np.isnan(y_train).any(), (y_train > 0).any(),
       np.isnan(rho_train).any(), (rho_train < 0).any())
@@ -60,10 +60,11 @@ X_train = get_desc2(X_train)
 y_train = get_y_from_xed(y_train, rho_train)
 
 print(X_train.shape, y_train.shape, train_weights.shape)
-model = BayesianLinearFeat(48, 8, X_train[::2], y_train[::2].reshape(-1,1), train_weights[::2].reshape(-1,1), order = 3)
+model = BayesianLinearFeat(48, 8, X_train[::2], y_train[::2].reshape(-1,1),
+        train_weights[::2].reshape(-1,1), order = 4)
 #model = PolyAnsatz(NUM)
 model.double()
-criterion, optimizer = get_training_obj(model, lr=0.1)
+criterion, optimizer = get_training_obj(model, lr=0.02)
 converged = False
 i = 0
 X_val = get_desc2(X_test[4::100])
@@ -80,7 +81,7 @@ while not converged:
         break
 print(converged, np.sqrt(loss))
 print(np.sqrt(validate(X_val, y_val.reshape(-1,1), criterion, model)))
-save_nn(model, 'nnmodel_cubic.pth')
+save_nn(model, 'nnmodel_quartic.pth')
 #print(model.linear.weight)
 #print(model.linear.bias)
 

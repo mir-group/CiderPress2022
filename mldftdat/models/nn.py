@@ -90,19 +90,18 @@ def edmgga_from_q_param(Q, C3param, C4param):
 
 class Predictor():
 
-    def __init__(self, model, get_descriptors, num, y_to_xed):
+    def __init__(self, model, get_descriptors, y_to_xed):
         self.model = model
         self.get_descriptors = get_descriptors
-        self.num = num
         self.y_to_xed = y_to_xed
         self.model.eval()
 
     def predict(self, X, rho_data):
         self.model.eval()
         with torch.no_grad():
-            X = torch.tensor(self.get_descriptors(X, rho_data, self.num))
-            F = self.model(X).numpy()
-        return self.y_to_xed(F, rho_data)
+            X = torch.tensor(self.get_descriptors(X))
+            F = self.model(X).numpy().flatten()
+        return self.y_to_xed(F, rho_data[0])
 
 class PolyAnsatz(nn.Module):
 
@@ -161,7 +160,8 @@ class BayesianLinearFeat(nn.Module):
             for j in range(6):
                 weight[i,6*j+i] = 1.0
         self.linear.weight = nn.Parameter(weight)
-        if order > 3:
+        self.w = None
+        if order > 4:
             raise ValueError('order must not be higher than 3')
         if order > 1:
             order2_inds = []
@@ -176,6 +176,14 @@ class BayesianLinearFeat(nn.Module):
                     for k in range(j,ndesc_out):
                         order3_inds.append(i*ndesc_out*ndesc_out+j*ndesc_out+k)
             self.order3_inds = order3_inds
+        if order > 3:
+            order4_inds = []
+            for i in range(ndesc_out):
+                for j in range(i,ndesc_out):
+                    for k in range(j,ndesc_out):
+                        for l in range(k,ndesc_out):
+                            order4_inds.append(i*ndesc_out**3+j*ndesc_out**2+k*ndesc_out+l)
+            self.order4_inds = order4_inds
 
     def transform_descriptors(self, X):
         X1 = self.sigmoid(self.linear(X)) - 0.5
@@ -186,6 +194,9 @@ class BayesianLinearFeat(nn.Module):
         if self.order > 2:
             X3 = torch.einsum('bij,bk->bijk', X2, X1)
             XT = torch.cat((XT, X3.reshape(X3.size(0),-1)[:,self.order3_inds]), dim=1)
+        if self.order > 3:
+            X4 = torch.einsum('bijk,bl->bijkl', X3, X1)
+            XT = torch.cat((XT, X4.reshape(X4.size(0),-1)[:,self.order4_inds]), dim=1)
         return XT
 
     def compute_weights(self):
@@ -198,9 +209,10 @@ class BayesianLinearFeat(nn.Module):
         return torch.matmul(torch.inverse(A), Xy)
 
     def forward(self, X):
-        w = self.compute_weights()
+        if self.training or self.w is None:
+            self.w = self.compute_weights()
         X = self.transform_descriptors(X)
-        return torch.matmul(X, w)
+        return torch.matmul(X, self.w)
 
 
 def get_training_obj(model, lr = 0.005):
@@ -243,8 +255,17 @@ def validate(x, y_true, criterion, model):
 def save_nn(model, fname):
     torch.save(model.state_dict(), fname)
 
+def save_nn(model, fname):
+    torch.save(model, fname)
+
 def load_nn(fname, ndesc, func = edmgga_from_q_param, quadratic = False):
     model = PolyAnsatz(ndesc, func, quadratic)
     model.load_state_dict(torch.load(fname))
     model.eval()
     return model
+
+def load_nn(fname):
+    model = torch.load(fname)
+    model.eval()
+    return model
+
