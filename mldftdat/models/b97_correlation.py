@@ -96,7 +96,31 @@ def get_nlx_contribs(pbe_dir, restricted, mlfunc):
     rdm1 = pbe_analyzer.rdm1
     E_pbe = pbe_analyzer.e_tot
 
-    return ml_numint.eval_xc(None, mol, rho_data, grid, rdm1, spin = spin)[0]
+    eml = ml_numint.eval_xc(None, mol, rho_data, grid, rdm1, spin = spin)[0]
+
+    return np.dot(eml, rhot * weights)
+
+def get_pbe_contribs(pbe_dir, restricted):
+
+    if restricted:
+        pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        rhot = pbe_analyzer.rho_data[0]
+        rdm1_nsp = pbe_analyzer.rdm1
+    else:
+        pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        rhot = pbe_analyzer.rho_data[0][0] + pbe_analyzer.rho_data[1][0]
+        rdm1_nsp = pbe_analyzer.rdm1[0] + pbe_analyzer.rdm1[1]
+
+    rho_data = pbe_analyzer.rho_data
+    weights = pbe_analyzer.grid.weights
+    grid = pbe_analyzer.grid
+    spin = pbe_analyzer.mol.spin
+    mol = pbe_analyzer.mol
+    rdm1 = pbe_analyzer.rdm1
+
+    epbe = eval_xc('GGA_X_PBE,GGA_C_PBE', rho_data, spin = spin)[0]
+
+    return np.dot(epbe, rhot * weights)
 
 def get_etot_contribs(pbe_dir, ccsd_dir, restricted):
 
@@ -207,7 +231,26 @@ def store_nlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC)
             pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
             ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
 
-        x.append(get_nlx_contribs(pbe_dir, is_restricted))
+        x.append(get_nlx_contribs(pbe_dir, is_restricted, MLFUNC))
+
+    np.save(FNAME, x)
+
+def store_pbe_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+
+    x = []
+
+    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        print(mol_id)
+
+        if is_restricted:
+            pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            ccsd_dir = get_save_dir(ROOT, 'CCSD', 'aug-cc-pvtz', mol_id)
+        else:
+            pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
+
+        x.append(get_pbe_contribs(pbe_dir, is_restricted))
 
     np.save(FNAME, x)
 
