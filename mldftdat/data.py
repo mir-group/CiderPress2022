@@ -823,13 +823,13 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 e_tot = mf.e_tot
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint3 import setup_rks_calc
+                    from mldftdat.dft.numint4 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',GGA_C_PBE'
+                    mf.xc = None
                 else:
-                    from mldftdat.dft.numint3 import setup_uks_calc
+                    from mldftdat.dft.numint4 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',GGA_C_PBE'
+                    mf.xc = None
                 mf.kernel()
                 e_tot = mf.e_tot
 
