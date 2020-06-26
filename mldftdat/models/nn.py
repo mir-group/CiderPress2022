@@ -18,7 +18,7 @@ def get_desc_default(X, rho_data, num = 1):
     p = X[:,1]**2
     alpha = X[:,2]
     nabla = X[:,3]
-    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1)) # 4^(1/3) for 16, 1/(4)^(1/3) for 15
     desc = np.zeros((X.shape[0], 18))
     desc[:,0] = X[:,4] * scale
     desc[:,1] = X[:,4] * scale**3
@@ -49,7 +49,7 @@ def get_desc2(X):
     alpha = X[:,2]
     chi = 1 / (1 + alpha**2)
     nabla = X[:,3]
-    scale = np.sqrt(fac * p + 0.6 * fac * (alpha - 1))
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
     desc = np.zeros((X.shape[0], 48))
     desc0 = np.zeros((X.shape[0], 8))
     afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
@@ -65,12 +65,14 @@ def get_desc2(X):
     desc0[:,5] = X[:,8]
     desc0[:,6] = X[:,6]
     desc0[:,7] = X[:,12]
-    desc[:,0:8]   = desc0 * afilter_low * u
-    desc[:,8:16]  = desc0 * afilter_low * (1-u)
-    desc[:,16:24] = desc0 * afilter_mid * u
-    desc[:,24:32] = desc0 * afilter_mid * (1-u)
-    desc[:,32:40] = desc0 * afilter_high * u
-    desc[:,40:48] = desc0 * afilter_high * (1-u)
+    desc0[:,1:] /= np.array([2.45332986, 6.11010142, 0.56641113, 4.34577285, 75.42829791, 6.10420534, 10.65421971])
+    #print('std', np.std(desc0, axis=0))
+    desc[:,0:8]   = desc0 * (afilter_low * u).reshape(-1,1)
+    desc[:,8:16]  = desc0 * (afilter_low * (1-u)).reshape(-1,1)
+    desc[:,16:24] = desc0 * (afilter_mid * u).reshape(-1,1)
+    desc[:,24:32] = desc0 * (afilter_mid * (1-u)).reshape(-1,1)
+    desc[:,32:40] = desc0 * (afilter_high * u).reshape(-1,1)
+    desc[:,40:48] = desc0 * (afilter_high * (1-u)).reshape(-1,1)
     return desc
 
 def asinh(x):
@@ -88,19 +90,18 @@ def edmgga_from_q_param(Q, C3param, C4param):
 
 class Predictor():
 
-    def __init__(self, model, get_descriptors, num, y_to_xed):
+    def __init__(self, model, get_descriptors, y_to_xed):
         self.model = model
         self.get_descriptors = get_descriptors
-        self.num = num
         self.y_to_xed = y_to_xed
         self.model.eval()
 
     def predict(self, X, rho_data):
         self.model.eval()
         with torch.no_grad():
-            X = torch.tensor(self.get_descriptors(X, rho_data, self.num))
-            F = self.model(X).numpy()
-        return self.y_to_xed(F, rho_data)
+            X = torch.tensor(self.get_descriptors(X))
+            F = self.model(X).numpy().flatten()
+        return self.y_to_xed(F, rho_data[0])
 
 class PolyAnsatz(nn.Module):
 
@@ -153,7 +154,14 @@ class BayesianLinearFeat(nn.Module):
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
         self.order = order
-        if order > 3:
+        weight = 0 * self.linear.weight
+        print(weight.size())
+        for i in range(8):
+            for j in range(6):
+                weight[i,6*j+i] = 1.0
+        self.linear.weight = nn.Parameter(weight)
+        self.w = None
+        if order > 4:
             raise ValueError('order must not be higher than 3')
         if order > 1:
             order2_inds = []
@@ -168,6 +176,14 @@ class BayesianLinearFeat(nn.Module):
                     for k in range(j,ndesc_out):
                         order3_inds.append(i*ndesc_out*ndesc_out+j*ndesc_out+k)
             self.order3_inds = order3_inds
+        if order > 3:
+            order4_inds = []
+            for i in range(ndesc_out):
+                for j in range(i,ndesc_out):
+                    for k in range(j,ndesc_out):
+                        for l in range(k,ndesc_out):
+                            order4_inds.append(i*ndesc_out**3+j*ndesc_out**2+k*ndesc_out+l)
+            self.order4_inds = order4_inds
 
     def transform_descriptors(self, X):
         X1 = self.sigmoid(self.linear(X)) - 0.5
@@ -178,6 +194,9 @@ class BayesianLinearFeat(nn.Module):
         if self.order > 2:
             X3 = torch.einsum('bij,bk->bijk', X2, X1)
             XT = torch.cat((XT, X3.reshape(X3.size(0),-1)[:,self.order3_inds]), dim=1)
+        if self.order > 3:
+            X4 = torch.einsum('bijk,bl->bijkl', X3, X1)
+            XT = torch.cat((XT, X4.reshape(X4.size(0),-1)[:,self.order4_inds]), dim=1)
         return XT
 
     def compute_weights(self):
@@ -190,9 +209,10 @@ class BayesianLinearFeat(nn.Module):
         return torch.matmul(torch.inverse(A), Xy)
 
     def forward(self, X):
-        w = self.compute_weights()
+        if self.training or self.w is None:
+            self.w = self.compute_weights()
         X = self.transform_descriptors(X)
-        return torch.matmul(X, w)
+        return torch.matmul(X, self.w)
 
 
 def get_training_obj(model, lr = 0.005):
@@ -235,8 +255,17 @@ def validate(x, y_true, criterion, model):
 def save_nn(model, fname):
     torch.save(model.state_dict(), fname)
 
+def save_nn(model, fname):
+    torch.save(model, fname)
+
 def load_nn(fname, ndesc, func = edmgga_from_q_param, quadratic = False):
     model = PolyAnsatz(ndesc, func, quadratic)
     model.load_state_dict(torch.load(fname))
     model.eval()
     return model
+
+def load_nn(fname):
+    model = torch.load(fname)
+    model.eval()
+    return model
+
