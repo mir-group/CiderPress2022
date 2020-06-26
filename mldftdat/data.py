@@ -256,6 +256,9 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             all_rho_data = np.append(all_rho_data, rho_data, axis=1)
         all_values = np.append(all_values, values)
         all_weights = np.append(all_weights, analyzer.grid.weights)
+        if not restricted:
+            # two copies for unrestricted case
+            all_weights = np.append(all_weights, analyzer.grid.weights)
         cutoffs.append(all_values.shape[0])
 
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
@@ -303,7 +306,7 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None, val_dirname = None):
+def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False):
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
@@ -313,14 +316,20 @@ def load_descriptors(dirname, count=None, val_dirname = None):
         val_dirname = dirname
     y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+    if load_wt:
+        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
+        return X, y, rho_data, wt
     return X, y, rho_data
 
-def filter_descriptors(X, y, rho_data, tol=1e-3):
+def filter_descriptors(X, y, rho_data, tol=1e-3, wt = None):
     condition = rho_data[0] > tol
     X = X[condition,:]
     y = y[condition]
     rho = rho_data[0,condition]
     rho_data = rho_data[:,condition]
+    if wt is not None:
+        wt = wt[condition]
+        return X, y, rho, rho_data, wt
     return X, y, rho, rho_data
 
 def get_descriptors(dirname, num=1, count=None, tol=1e-3):
