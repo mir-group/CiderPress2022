@@ -75,6 +75,46 @@ def get_desc2(X):
     desc[:,40:48] = desc0 * (afilter_high * (1-u)).reshape(-1,1)
     return desc
 
+def get_desc3(X):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    p = X[:,1]**2
+    gammax = 0.004 * (2**(1.0/3) * sprefac)**2
+    u = gammax * p / (1 + gammax * p)
+    alpha = X[:,2]
+    chi = 1 / (1 + alpha**2)
+    nabla = X[:,3]
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+    desc = np.zeros((X.shape[0], 120))
+    desc0 = np.zeros((X.shape[0], 8))
+    afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
+    afilter_low = 1 - afilter_mid
+    afilter_low[chi > 0.5] = 0
+    afilter_high = 1 - afilter_mid
+    afilter_high[chi < 0.5] = 0
+    u_partition = np.array([1-u, u-u**2, u**2-u**3, u**3-u**4, u**4])
+    w_partition = np.array([afilter_mid, afilter_low, afilter_high])
+    desc0[:,0] = 1.0
+    desc0[:,1] = X[:,4]  - 2.0 / scale**3
+    desc0[:,2] = X[:,15] - 8.0 / scale**3
+    desc0[:,3] = X[:,16] - 0.5 / scale**3
+    desc0[:,4] = X[:,5]
+    desc0[:,5] = X[:,8]
+    desc0[:,6] = X[:,6]
+    desc0[:,7] = X[:,12]
+    desc0[:,1:] /= np.array([2.45332986, 6.11010142, 0.56641113,
+        4.34577285, 75.42829791, 6.10420534, 10.65421971])
+    for i in range(5):
+        for j in range(3):
+            if i ==0 and j == 0:
+                desc[:,0] = desc0[:,1]
+                desc[:,1:8] = desc0[:,1:] \
+                    * (u_partition[i] * w_partition[j]).reshape(-1,1)
+            else:
+                desc[:,(i*3+j)*8:(i*3+j+1)*8] = \
+                    desc0 * (u_partition[i] * w_partition[j]).reshape(-1,1)
+    return desc
+
 def asinh(x):
     return torch.log(x+(x**2+1)**0.5)
 
@@ -212,6 +252,36 @@ class BayesianLinearFeat(nn.Module):
         if self.training or self.w is None:
             self.w = self.compute_weights()
         X = self.transform_descriptors(X)
+        return torch.matmul(X, self.w)
+
+class LinearBigFeat(nn.Module):
+
+    def __init__(self, X_train, y_train, train_weights, order = 1):
+        super(BayesianLinearFeat, self).__init__()
+        self.X_train = torch.tensor(X_train, requires_grad = False)
+        self.y_train = torch.tensor(y_train, requires_grad = False)
+        self.sigmoid = nn.Sigmoid()
+        self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
+        self.train_weights = torch.tensor(train_weights, requires_grad = False)
+        self.C = nn.Parameter(torch.tensor(toch.ones(119), dtype=torch.float64))
+        self.A = nn.Parameter(torch.tensor(toch.ones(119), dtype=torch.float64))
+        self.w = None
+
+    def transform_descriptors(self, X):
+        return X[:,1:] / (1 + self.C * X[:,:1]**self.A)
+
+    def compute_weights(self):
+        X = self.transform_descriptors(self.X_train)
+        y = self.y_train * self.train_weights
+        #print(X.size(), y.size())
+        A = torch.matmul(X.T, self.train_weights * X) + self.noise
+        Xy = torch.matmul(X.T, y)
+        #print(A.size(), Xy.size())
+        return torch.matmul(torch.inverse(A), Xy)
+
+    def forward(self, X):
+        if self.training or self.w is None:
+            self.w = self.compute_weights()
         return torch.matmul(X, self.w)
 
 
