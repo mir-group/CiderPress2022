@@ -176,16 +176,17 @@ class NLNumInt(pyscf_numint.NumInt):
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
-        if has_base_xc:
-            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
-                                       omega, verbose)
-        else:
+        if hasattr(self, 'mlc'):
             ss_terms = np.array([0.54153121, -0.42034338,  1.8994998,  2.8820716])
             os_terms = np.array([5.65423672, 9.77099882, 12.92845485, 13.15484134])
             ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2), (ss_terms[2],3,2), (ss_terms[3],4,2)]
             os_terms = [(os_terms[0],1,0), (os_terms[1],0,1), (os_terms[2],3,2), (os_terms[3],0,3)]
             exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin, relativity, deriv,
-                                                omega, verbose, ss_terms = None, os_terms = None)
+                                                omega, verbose, ss_terms = ss_terms, os_terms = os_terms)
+        elif has_base_xc:
+            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
+                                       omega, verbose)
+
         if spin == 0:
             exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
         else:
@@ -220,7 +221,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vmol[1,:,:] = dterms[1][5]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if True:
+        if has_base_xc:
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
