@@ -85,7 +85,7 @@ def get_desc3(X):
     chi = 1 / (1 + alpha**2)
     nabla = X[:,3]
     scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
-    desc = np.zeros((X.shape[0], 120))
+    desc = np.zeros((X.shape[0], 121))
     desc0 = np.zeros((X.shape[0], 8))
     afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
     afilter_low = 1 - afilter_mid
@@ -107,12 +107,13 @@ def get_desc3(X):
     for i in range(5):
         for j in range(3):
             if i ==0 and j == 0:
-                desc[:,0] = desc0[:,1]
+                desc[:,0] = X[:,4]
                 desc[:,1:8] = desc0[:,1:] \
                     * (u_partition[i] * w_partition[j]).reshape(-1,1)
             else:
                 desc[:,(i*3+j)*8:(i*3+j+1)*8] = \
                     desc0 * (u_partition[i] * w_partition[j]).reshape(-1,1)
+    desc[:,120] = scale
     return desc
 
 def asinh(x):
@@ -257,18 +258,26 @@ class BayesianLinearFeat(nn.Module):
 class LinearBigFeat(nn.Module):
 
     def __init__(self, X_train, y_train, train_weights, order = 1):
-        super(BayesianLinearFeat, self).__init__()
+        super(LinearBigFeat, self).__init__()
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
         self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
-        self.C = nn.Parameter(torch.tensor(toch.ones(119), dtype=torch.float64))
-        self.A = nn.Parameter(torch.tensor(toch.ones(119), dtype=torch.float64))
+        self.C = nn.Parameter(torch.ones(119, dtype=torch.float64))
+        self.B = nn.Parameter(torch.ones(119, dtype=torch.float64))
+        self.A = nn.Parameter(torch.ones(119, dtype=torch.float64))
         self.w = None
 
     def transform_descriptors(self, X):
-        return X[:,1:] / (1 + self.C * X[:,:1]**self.A)
+        N = torch.index_select(X, 1, torch.arange(1,120))
+        S = torch.index_select(X, 1, torch.tensor([120]))
+        D = torch.index_select(X, 1, torch.tensor([0]))
+        #R = self.sigmoid(self.C * N)
+        R = N * S**self.B / (1 + self.C * D**self.A * S**self.B)
+        #R = self.sigmoid(self.C * N)
+        return R
+        #return X
 
     def compute_weights(self):
         X = self.transform_descriptors(self.X_train)
@@ -282,6 +291,7 @@ class LinearBigFeat(nn.Module):
     def forward(self, X):
         if self.training or self.w is None:
             self.w = self.compute_weights()
+        X = self.transform_descriptors(X)
         return torch.matmul(X, self.w)
 
 
