@@ -357,6 +357,16 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
     else:
         raise ValueError('angular momentum code l=%d unknown' % l)
 
+    rho, s, alpha = lc
+    a = np.pi * (mul * rho / 2 + 1e-6)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale += fac * s**2
+    scale += 3.0 / 5 * fac * (alpha - 1)
+    a = a * scale
+    a[rho<1e-8] = 1e16
+
     # (ngrid * (2l+1), naux)
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
@@ -367,7 +377,6 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
     dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
-    #print('shapes', dedb.shape, dgda.shape)
     deda = np.einsum('mi,mi->i', dedb, dgda)
     v_npa[0] = deda * dadn
     v_npa[1] = deda * dadp

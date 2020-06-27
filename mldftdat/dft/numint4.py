@@ -11,6 +11,7 @@ from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
+from mldftdat.dft.correlation import eval_custom_corr
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -178,6 +179,13 @@ class NLNumInt(pyscf_numint.NumInt):
         if has_base_xc:
             exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
                                        omega, verbose)
+        else:
+            ss_terms = np.array([0.54153121, -0.42034338,  1.8994998,  2.8820716])
+            os_terms = np.array([5.65423672, 9.77099882, 12.92845485, 13.15484134])
+            ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2), (ss_terms[2],3,2), (ss_terms[3],4,2)]
+            os_terms = [(os_terms[0],1,0), (os_terms[1],0,1), (os_terms[2],3,2), (os_terms[3],0,3)]
+            exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin, relativity, deriv,
+                                                omega, verbose, ss_terms = None, os_terms = None)
         if spin == 0:
             exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
         else:
@@ -212,7 +220,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vmol[1,:,:] = dterms[1][5]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if has_base_xc:
+        if True:
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
@@ -284,18 +292,18 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                 g = contracted_desc[d.code]
                 if d.code == 4:
                     ovlp = ovlps[0]
-                    gr2 = raw_desc_r2[12]
+                    gr2 = raw_desc_r2[12:13]
                 elif d.code == 15:
                     ovlp = ovlps[3]
-                    gr2 = raw_desc_r2[21]
+                    gr2 = raw_desc_r2[21:22]
                 else:
                     ovlp = ovlps[4]
-                    gr2 = raw_desc_r2[22]
+                    gr2 = raw_desc_r2[22:23]
                 l = 0
             elif d.code == 5:
                 g = raw_desc[13:16]
                 gr2 = raw_desc_r2[13:16]
-                ovlp = ovlp[1]
+                ovlp = ovlps[1]
                 l = 1
             elif d.code == 8:
                 g = raw_desc[16:21]
@@ -341,13 +349,13 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
 
             if d.code in [6, 12]:
                 vtmp, dedaux = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i] * dfmul,
-                                         density, mol.auxmol, g, gr2, l = l,
+                                         density, mol.auxmol, g, gr2, ovlp, l = l,
                                          mul = d.mul)
             elif d.code == 13:
                 pass
             else:
                 vtmp, dedaux = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i],
-                                         density, mol.auxmol, g, gr2, l = l,
+                                         density, mol.auxmol, g, gr2, ovlp, l = l,
                                          mul = d.mul)
             v_npa += vtmp
             v_aux += dedaux

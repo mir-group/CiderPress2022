@@ -5,6 +5,7 @@ from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
+import os
 
 def get_sl_contribs(pbe_dir, restricted):
 
@@ -339,7 +340,7 @@ def solve_b97_from_stored(DATA_ROOT):
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
     nlx = np.load(os.path.join(DATA_ROOT, 'nlx.npy'))
     pbexc = np.load(os.path.join(DATA_ROOT, 'pbe.npy'))
-    X = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
+    sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
 
     N = etot.shape[0]
@@ -355,8 +356,11 @@ def solve_b97_from_stored(DATA_ROOT):
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
         # not an exact relationship, but should give a decent fit
-
+        X = sl.copy()
         y = E_ccsd - E_pbe - diff - E_vv10
+
+        X /= E_ccsd.reshape(-1,1)
+        y /= E_ccsd
 
         lr = LinearRegression(fit_intercept = False)
         lr.fit(X, y)

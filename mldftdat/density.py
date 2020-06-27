@@ -73,7 +73,7 @@ def get_x_helper_full(auxmol, rho_data, ddrho, grid, density,
                                           l = l, s = lc[1], alpha=lc[2])
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross(integral_name, gridmol, auxmol)
+        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
         if return_ovlp:
@@ -84,7 +84,7 @@ def get_x_helper_full(auxmol, rho_data, ddrho, grid, density,
                                           l = 0, s = lc[1], alpha=lc[2])
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross(integral_name, gridmol, auxmol)
+        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
         if return_ovlp:
