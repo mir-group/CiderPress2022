@@ -75,6 +75,7 @@ def get_desc2(X):
     desc[:,40:48] = desc0 * (afilter_high * (1-u)).reshape(-1,1)
     return desc
 
+"""
 def get_desc3(X):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
@@ -115,6 +116,7 @@ def get_desc3(X):
                     desc0 * (u_partition[i] * w_partition[j]).reshape(-1,1)
     desc[:,120] = scale
     return desc
+"""
 
 def get_desc3(X):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
@@ -127,7 +129,7 @@ def get_desc3(X):
     nabla = X[:,3]
     scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
     desc = np.zeros((X.shape[0], 181))
-    desc0 = np.zeros((X.shape[0], 8))
+    desc0 = np.zeros((X.shape[0], 10))
     afilter_mid = 0.5 - np.cos(2 * np.pi * chi) / 2
     afilter_low = 1 - afilter_mid
     afilter_low[chi > 0.5] = 0
@@ -145,12 +147,15 @@ def get_desc3(X):
     desc0[:,7] = X[:,12]
     desc0[:,8] = X[:,13]
     desc0[:,9] = X[:,14]
-    #desc0[:,1:] /= np.array([2.45332986, 6.11010142, 0.56641113,
-    #    4.34577285, 75.42829791, 6.10420534, 10.65421971])
+    #print('std', np.std(desc0, axis=0))
+    desc0[:,1:] /= np.array([2.75509692, 6.88291279, 0.64614893, 4.87467219,\
+        92.73161058, 14.27137322, 74.4786665, 225.88666535, 10.04826384])
+    #0.           2.75509692   6.88291279   0.64614893   4.87467219
+    #92.73161058  14.27137322  74.4786665  225.88666535  10.04826384
     for i in range(6):
         for j in range(3):
             if i ==0 and j == 0:
-                desc[:,0] = X[:,4]
+                desc[:,0] = np.maximum(X[:,4], 0)
                 desc[:,1:10] = desc0[:,1:] \
                     * (u_partition[i] * w_partition[j]).reshape(-1,1)
             else:
@@ -295,7 +300,9 @@ class BayesianLinearFeat(nn.Module):
     def forward(self, X):
         if self.training or self.w is None:
             self.w = self.compute_weights()
+        print(torch.isnan(X).any(), torch.isnan(self.w).any())
         X = self.transform_descriptors(X)
+        print(torch.isnan(X).any())
         return torch.matmul(X, self.w)
 
 class LinearBigFeat(nn.Module):
@@ -307,17 +314,18 @@ class LinearBigFeat(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
-        self.C = nn.Parameter(torch.ones(179, dtype=torch.float64))
-        self.B = nn.Parameter(torch.ones(179, dtype=torch.float64))
-        self.A = nn.Parameter(torch.ones(179, dtype=torch.float64))
+        self.C = nn.Parameter(torch.zeros(179, dtype=torch.float64))
+        self.B = nn.Parameter(-5 * torch.ones(179, dtype=torch.float64))
+        self.A = nn.Parameter(torch.zeros(179, dtype=torch.float64))
         self.w = None
 
     def transform_descriptors(self, X):
         N = torch.index_select(X, 1, torch.arange(1,180))
         S = torch.index_select(X, 1, torch.tensor([180]))
         D = torch.index_select(X, 1, torch.tensor([0]))
+        #print('negative D', (D < 0).any(), torch.min(D))
         #R = self.sigmoid(self.C * N)
-        R = N * S**self.B / (1 + self.C * D**self.A * S**self.B)
+        R = N * S**torch.exp(self.B) / (1 + torch.exp(self.C) * D**torch.exp(self.A) * S**torch.exp(self.B))
         #R = self.sigmoid(self.C * N)
         return R
         #return X
@@ -334,7 +342,9 @@ class LinearBigFeat(nn.Module):
     def forward(self, X):
         if self.training or self.w is None:
             self.w = self.compute_weights()
+        #print(torch.isnan(X).any(), X.size(), torch.isnan(self.w).any())
         X = self.transform_descriptors(X)
+        #print(torch.isnan(X).any(), X.size(), torch.sum(torch.isnan(X)), torch.max(self.C), torch.max(self.A))
         return torch.matmul(X, self.w)
 
 
