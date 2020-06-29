@@ -372,3 +372,93 @@ def solve_b97_from_stored(DATA_ROOT):
 
     return coef_sets, scores
 
+def solve_b97_from_stored_ae(DATA_ROOT):
+
+    import yaml
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    from sklearn.metrics import r2_score
+
+    coef_sets = []
+    scores = []
+
+    etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
+    nlx = np.load(os.path.join(DATA_ROOT, 'nlx.npy'))
+    pbexc = np.load(os.path.join(DATA_ROOT, 'pbe.npy'))
+    sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
+    vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    with open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r') as f:
+        mols = yaml.load(f)
+    mols = [gto.mole.unpack(mol) for mol in mols]
+
+    Z_to_ind = {}
+    formulas = {}
+    ecounts = []
+    for i, mol in enumerate(mols):
+        ecounts.append(mol.nelectron)
+        if len(mol._atom) == 1:
+            Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
+        else:
+            atoms = [atomic_numbers[a[0]] for a in mol._atom]
+            formulas[i] = Counter(atoms)
+    ecounts = np.array(ecounts)
+
+    N = etot.shape[0]
+    num_vv10 = vv10.shape[-1]
+
+    for i in range(num_vv10):
+        E_vv10 = vv10[:,i]
+        E_pbe = etot[:,0]
+        E_ccsd = etot[:,1]
+
+        diff = nlx - pbexc
+
+        # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
+        # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
+        # not an exact relationship, but should give a decent fit
+        X = sl.copy()
+        y = E_ccsd - E_pbe - diff - E_vv10
+        weights = []
+        for i in range(len(mols)):
+            if i in Z_to_ind.keys():
+                weights.append(1 / ecounts[i])
+            else:
+                weights.append(10 / ecounts[i])
+                formula = formulas[i]
+                for Z in list(formula.keys()):
+                    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
+                    y[i] -= formula[Z] * y[Z_to_ind[Z]]
+
+        weights = np.array(weights)
+
+        noise = 1e-2
+        A = np.linalg.inv(np.dot(X.T * weights, X) + noise)
+        B = np.dot(X.T, weights * y)
+        coef = np.dot(A, B)
+
+        score = r2_score(y, np.dot(X, coef))
+
+        coef_sets.append(lr.coef_)
+        scores.append(score)
+
+    return coef_sets, scores
+
+def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+    from pyscf import gto
+    import yaml
+    
+    mol_dicts = []
+
+    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        if is_restricted:
+            pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        else:
+            pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
+
+        mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
+
+    with open(FNAME, 'w') as f:
+        yaml.dump(mol_dicts, f)
