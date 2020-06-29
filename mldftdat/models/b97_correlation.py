@@ -133,7 +133,7 @@ def get_etot_contribs(pbe_dir, ccsd_dir, restricted):
         ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
 
     E_pbe = pbe_analyzer.e_tot
-    E_ccsd = ccsd_analyzer.e_tot
+    E_ccsd = ccsd_analyzer.e_tot + ccsd_analyzer.e_tri
 
     return np.array([E_pbe, E_ccsd])
 
