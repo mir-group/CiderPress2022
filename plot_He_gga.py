@@ -129,9 +129,39 @@ print(np.trapz(tail_fx_deriv_direct(numpy.array(s2[s2<4])), s2[s2<4]))
 print(tail_fx_direct(numpy.array([4])))
 
 
-x = np.linspace(0, 1, 100)
+x = np.linspace(0, 1, 500)
 y = (x**2 + 3 * x**3) / (1 + x**3)**2
 y = 0.5 - np.cos(2 * np.pi * x) / 2
-plt.plot(x,y)
+#plt.plot(x,y)
+plt.plot(x,1-(1-y)**2)
+plt.plot(x,y**4)
+y2 = x * (1-x) / np.max(x * (1-x))
+y2 = 1 - (1-y2)**3
+plt.plot(x, y2)
 plt.show()
 
+import numpy as np
+
+def partition_chi(x):
+    y2 = x * (1-x) / np.max(x * (1-x))
+    y2 = 1 - (1-y2)**3
+    y = 0.5 - np.cos(2 * np.pi * x) / 2
+    p1 = y**4
+    p2 = 1-(1-y)**2 - y**4
+    p3 = y2 - (1-(1-y)**2)
+    p4 = 1 - y2
+    p5 = p4.copy()
+    p6 = p3.copy()
+    p7 = p2.copy()
+    p2[x > 0.5] = 0
+    p3[x > 0.5] = 0
+    p4[x > 0.5] = 0
+    p5[x < 0.5] = 0
+    p6[x < 0.5] = 0
+    p7[x < 0.5] = 0
+    return p1, p2, p3, p4, p5, p6, p7
+
+ps = partition_chi(numpy.array(x))
+for i in range(7):
+    plt.plot(x, ps[i])
+plt.show()
