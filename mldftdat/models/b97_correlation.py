@@ -32,12 +32,14 @@ def get_sl_contribs(pbe_dir, restricted):
 
     ss_contribs = []
     for term in default_ss_terms:
+        term = (1, term[1], term[2])
         numint = ProjNumInt(xterms = [], ssterms = [term], osterms = [])
         eterm, vterm = numint.eval_xc(None, rho_data, spin = spin)[:2]
         ss_contribs.append(np.dot(eterm * rhot, weights) - Exc0)
 
     os_contribs = []
     for term in default_os_terms:
+        term = (1, term[1], term[2])
         numint = ProjNumInt(xterms = [], ssterms = [], osterms = [term])
         eterm, vterm = numint.eval_xc(None, rho_data, spin = spin)[:2]
         os_contribs.append(np.dot(eterm * rhot, weights) - Exc0)
@@ -122,6 +124,31 @@ def get_pbe_contribs(pbe_dir, restricted):
     epbe = eval_xc('GGA_X_PBE,GGA_C_PBE', rho_data, spin = spin)[0]
 
     return np.dot(epbe, rhot * weights)
+
+def get_pw92_contribs(pbe_dir, restricted):
+    if restricted:
+        pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        rhot = pbe_analyzer.rho_data[0]
+        rdm1_nsp = pbe_analyzer.rdm1
+    else:
+        pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        rhot = pbe_analyzer.rho_data[0][0] + pbe_analyzer.rho_data[1][0]
+        rdm1_nsp = pbe_analyzer.rdm1[0] + pbe_analyzer.rdm1[1]
+
+    rho_data = pbe_analyzer.rho_data
+    weights = pbe_analyzer.grid.weights
+    grid = pbe_analyzer.grid
+    spin = pbe_analyzer.mol.spin
+    mol = pbe_analyzer.mol
+    rdm1 = pbe_analyzer.rdm1
+
+    eldax = eval_xc('LDA,', rho_data, spin = spin)[0]
+    eldac = eval_xc(',LDA_C_PW_MOD', rho_data, spin = spin)[0]
+
+    Ex = np.dot(eldax, rhot * weights)
+    Ec = np.dot(eldac, rhot * weights)
+
+    return np.array([Ex, Ec])
 
 def get_etot_contribs(pbe_dir, ccsd_dir, restricted):
 
@@ -275,6 +302,26 @@ def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
     np.save(FNAME, y)
 
+def store_pw92_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+
+    # PBE, CCSD
+    y = np.zeros([0, 2])
+
+    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        if is_restricted:
+            pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            ccsd_dir = get_save_dir(ROOT, 'CCSD', 'aug-cc-pvtz', mol_id)
+        else:
+            pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            ccsd_dir = get_save_dir(ROOT, 'UCCSD', 'aug-cc-pvtz', mol_id)
+
+        pw92 = get_pw92_contribs(pbe_dir, is_restricted)
+
+        y = np.vstack([y, pw92])
+
+    np.save(FNAME, y)
+
 def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS):
 
     X = np.zeros([0, len(NLC_COEFS)])
@@ -332,7 +379,7 @@ def solve_b97_coef(ROOT, MOL_IDS, IS_RESTRICTED_LIST, NLC_COEFS, MLFUNC):
 
     return coef_sets, scores
 
-def solve_b97_from_stored(DATA_ROOT):
+def solve_b97_from_stored(DATA_ROOT, v2 = False):
 
     coef_sets = []
     scores = []
@@ -340,8 +387,12 @@ def solve_b97_from_stored(DATA_ROOT):
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
     nlx = np.load(os.path.join(DATA_ROOT, 'nlx.npy'))
     pbexc = np.load(os.path.join(DATA_ROOT, 'pbe.npy'))
-    sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
+    if v2:
+        sl = np.load(os.path.join(DATA_ROOT, 'sl2.npy'))
+    else:
+        sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    pw92 = np.load(os.path.join(DATA_ROOT, 'pw92.npy'))[:,1]
 
     N = etot.shape[0]
     num_vv10 = vv10.shape[-1]
@@ -351,7 +402,7 @@ def solve_b97_from_stored(DATA_ROOT):
         E_pbe = etot[:,0]
         E_ccsd = etot[:,1]
 
-        diff = nlx - pbexc
+        diff = nlx + pw92 - pbexc
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -385,8 +436,12 @@ def solve_b97_from_stored_ae(DATA_ROOT):
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
     nlx = np.load(os.path.join(DATA_ROOT, 'nlx.npy'))
     pbexc = np.load(os.path.join(DATA_ROOT, 'pbe.npy'))
-    sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
+    if v2:
+        sl = np.load(os.path.join(DATA_ROOT, 'sl2.npy'))
+    else:
+        sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    pw92 = np.load(os.path.join(DATA_ROOT, 'pw92.npy'))[:,1]
     with open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r') as f:
         mols = yaml.load(f)
     mols = [gto.mole.unpack(mol) for mol in mols]
@@ -411,7 +466,7 @@ def solve_b97_from_stored_ae(DATA_ROOT):
         E_pbe = etot[:,0]
         E_ccsd = etot[:,1]
 
-        diff = nlx - pbexc
+        diff = nlx + pw92 - pbexc
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
