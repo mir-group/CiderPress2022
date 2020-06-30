@@ -177,8 +177,8 @@ class NLNumInt(pyscf_numint.NumInt):
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
         if hasattr(self, 'mlc'):
-            ss_terms = np.array([0.54153121, -0.42034338,  1.8994998,  2.8820716])
-            os_terms = np.array([5.65423672, 9.77099882, 12.92845485, 13.15484134])
+            ss_terms = np.array([-1.96053996, -2.67332187,  0.65720347, -0.78516904])
+            os_terms = np.array([-4.33095887, -1.44430792,  0.02367878, -2.62462778])
             ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2), (ss_terms[2],3,2), (ss_terms[3],4,2)]
             os_terms = [(os_terms[0],1,0), (os_terms[1],0,1), (os_terms[2],3,2), (os_terms[3],0,3)]
             exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin, relativity, deriv,
@@ -221,7 +221,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vmol[1,:,:] = dterms[1][5]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if has_base_xc:
+        if has_base_xc or hasattr(self, 'mlc'):
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
