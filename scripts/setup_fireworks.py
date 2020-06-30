@@ -7,11 +7,11 @@ import os
 
 SAVE_ROOT = os.environ['MLDFTDB']
 
-def get_hf_tasks(struct, mol_id, basis, spin, charge=0):
+def get_hf_tasks(struct, mol_id, basis, spin, charge=0, **kwargs):
     calc_type = 'RHF' if spin == 0 else 'UHF'
     struct_dict = struct.todict()
     t1 = SCFCalc(struct=struct_dict, basis=basis, calc_type=calc_type, spin=spin, charge=charge)
-    t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
+    t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
     return t1, t2
 
 def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0):
@@ -43,11 +43,22 @@ def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0, na
     return Firework(get_dft_tasks(struct, mol_id, basis, spin,
                     functional=functional, charge=charge), name=name)
 
-def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None):
+def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None, **kwargs):
     t1, t2 = get_hf_tasks(struct, mol_id, basis, spin, charge)
     t3 = CCSDCalc()
-    t4 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
+    t4 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
     return Firework([t1, t2, t3, t4], name=name)
+
+def make_ccsd_firework_no_hf(struct, mol_id, basis, spin, charge=0, name=None, **kwargs):
+    if spin == 0:
+        hf_type = 'RHF'
+    else:
+        hf_type = 'UHF'
+    save_dir = get_save_dir(SAVE_ROOT, hf_type, basis, mol_id)
+    t1 = LoadCalcFromDB(directory = save_dir)
+    t2 = CCSDCalc()
+    t3 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
+    return Firework([t1, t2, t3], name=name)
 
 if __name__ == '__main__':
     fw1 = make_hf_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0)

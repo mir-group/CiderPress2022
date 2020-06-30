@@ -6,6 +6,7 @@ from mldftdat.workflow_utils import get_save_dir
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
 import os
+import numpy as np
 
 def get_sl_contribs(pbe_dir, restricted):
 
@@ -410,11 +411,14 @@ def solve_b97_from_stored(DATA_ROOT, v2 = False):
         X = sl.copy()
         y = E_ccsd - E_pbe - diff - E_vv10
 
-        X /= E_ccsd.reshape(-1,1)
-        y /= E_ccsd
+        #X /= E_ccsd.reshape(-1,1)
+        #y /= E_ccsd
 
         lr = LinearRegression(fit_intercept = False)
         lr.fit(X, y)
+
+        #X *= E_ccsd.reshape(-1,1)
+        #y *= E_ccsd
 
         score = lr.score(X, y)
 
@@ -423,12 +427,13 @@ def solve_b97_from_stored(DATA_ROOT, v2 = False):
 
     return coef_sets, scores
 
-def solve_b97_from_stored_ae(DATA_ROOT):
+def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
 
     import yaml
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
     from sklearn.metrics import r2_score
+    from pyscf import gto
 
     coef_sets = []
     scores = []
@@ -442,17 +447,23 @@ def solve_b97_from_stored_ae(DATA_ROOT):
         sl = np.load(os.path.join(DATA_ROOT, 'sl.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     pw92 = np.load(os.path.join(DATA_ROOT, 'pw92.npy'))[:,1]
-    with open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r') as f:
-        mols = yaml.load(f)
+    f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
+    mols = yaml.load(f, Loader = yaml.Loader)
+    f.close()
     mols = [gto.mole.unpack(mol) for mol in mols]
+    for mol in mols:
+        mol.build()
 
     Z_to_ind = {}
     formulas = {}
     ecounts = []
     for i, mol in enumerate(mols):
+        print(i)
         ecounts.append(mol.nelectron)
         if len(mol._atom) == 1:
+            print(i)
             Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
+            print(atomic_numbers[mol._atom[0][0]], Z_to_ind[atomic_numbers[mol._atom[0][0]]])
         else:
             atoms = [atomic_numbers[a[0]] for a in mol._atom]
             formulas[i] = Counter(atoms)
@@ -460,6 +471,8 @@ def solve_b97_from_stored_ae(DATA_ROOT):
 
     N = etot.shape[0]
     num_vv10 = vv10.shape[-1]
+
+    print(formulas, Z_to_ind)
 
     for i in range(num_vv10):
         E_vv10 = vv10[:,i]
@@ -473,27 +486,28 @@ def solve_b97_from_stored_ae(DATA_ROOT):
         # not an exact relationship, but should give a decent fit
         X = sl.copy()
         y = E_ccsd - E_pbe - diff - E_vv10
+        y = E_ccsd - E_pbe - diff
         weights = []
         for i in range(len(mols)):
-            if i in Z_to_ind.keys():
-                weights.append(1 / ecounts[i])
-            else:
-                weights.append(10 / ecounts[i])
+            if i in formulas.keys():
+                weights.append(1.0)
                 formula = formulas[i]
                 for Z in list(formula.keys()):
                     X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
                     y[i] -= formula[Z] * y[Z_to_ind[Z]]
+            else:
+                weights.append(1.0 if mols[i].nelectron < 11 else 0)
 
         weights = np.array(weights)
 
-        noise = 1e-2
-        A = np.linalg.inv(np.dot(X.T * weights, X) + noise)
+        noise = 1e-5
+        A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
 
         score = r2_score(y, np.dot(X, coef))
 
-        coef_sets.append(lr.coef_)
+        coef_sets.append(coef)
         scores.append(score)
 
     return coef_sets, scores
