@@ -22,6 +22,38 @@ def get_unique_coord_indexes_spherical(coords):
             indexes.append(i)
     return indexes
 
+def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+    class PGrid():
+        def __init__(self, coords, weights):
+            self.coords = coords
+            self.weights = weights
+    rs = np.linalg.norm(get_unique_coord_indexes_spherical(grid.coords), axis=1)
+    rs.sort()
+    weights = 0 * rs
+    vals1 = np.zeros(rho1.shape)
+    vals2 = np.zeros(rho2.shape)
+    all_rs = np.linalg.norm(grid.coords, axis=1)
+    for i, r in enumerate(all_rs):
+        j = np.argmin(np.abs(r - rs))
+        weights[j] += grid.weights[i]
+        vals1[...,j] += rho1[...,i] * grid.weights[i]
+        vals2[...,j] += rho2[...,i] * grid.weights[i]
+    vals1 /= weights
+    vals2 /= weights
+    weights[rs < inner_r] = 0
+    diff = np.abs(vals1 - vals2)**exponent
+    return np.dot(diff, weights)**(1.0/exponent)
+
+def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+    weights = grid.weights.copy()
+    for atom in mol._atom:
+        coord = np.array(atom[1])
+        rel_coords = grid.coords - coord
+        rel_r = np.linalg.norm(rel_coords, axis = 1)
+        weights[rel_r < inner_r] = 0
+    diff = np.abs(rho1 - rho2)**exponent
+    return np.dot(diff, weights)**(1.0/exponent)
+
 def plot_data_atom(mol, coords, values, value_name, rmax, units,
                    ax=None):
     mol.build()
