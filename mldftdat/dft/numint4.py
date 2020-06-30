@@ -159,6 +159,33 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_uks = nr_uks
 
+    def __init__(self, mlfunc, mlc = False, vv10_coeff = None,
+                 beta = 1.6, ss_terms = None, os_terms = None):
+        super(NLNumInt, self).__init__()
+        self.mlc = mlc
+        self.beta = beta
+        self.mlfunc = mlfunc
+
+        if self.mlc:
+            if ss_terms is None:
+                ss_terms = np.array([-1.96053996, -2.67332187,  0.65720347, -0.78516904])
+                self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
+                             (ss_terms[2],3,2), (ss_terms[3],4,2)]
+            else:
+                self.ss_terms = ss_terms
+            if os_terms is None:
+                os_terms = np.array([-4.33095887, -1.44430792,  0.02367878, -2.62462778])
+                self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
+                                 (os_terms[2],3,2), (os_terms[3],0,3)]
+            else:
+                self.os_terms = os_terms
+            
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
     def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin = 0,
                 relativity = 0, deriv = 1, omega = None,
                 verbose = None):
@@ -173,25 +200,27 @@ class NLNumInt(pyscf_numint.NumInt):
             grid (Grids): The molecular grid
             rdm1: density matrix
         """
+        if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
+            mol.auxmol, mol.ao_to_aux = setup_aux(mol, self.beta)
+
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
         if hasattr(self, 'mlc'):
-            ss_terms = np.array([-1.96053996, -2.67332187,  0.65720347, -0.78516904])
-            os_terms = np.array([-4.33095887, -1.44430792,  0.02367878, -2.62462778])
-            ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2), (ss_terms[2],3,2), (ss_terms[3],4,2)]
-            os_terms = [(os_terms[0],1,0), (os_terms[1],0,1), (os_terms[2],3,2), (os_terms[3],0,3)]
-            exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin, relativity, deriv,
-                                                omega, verbose, ss_terms = ss_terms, os_terms = os_terms)
+            exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin,
+                                                relativity, deriv,
+                                                omega, verbose,
+                                                ss_terms = self.ss_terms,
+                                                os_terms = self.os_terms)
         elif has_base_xc:
-            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
-                                       omega, verbose)
+            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
+                                       deriv, omega, verbose)
 
         if spin == 0:
-            exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
+            exc, vxc, _, _ = _eval_xc_0(self.mlfunc, mol, rho_data, grid, rdm1)
         else:
-            uterms = _eval_xc_0(mol, 2 * rho_data[0], grid, 2 * rdm1[0])
-            dterms = _eval_xc_0(mol, 2 * rho_data[1], grid, 2 * rdm1[1])
+            uterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])
+            dterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])
             exc  = uterms[0] * rho_data[0][0,:]
             exc += dterms[0] * rho_data[1][0,:]
             exc /= (rho_data[0][0,:] + rho_data[1][0,:])
@@ -234,13 +263,12 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mol, rho_data, grid, rdm1):
+def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
     chkpt = time.monotonic()
 
     density = np.einsum('npq,pq->n', mol.ao_to_aux, rdm1)
-    mlfunc = mol.mlfunc
     auxmol = mol.auxmol
     naux = auxmol.nao_nr()
     ao_to_aux = mol.ao_to_aux
@@ -392,20 +420,18 @@ def setup_aux(mol, beta):
     return auxmol, ao_to_aux
 
 
-def setup_rks_calc(mol, mlfunc, beta = 1.6):
-    mol.build()
-    mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
-    mol.mlfunc = mlfunc
+def setup_rks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+                   beta = 1.6, ss_terms = None, os_terms = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt()
+    rks._numint = NLNumInt(mlfunc, mlc = False, vv10_coeff = None,
+                           beta = 1.6, ss_terms = None, os_terms = None)
     return rks
 
-def setup_uks_calc(mol, mlfunc, beta = 1.6):
-    mol.build()
-    mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
-    mol.mlfunc = mlfunc
+def setup_uks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+                   beta = 1.6, ss_terms = None, os_terms = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt()
+    uks._numint = NLNumInt(mlfunc, mlc = False, vv10_coeff = None,
+                           beta = 1.6, ss_terms = None, os_terms = None)
     return uks
