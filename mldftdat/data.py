@@ -8,6 +8,7 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
@@ -53,6 +54,18 @@ def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
         weights[rel_r < inner_r] = 0
     diff = np.abs(rho1 - rho2)**exponent
     return np.dot(diff, weights)**(1.0/exponent)
+
+def rho_data_from_calc(calc, grid, is_ccsd = False):
+    ao = eval_ao(calc.mol, grid.coords, deriv=2)
+    dm = calc.make_rdm1()
+    if is_ccsd:
+        if len(dm.shape) == 3:
+            trans_mo_coeff = np.transpose(calc.mo_coeff, axes=(0,2,1))
+        else:
+            trans_mo_coeff = calc.mo_coeff.T
+        dm = transform_basis_1e(dm, trans_mo_coeff)
+    rho = eval_rho(calc.mol, ao, dm)
+    return rho
 
 def plot_data_atom(mol, coords, values, value_name, rmax, units,
                    ax=None):
