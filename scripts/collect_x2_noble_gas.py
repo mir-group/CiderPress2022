@@ -10,9 +10,9 @@ import os
 import time
 
 CALC_TYPE = 'RKS'
-FUNCTIONAL = 'PBE'
+FUNCTIONAL = 'SCAN'
 MOL_IDS = ['atoms/{}-0'.format(s) for s in ['2-He', '4-Be', '10-Ne', '12-Mg', '18-Ar', '30-Zn', '36-Kr']]
 BASIS = 'aug-cc-pvtz'
 
-compile_dataset2('atoms_x2', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer, spherical_atom=True)
+compile_dataset2('atoms_xscan', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer, spherical_atom=True)
 

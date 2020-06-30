@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 CALC_TYPE = 'RKS'
-FUNCTIONAL = 'PBE'
+FUNCTIONAL = 'SCAN'
 MOL_IDS = next(os.walk(get_save_dir(SAVE_ROOT, CALC_TYPE, 'aug-cc-pvtz', 'qm9', FUNCTIONAL)))[1]
 MOL_IDS = ['qm9/{}'.format(s) for s in MOL_IDS]
 print(MOL_IDS)
@@ -17,5 +17,5 @@ print(MOL_IDS)
 BASIS = 'aug-cc-pvtz'
 
 
-compile_dataset2('qm9_locx86', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer, locx=True, lam=0.86)
+compile_dataset2('qm9_locx86scan', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer, locx=True, lam=0.86)
 
