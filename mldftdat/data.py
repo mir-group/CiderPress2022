@@ -8,8 +8,9 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
-from pyscf_utils import transform_basis_1e
+from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
+from pyscf.dft.numint import eval_ao, eval_rho
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -64,7 +65,7 @@ def rho_data_from_calc(calc, grid, is_ccsd = False):
         else:
             trans_mo_coeff = calc.mo_coeff.T
         dm = transform_basis_1e(dm, trans_mo_coeff)
-    rho = eval_rho(calc.mol, ao, dm)
+    rho = eval_rho(calc.mol, ao, dm, xctype='MGGA')
     return rho
 
 def plot_data_atom(mol, coords, values, value_name, rmax, units,
