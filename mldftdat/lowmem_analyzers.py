@@ -488,13 +488,6 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         #self.mo_rdm2_file = ext_uccsd_rdm.make_rdm2(self.calc, self.calc.t1,
         #                                    self.calc.t2, self.calc.l1,
         #                                    self.calc.l2)
-        self.mo_rdm2 = self.calc.make_rdm2()
-        self.mo_rdm2_file = lib.H5TmpFile()
-        for i, name in enumerate(['dm2aa', 'dm2ab', 'dm2bb']):
-            dm2 = self.mo_rdm2_file.create_dataset(name,
-                                            self.mo_rdm2[i].shape,
-                                            dtype=self.mo_rdm2[i].dtype)
-            dm2[:,:,:,:] = self.mo_rdm2[i].transpose(1,0,3,2)
         self.mo_rdm2 = None
 
         # These are all three-tuples
@@ -532,6 +525,13 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         return self.ha_energy_density
 
     def get_ee_energy_density(self):
+        self.mo_rdm2 = self.calc.make_rdm2()
+        self.mo_rdm2_file = lib.H5TmpFile()
+        for i, name in enumerate(['dm2aa', 'dm2ab', 'dm2bb']):
+            dm2 = self.mo_rdm2_file.create_dataset(name,
+                                            self.mo_rdm2[i].shape,
+                                            dtype=self.mo_rdm2[i].dtype)
+            dm2[:,:,:,:] = self.mo_rdm2[i].transpose(1,0,3,2)
         if self.ee_energy_density is None:
             self.ee_energy_density_uu = get_ee_energy_density_outcore2(
                                     self.mol, self.mo_rdm2_file['dm2aa'],
