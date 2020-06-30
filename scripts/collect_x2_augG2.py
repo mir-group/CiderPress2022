@@ -9,7 +9,7 @@ import numpy as np
 import os
 
 CALC_TYPE = 'RKS'
-FUNCTIONAL = 'PBE'
+FUNCTIONAL = 'SCAN'
 MOL_IDS = next(os.walk(get_save_dir(SAVE_ROOT, CALC_TYPE, 'aug-cc-pvtz', 'augG2', FUNCTIONAL)))[1]
 MOL_IDS = ['augG2/{}'.format(s) for s in MOL_IDS[30:50]]
 print(MOL_IDS)
@@ -17,5 +17,5 @@ print(MOL_IDS)
 BASIS = 'aug-cc-pvtz'
 
 
-compile_dataset2('augG2_x2_30_50', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer)
+compile_dataset2('augG2_xscan_30_50', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, RHFAnalyzer)
 

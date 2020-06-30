@@ -10,11 +10,11 @@ import os
 import time
 
 CALC_TYPE = 'UKS'
-FUNCTIONAL = 'PBE'
+FUNCTIONAL = 'SCAN'
 MOL_IDS = next(os.walk(get_save_dir(SAVE_ROOT, CALC_TYPE, 'aug-cc-pvtz', 'atoms', FUNCTIONAL)))[1]
 MOL_IDS = ['atoms/{}'.format(s) for s in MOL_IDS]
 BASIS = 'aug-cc-pvtz'
 print(MOL_IDS)
 
-compile_dataset2('spinpol_atoms_x2', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, UHFAnalyzer, spherical_atom=False)
+compile_dataset2('spinpol_atoms_xscan', MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS, UHFAnalyzer, spherical_atom=False)
 
