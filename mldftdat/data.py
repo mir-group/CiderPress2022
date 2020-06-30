@@ -792,53 +792,62 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             if '_T' in calc_type:
                 if analyzer.e_tri is None and mol.nelectron > 2:
                     analyzer.calc_pert_triples()
-                return analyzer.calc.e_tot + analyzer.e_tri
+                return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
             else:
-                return analyzer.calc.e_tot
+                return analyzer.calc.e_tot, analyzer.calc
 
         else:
             if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
                 mf = run_scf(mol, 'RHF')
                 mycc = run_cc(mf)
                 e_tot = mycc.e_tot
+                calc = mycc
             elif (calc_type == 'UCCSD') or (calc_type == 'UCCSD_T' and mol.nelectron < 3):
                 mf = run_scf(mol, 'UHF')
                 mycc = run_cc(mf)
                 e_tot = mycc.e_tot
+                calc = mycc
             elif calc_type == 'CCSD_T':
                 mf = run_scf(mol, 'RHF')
                 mycc = run_cc(mf)
                 e_tri = mycc.ccsd_t()
                 e_tot = mycc.e_tot + e_tri
+                calc = mycc
             elif calc_type == 'UCCSD_T':
                 mf = run_scf(mol, 'UHF')
                 mycc = run_cc(mf)
                 e_tri = mycc.ccsd_t()
                 e_tot = mycc.e_tot + e_tri
+                calc = mycc
             elif FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
                 e_tot = mf.e_tot
+                calc = mf
             elif type(FUNCTIONAL) == str:
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
                 e_tot = mf.e_tot
+                calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint4 import setup_rks_calc
                     mf = setup_rks_calc(mol, FUNCTIONAL)
                     mf.xc = None
+                    mf._numint.mlc = True
                 else:
                     from mldftdat.dft.numint4 import setup_uks_calc
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = None
+                    mf._numint.mlc = True
                 mf.kernel()
                 e_tot = mf.e_tot
+                calc = mf
 
             if save:
                 analyzer = Analyzer(mf)
                 if full_analysis:
                     analyzer.perform_full_analysis()
                 analyzer.dump(path)
-            return e_tot
+            return e_tot, calc
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
@@ -846,12 +855,13 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
         mol = analyzer.mol
     mol.basis = BASIS
     mol.build() 
-    mol_energy = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
+    mol_energy, mol_calc = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
 
     atoms = [atomic_numbers[a[0]] for a in mol._atom]
     formula = Counter(atoms)
     element_analyzers = {}
-    atomic_energies = []
+    atomic_energies = {}
+    atomic_calcs = {}
 
     atomization_energy = mol_energy
     for Z in list(formula.keys()):
@@ -888,9 +898,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                 Z, symbol, spin)
                            )
         print(path)
-        atomic_energies.append(run_calc(atm, path, ATOM_CALC_TYPE,
-                                        AtomAnalyzer, save_atom_analyzer))
-        atomization_energy -= formula[Z] * atomic_energies[-1]
+        atomic_energies[Z], atomic_calcs[Z] = run_calc(atm, path, ATOM_CALC_TYPE,
+                                                       AtomAnalyzer, save_atom_analyzer)
+        atomization_energy -= formula[Z] * atomic_energies[Z]
 
-    return mol, atomization_energy, mol_energy, atomic_energies
+    return mol, atomization_energy, mol_energy, atomic_energies, mol_calc, atomic_calcs
     
