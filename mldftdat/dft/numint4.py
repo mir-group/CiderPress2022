@@ -1,6 +1,7 @@
 import pyscf.dft.numint as pyscf_numint
 from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao, _format_uks_dm
 from pyscf.dft.libxc import eval_xc
+from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 import numpy as np
 from mldftdat.density import get_x_helper_full, LDA_FACTOR,\
@@ -11,7 +12,7 @@ from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
-from mldftdat.dft.correlation import eval_custom_corr
+from mldftdat.dft.correlation import eval_custom_corr, nr_rks_vv10
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -75,13 +76,25 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho = exc = vxc = vrho = vsigma = wv = None
 
+    if ni.vv10:
+        if not hasattr(ni, 'nlcgrids'):
+            nlcgrids = Grids(mol)
+            nlcgrids.level = 1
+            nlcgrids.build()
+            ni.nlcgrids = nlcgrids
+        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms, 
+                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
+
     for i in range(nset):
         vmat[i] = vmat[i] + vmat[i].T
     if nset == 1:
         nelec = nelec[0]
         excsum = excsum[0]
         vmat = vmat.reshape(nao,nao)
-    return nelec, excsum, vmat
+    if ni.vv10:
+        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
+    else:
+        return nelec, excsum, vmat
 
 
 def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
@@ -143,6 +156,16 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
+    if ni.vv10:
+        if not hasattr(ni, 'nlcgrids'):
+            nlcgrids = Grids(mol)
+            nlcgrids.level = 1
+            nlcgrids.build()
+            ni.nlcgrids = nlcgrids
+        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms[0] + dms[1],
+                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
+        vmat_vv10 = np.asarray([vmat_vv10, vmat_vv10])
+
     for i in range(nset):
         vmat[0,i] = vmat[0,i] + vmat[0,i].T
         vmat[1,i] = vmat[1,i] + vmat[1,i].T
@@ -150,7 +173,10 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         vmat = vmat[:,0]
         nelec = nelec.reshape(2)
         excsum = excsum[0]
-    return nelec, excsum, vmat
+    if ni.vv10:
+        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
+    else:
+        return nelec, excsum, vmat
 
 
 class NLNumInt(pyscf_numint.NumInt):
@@ -168,13 +194,13 @@ class NLNumInt(pyscf_numint.NumInt):
 
         if self.mlc:
             if ss_terms is None:
-                ss_terms = np.array([-1.96053996, -2.67332187,  0.65720347, -0.78516904])
+                ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
                 self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
                              (ss_terms[2],3,2), (ss_terms[3],4,2)]
             else:
                 self.ss_terms = ss_terms
             if os_terms is None:
-                os_terms = np.array([-4.33095887, -1.44430792,  0.02367878, -2.62462778])
+                os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
                 self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
                                  (os_terms[2],3,2), (os_terms[3],0,3)]
             else:
@@ -206,7 +232,7 @@ class NLNumInt(pyscf_numint.NumInt):
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
-        if hasattr(self, 'mlc'):
+        if self.mlc:
             exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin,
                                                 relativity, deriv,
                                                 omega, verbose,
@@ -250,7 +276,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vmol[1,:,:] = dterms[1][5]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if has_base_xc or hasattr(self, 'mlc'):
+        if has_base_xc or self.mlc:
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
@@ -283,16 +309,16 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
                                     density, ao_to_aux,
                                     integral_name = 'int1e_r2_origj')
     contracted_desc = contract_exchange_descriptors(raw_desc)
-    for i, d in enumerate(mol.mlfunc.desc_list):
+    for i, d in enumerate(mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
                                   contracted_desc, deriv = 1)
 
     print('desc setup', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    F = mol.mlfunc.get_F(desc)
+    F = mlfunc.get_F(desc)
     # shape (N, ndesc)
-    dF = mol.mlfunc.get_derivative(desc)
+    dF = mlfunc.get_derivative(desc)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
@@ -424,14 +450,14 @@ def setup_rks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
                    beta = 1.6, ss_terms = None, os_terms = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc, mlc = False, vv10_coeff = None,
-                           beta = 1.6, ss_terms = None, os_terms = None)
+    rks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+                           beta, ss_terms, os_terms)
     return rks
 
 def setup_uks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
                    beta = 1.6, ss_terms = None, os_terms = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc, mlc = False, vv10_coeff = None,
-                           beta = 1.6, ss_terms = None, os_terms = None)
+    uks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+                           beta, ss_terms, os_terms)
     return uks
