@@ -5,7 +5,7 @@ from pyscf.dft.gen_grid import Grids
 from joblib import load
 
 mol, ae, en, atoms, calc_pbe, acalcs_pbe = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='SCAN')
+        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='LDA_VWN')
 print('RKS:', ae, en, atoms)
 
 """
@@ -39,7 +39,7 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 
 mol.basis = 'aug-cc-pvtz'
 mol.build()
-mlfunc = load('mlfunc10.joblib')
+mlfunc = load('mlfunc10_lite.joblib')
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],
         'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL=mlfunc, mol = mol)
 print('ML:', ae, en, atoms)

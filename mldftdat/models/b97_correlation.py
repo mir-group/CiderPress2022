@@ -461,9 +461,9 @@ def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
         print(i)
         ecounts.append(mol.nelectron)
         if len(mol._atom) == 1:
-            print(i)
+            #print(i)
             Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
-            print(atomic_numbers[mol._atom[0][0]], Z_to_ind[atomic_numbers[mol._atom[0][0]]])
+            #print(atomic_numbers[mol._atom[0][0]], Z_to_ind[atomic_numbers[mol._atom[0][0]]])
         else:
             atoms = [atomic_numbers[a[0]] for a in mol._atom]
             formulas[i] = Counter(atoms)
@@ -486,15 +486,15 @@ def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
         # not an exact relationship, but should give a decent fit
         X = sl.copy()
         y = E_ccsd - E_pbe - diff - E_vv10
-        y = E_ccsd - E_pbe - diff
+        #y = E_ccsd - E_pbe - diff
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
                 weights.append(1.0)
                 formula = formulas[i]
-                for Z in list(formula.keys()):
-                    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
-                    y[i] -= formula[Z] * y[Z_to_ind[Z]]
+                #for Z in list(formula.keys()):
+                #    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
+                #    y[i] -= formula[Z] * y[Z_to_ind[Z]]
             else:
                 weights.append(1.0 if mols[i].nelectron < 11 else 0)
 
