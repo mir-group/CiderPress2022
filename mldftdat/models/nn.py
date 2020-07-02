@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from math import pi
 
 A = torch.tensor(0.704) # maybe replace with sqrt(6/5)?
 B = 2 * np.pi / 9 * np.sqrt(6.0/5)
@@ -419,39 +420,41 @@ class LinearBigFeat(nn.Module):
 class LinearBigFeat2(nn.Module):
 
     def __init__(self, X_train, y_train, train_weights, order = 1):
-        super(LinearBigFeat, self).__init__()
+        super(LinearBigFeat2, self).__init__()
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
         self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
-        self.isize = self.X_train.size(1) - 2
-        for i in range(n_layer):
-            self.W[i] = nn.Parameter(torch.ones(self.wsize, dtype=torch.float64))
-            self.A[i] = nn.Parameter(torch.zeros(self.wsize, dtype=torch.float64))
-            self.S[i] = nn.Parameter(torch.zeros(self.wsize, dtype=torch.float64))
-            self.B[i] = nn.Parameter(torch.zeros(self.wsize, dtype=torch.float64))
-            self.C[i] = nn.Parameter(torch.ones(self.wsize, dtype=torch.float64))
+        self.isize = 9#self.X_train.size(1) - 2
+        self.n_layer = 3
+        self.W = nn.Parameter(torch.ones((self.n_layer, self.isize), dtype=torch.float64))
+        self.A = nn.Parameter(torch.zeros((self.n_layer, self.isize), dtype=torch.float64))
+        self.S = nn.Parameter(torch.zeros((self.n_layer, self.isize), dtype=torch.float64))
+        self.B = nn.Parameter(torch.zeros((self.n_layer, self.isize), dtype=torch.float64))
+        self.C = nn.Parameter(torch.ones((self.n_layer, self.isize), dtype=torch.float64))
         self.w = None
         self.nw = 6
         self.nu = 7
+        sprefac = 2 * (3 * pi * pi)**(1.0/3)
+        self.gamma = nn.Parameter(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2, dtype=torch.float64))
         self.wsize = self.nw * self.nu * (self.isize + 1) - 1
+        self.std = torch.tensor([1.0, 1.0, 2.75509692, 6.88291279, 0.64614893, 4.87467219,\
+                        92.73161058, 14.27137322, 74.4786665, 225.88666535, 10.04826384], dtype=torch.float64)
 
     def transform_nl_data(self, X, a, s):
         x = 1 / (1 + a**2)
-        sprefac = 2 * (3 * torch.pi * torch.pi)**(1.0/3)
         p = s**2
-        gammax = 0.004 * (2**(1.0/3) * sprefac)**2
+        u = p / (1 + self.gamma * p)
         for i in range(self.n_layer):
             X = self.C[i] * self.sigmoid(self.W[i] * X + self.A[i] * x\
-                                         + self.S[i] * p + self.B[i])
+                                         + self.S[i] * u + self.B[i])
+        X = torch.cat([X, torch.ones(X.size(0), dtype=torch.float64).unsqueeze(1)], dim = 1)
         return X
 
     def get_u_partition(self, s):
-        sprefac = 2 * (3 * torch.pi * torch.pi)**(1.0/3)
         p = s**2
-        gammax = 0.004 * (2**(1.0/3) * sprefac)**2
-        u = gammax * p / (1 + gammax * p)
+        u = self.gamma * p / (1 + self.gamma * p)
         return torch.cat([1-u, u-u**2, u**2-u**3, u**3-u**4,\
                           u**4-u**5, u**5], dim = 1)
 
@@ -459,7 +462,7 @@ class LinearBigFeat2(nn.Module):
         x = 1 / (1 + a**2)
         y2 = 4 * x * (1-x)
         y2 = 1 - (1-y2)**3
-        y = 0.5 - torch.cos(2 * torch.pi * x) / 2
+        y = 0.5 - torch.cos(2 * pi * x) / 2
         p1 = y**4
         p2 = 1-(1-y)**2 - y**4
         p3 = y2 - (1-(1-y)**2)
@@ -476,11 +479,14 @@ class LinearBigFeat2(nn.Module):
         return torch.cat([p1, p2, p3, p4, p5, p6, p7], dim = 1)
 
     def transform_descriptors(self, X):
-        s = index_select(X, 1, [1])
-        a = index_select(X, 1, [2])
-        X = index_select(X, 1, torch.arange(2,self.isize+2))
+        X = torch.index_select(X, 1, torch.tensor([1,2,4,15,16,5,8,6,12,13,14])) / self.std
+        s = torch.index_select(X, 1, torch.tensor([1]))
+        a = torch.index_select(X, 1, torch.tensor([2]))
+        X = torch.index_select(X, 1, torch.arange(2,self.isize+2))
         X = torch.einsum('ni,nj,nk->nijk', self.get_w_partition(s),
-                self.get_u_partition(a), self.transform_nl_data(X, a, s)).flatten()
+                self.get_u_partition(a), self.transform_nl_data(X, a, s))
+        X = torch.reshape(X, (X.size(0), -1))
+        #print('size', X.size())
         return X
 
     def compute_weights(self):
@@ -488,7 +494,7 @@ class LinearBigFeat2(nn.Module):
         y = self.y_train * self.train_weights
         #print(X.size(), y.size())
         A = torch.matmul(X.T, self.train_weights * X)\
-            + self.noise * torch.eye(self.wsize)
+            + self.noise * torch.eye(self.wsize + 1)
         Xy = torch.matmul(X.T, y)
         #print(A.size(), Xy.size())
         return torch.matmul(torch.inverse(A), Xy)
