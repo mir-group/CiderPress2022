@@ -8,7 +8,9 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
+from pyscf.dft.numint import eval_ao, eval_rho
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -21,6 +23,50 @@ def get_unique_coord_indexes_spherical(coords):
             unique_rs = np.append(unique_rs, [r], axis=0)
             indexes.append(i)
     return indexes
+
+def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+    class PGrid():
+        def __init__(self, coords, weights):
+            self.coords = coords
+            self.weights = weights
+    rs = np.linalg.norm(get_unique_coord_indexes_spherical(grid.coords), axis=1)
+    rs.sort()
+    weights = 0 * rs
+    vals1 = np.zeros(rho1.shape)
+    vals2 = np.zeros(rho2.shape)
+    all_rs = np.linalg.norm(grid.coords, axis=1)
+    for i, r in enumerate(all_rs):
+        j = np.argmin(np.abs(r - rs))
+        weights[j] += grid.weights[i]
+        vals1[...,j] += rho1[...,i] * grid.weights[i]
+        vals2[...,j] += rho2[...,i] * grid.weights[i]
+    vals1 /= weights
+    vals2 /= weights
+    weights[rs < inner_r] = 0
+    diff = np.abs(vals1 - vals2)**exponent
+    return np.dot(diff, weights)**(1.0/exponent)
+
+def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+    weights = grid.weights.copy()
+    for atom in mol._atom:
+        coord = np.array(atom[1])
+        rel_coords = grid.coords - coord
+        rel_r = np.linalg.norm(rel_coords, axis = 1)
+        weights[rel_r < inner_r] = 0
+    diff = np.abs(rho1 - rho2)**exponent
+    return np.dot(diff, weights)**(1.0/exponent)
+
+def rho_data_from_calc(calc, grid, is_ccsd = False):
+    ao = eval_ao(calc.mol, grid.coords, deriv=2)
+    dm = calc.make_rdm1()
+    if is_ccsd:
+        if len(dm.shape) == 3:
+            trans_mo_coeff = np.transpose(calc.mo_coeff, axes=(0,2,1))
+        else:
+            trans_mo_coeff = calc.mo_coeff.T
+        dm = transform_basis_1e(dm, trans_mo_coeff)
+    rho = eval_rho(calc.mol, ao, dm, xctype='MGGA')
+    return rho
 
 def plot_data_atom(mol, coords, values, value_name, rmax, units,
                    ax=None):
@@ -175,6 +221,8 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
+    all_weights = []
+    cutoffs = []
 
     for MOL_ID in MOL_IDS:
         print('Working on {}'.format(MOL_ID))
@@ -253,6 +301,11 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         else:
             all_rho_data = np.append(all_rho_data, rho_data, axis=1)
         all_values = np.append(all_values, values)
+        all_weights = np.append(all_weights, analyzer.grid.weights)
+        if not restricted:
+            # two copies for unrestricted case
+            all_weights = np.append(all_weights, analyzer.grid.weights)
+        cutoffs.append(all_values.shape[0])
 
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
     if not os.path.isdir(save_dir):
@@ -260,9 +313,13 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     rho_file = os.path.join(save_dir, 'rho.npz')
     desc_file = os.path.join(save_dir, 'desc.npz')
     val_file = os.path.join(save_dir, 'val.npz')
+    wt_file = os.path.join(save_dir, 'wt.npz')
+    cut_file = os.path.join(save_dir, 'cut.npz')
     np.savetxt(rho_file, all_rho_data)
     np.savetxt(desc_file, all_descriptor_data)
     np.savetxt(val_file, all_values)
+    np.savetxt(wt_file, all_weights)
+    np.savetxt(cut_file, np.array(cutoffs))
 
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
@@ -295,7 +352,7 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None, val_dirname = None):
+def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False):
     X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
@@ -305,14 +362,20 @@ def load_descriptors(dirname, count=None, val_dirname = None):
         val_dirname = dirname
     y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
     rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+    if load_wt:
+        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
+        return X, y, rho_data, wt
     return X, y, rho_data
 
-def filter_descriptors(X, y, rho_data, tol=1e-3):
+def filter_descriptors(X, y, rho_data, tol=1e-3, wt = None):
     condition = rho_data[0] > tol
     X = X[condition,:]
     y = y[condition]
     rho = rho_data[0,condition]
     rho_data = rho_data[:,condition]
+    if wt is not None:
+        wt = wt[condition]
+        return X, y, rho, rho_data, wt
     return X, y, rho, rho_data
 
 def get_descriptors(dirname, num=1, count=None, tol=1e-3):
@@ -394,6 +457,7 @@ def predict_exchange(analyzer, model=None, num=1,
             Otherwise, assume sklearn model and run predict function.
     """
     from mldftdat.models.nn import Predictor
+    from mldftdat.dft.xc_models import MLFunctional
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -420,12 +484,22 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    elif type(model) == Predictor:
+    elif isinstance(model, Predictor):
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    elif isinstance(model, MLFunctional):
+        N = analyzer.grid.weights.shape[0]
+        desc  = np.zeros((N, len(model.desc_list)))
+        ddesc = np.zeros((N, len(model.desc_list)))
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        for i, d in enumerate(model.desc_list):
+            desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+        xef = model.get_F(desc)
+        eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
+        neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
     else:# type(model) == integral_gps.NoisyEDMGPR:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
@@ -453,6 +527,8 @@ def predict_exchange(analyzer, model=None, num=1,
 def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = 'a'):
     if isinstance(analyzer, RHFAnalyzer):
         return predict_exchange(analyzer, model, num, version = version)[3]
+    from mldftdat.models.nn import Predictor
+    from mldftdat.dft.xc_models import MLFunctional
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
     coords = analyzer.grid.coords
@@ -470,6 +546,17 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
         #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
         #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
+    elif isinstance(model, MLFunctional):
+        N = analyzer.grid.weights.shape[0]
+        neps = 0
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
+        for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
+            desc  = np.zeros((N, len(model.desc_list)))
+            ddesc = np.zeros((N, len(model.desc_list)))
+            for i, d in enumerate(model.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+            xef = model.get_F(desc)
+            neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
         neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
@@ -727,7 +814,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     from mldftdat import lowmem_analyzers
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    from mldftdat.pyscf_utils import run_scf
+    from mldftdat.pyscf_utils import run_scf, run_cc
     from pyscf import gto
     from mldftdat.dft.xc_models import MLFunctional
 
@@ -736,9 +823,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     else:
         CALC_NAME = CALC_TYPE
 
-    if CALC_TYPE == 'CCSD':
+    if CALC_TYPE in ['CCSD', 'CCSD_T']:
         Analyzer = lowmem_analyzers.CCSDAnalyzer
-    elif CALC_TYPE == 'UCCSD':
+    elif CALC_TYPE in ['UCCSD', 'UCCSD_T']:
         Analyzer = lowmem_analyzers.UCCSDAnalyzer
     elif CALC_TYPE in ['RKS', 'RHF']:
         Analyzer = lowmem_analyzers.RHFAnalyzer
@@ -747,41 +834,82 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
-            return Analyzer.load(path).calc.e_tot
+            analyzer = Analyzer.load(path)
+            if '_T' in calc_type:
+                if analyzer.e_tri is None and mol.nelectron > 2:
+                    analyzer.calc_pert_triples()
+                return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
+            else:
+                return analyzer.calc.e_tot, analyzer.calc
 
         else:
-            if FUNCTIONAL is None:
+            if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
+                mf = run_scf(mol, 'RHF')
+                mycc = run_cc(mf)
+                e_tot = mycc.e_tot
+                calc = mycc
+            elif (calc_type == 'UCCSD') or (calc_type == 'UCCSD_T' and mol.nelectron < 3):
+                mf = run_scf(mol, 'UHF')
+                mycc = run_cc(mf)
+                e_tot = mycc.e_tot
+                calc = mycc
+            elif calc_type == 'CCSD_T':
+                mf = run_scf(mol, 'RHF')
+                mycc = run_cc(mf)
+                e_tri = mycc.ccsd_t()
+                e_tot = mycc.e_tot + e_tri
+                calc = mycc
+            elif calc_type == 'UCCSD_T':
+                mf = run_scf(mol, 'UHF')
+                mycc = run_cc(mf)
+                e_tri = mycc.ccsd_t()
+                e_tot = mycc.e_tot + e_tri
+                calc = mycc
+            elif FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
+                e_tot = mf.e_tot
+                calc = mf
             elif type(FUNCTIONAL) == str:
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
+                e_tot = mf.e_tot
+                calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint3 import setup_rks_calc
-                    mf = setup_rks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',MGGA_C_M11'
+                    from mldftdat.dft.numint4 import setup_rks_calc
+                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
+                    dm0 = mf.make_rdm1()
+                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf.xc = None
                 else:
-                    from mldftdat.dft.numint3 import setup_uks_calc
-                    mf = setup_uks_calc(mol, FUNCTIONAL)
-                    mf.xc = ',MGGA_C_M11'
-                mf.kernel()
+                    from mldftdat.dft.numint4 import setup_uks_calc
+                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
+                    dm0 = mf.make_rdm1()
+                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf.xc = None
+                mf.kernel(dm0 = dm0)
+                e_tot = mf.e_tot
+                calc = mf
 
             if save:
                 analyzer = Analyzer(mf)
                 if full_analysis:
                     analyzer.perform_full_analysis()
                 analyzer.dump(path)
-            return mf.e_tot
+            return e_tot, calc
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
         analyzer = Analyzer.load(mol_path)
         mol = analyzer.mol
-    mol_energy = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
+    mol.basis = BASIS
+    mol.build() 
+    mol_energy, mol_calc = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
 
     atoms = [atomic_numbers[a[0]] for a in mol._atom]
     formula = Counter(atoms)
     element_analyzers = {}
-    atomic_energies = []
+    atomic_energies = {}
+    atomic_calcs = {}
 
     atomization_energy = mol_energy
     for Z in list(formula.keys()):
@@ -794,6 +922,10 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
         atm.build()
         if CALC_TYPE in ['CCSD', 'UCCSD']:
             ATOM_CALC_TYPE = 'CCSD' if spin == 0 else 'UCCSD'
+            AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
+                           else lowmem_analyzers.UCCSDAnalyzer
+        elif CALC_TYPE in ['CCSD_T', 'UCCSD_T']:
+            ATOM_CALC_TYPE = 'CCSD_T' if spin == 0 else 'UCCSD_T'
             AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
                            else lowmem_analyzers.UCCSDAnalyzer
         elif CALC_TYPE in ['RKS', 'UKS']:
@@ -814,9 +946,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                 Z, symbol, spin)
                            )
         print(path)
-        atomic_energies.append(run_calc(atm, path, ATOM_CALC_TYPE,
-                                        AtomAnalyzer, save_atom_analyzer))
-        atomization_energy -= formula[Z] * atomic_energies[-1]
+        atomic_energies[Z], atomic_calcs[Z] = run_calc(atm, path, ATOM_CALC_TYPE,
+                                                       AtomAnalyzer, save_atom_analyzer)
+        atomization_energy -= formula[Z] * atomic_energies[Z]
 
-    return mol, atomization_energy, mol_energy, atomic_energies
+    return mol, atomization_energy, mol_energy, atomic_energies, mol_calc, atomic_calcs
     

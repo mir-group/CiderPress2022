@@ -323,12 +323,60 @@ def v_nonlocal_fast(rho_data, grid, dfdg, density, auxmol, g, l = 0, mul = 1.0):
     dgda = l / (2 * a) * g - gr2
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 2 * a / (3 * lc[0] + 1e-10)
-    dadp = np.pi * fac * (lc[0] / 2)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2)**(2.0/3)
+    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-6))
+    dadp = np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
     #print('shapes', dedb.shape, dgda.shape)
+    deda = np.einsum('mi,mi->i', dedb, dgda)
+    v_npa[0] = deda * dadn
+    v_npa[1] = deda * dadp
+    v_npa[3] = deda * dadalpha
+    return v_npa, dedaux
+
+def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
+                          g, gr2, ovlp, l = 0, mul = 1.0):
+    # g should have shape (2l+1, N)
+    elda = LDA_FACTOR * rho_data[0]**(4.0/3)
+    N = grid.weights.shape[0]
+    lc = get_dft_input2(rho_data)[:3]
+    if l == 0:
+        dedb = (elda * dfdg).reshape(1, -1)
+    elif l == 1:
+        #dedb = 2 * elda * g * dfdg
+        dedb = elda * g * dfdg / (np.linalg.norm(g, axis=0) + 1e-10)
+    elif l == 2:
+        dedb = 2 * elda * g * dfdg / np.sqrt(5)
+    elif l == -2:
+        dedb = elda * dfdg
+        l = 2
+    elif l == -1:
+        dedb = elda * dfdg
+        l = 1
+    else:
+        raise ValueError('angular momentum code l=%d unknown' % l)
+
+    rho, s, alpha = lc
+    a = np.pi * (mul * rho / 2 + 1e-6)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale += fac * s**2
+    scale += 3.0 / 5 * fac * (alpha - 1)
+    a = a * scale
+    a[rho<1e-8] = 1e16
+
+    # (ngrid * (2l+1), naux)
+    dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
+    dgda = l / (2 * a) * g - gr2
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-6))
+    dadp = np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
+    v_npa = np.zeros((4, N))
     deda = np.einsum('mi,mi->i', dedb, dgda)
     v_npa[0] = deda * dadn
     v_npa[1] = deda * dadp
@@ -340,4 +388,10 @@ def get_density_in_basis(ao_to_aux, rdm1):
 
 def arcsinh_deriv(x):
     return 1 / np.sqrt(x * x + 1)
+
+def get_chi(alpha):
+    return 1 / (1 + alpha**2)
+
+def chi_deriv(alpha):
+    return -2 * alpha / (1 + alpha**2)**2
 

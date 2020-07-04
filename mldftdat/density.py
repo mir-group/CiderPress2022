@@ -50,7 +50,9 @@ def get_exchange_descriptors(rho_data, tau_data, coords,
         return np.append(lcu, nlcu, axis=0),\
                np.append(lcd, nlcd, axis=0)
 
-def get_x_helper_full(auxmol, rho_data, ddrho, grid, density, ao_to_aux):
+def get_x_helper_full(auxmol, rho_data, ddrho, grid, density,
+                      ao_to_aux, integral_name = 'int1e_ovlp',
+                      return_ovlp = False):
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
     # desc[12:13] = g0
@@ -64,24 +66,33 @@ def get_x_helper_full(auxmol, rho_data, ddrho, grid, density, ao_to_aux):
     # size naux
     desc = np.append(rho_data, ddrho, axis=0)
     N = grid.weights.shape[0]
+    if return_ovlp:
+        ovlps = []
     for l in range(3):
         atm, bas, env = get_gaussian_grid(grid.coords, rho_data[0],
                                           l = l, s = lc[1], alpha=lc[2])
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
+        if return_ovlp:
+            ovlps.append(ovlp)
     l = 0
     for mul in [0.25, 4.00]:
         atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
                                           l = 0, s = lc[1], alpha=lc[2])
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
-    return desc
+        if return_ovlp:
+            ovlps.append(ovlp)
+    if return_ovlp:
+        return desc, ovlps
+    else:
+        return desc
 
 def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     # desc[0:6]   = rho_data
@@ -239,12 +250,14 @@ def contract21(t2, t1):
 
     return np.real(np.array([xterm, yterm, zterm]))
 
-def contract21_deriv(t1):
+def contract21_deriv(t1, t1b = None):
+    if t1b is None:
+        t1b = t1
     tmp = np.identity(5)
     derivs = np.zeros((5, 3, t1.shape[1]))
     for i in range(5):
         derivs[i] = contract21(tmp[i], t1)
-    return np.einsum('map,ap->mp', derivs, t1)
+    return np.einsum('map,ap->mp', derivs, t1b)
 
 def contract_exchange_descriptors(desc):
     # desc[0:6]   = rho_data
@@ -498,21 +511,46 @@ def edmgga_loc(rho_data):
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
 hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+mu = 0.2195
+l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
+a = 1 - hprefac * 4 / 3
+b = mu - l**2 * hprefac / 18
 
 def tail_fx(rho_data):
     gradn = np.linalg.norm(rho_data[1:4], axis=0)
     s = get_normalized_grad(rho_data[0], gradn)
+    return tail_fx_direct(s)
+
+def tail_fx_direct(s):
     sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
     term1 = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp)
-    term3 = 2 + sp**2 / 12 - 17 * s**4 / 2880 + 367 * s**6 / 483840\
-            - 27859 * s**8 / 232243200 + 1295803 * s**10 / 61312204800
+    term3 = 2 + sp**2 / 12 - 17 * sp**4 / 2880 + 367 * sp**6 / 483840\
+            - 27859 * sp**8 / 232243200 + 1295803 * sp**10 / 61312204800
     term3 *= hprefac * 2.0 / 3
-    mu = 0.21951
-    l = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
-    a = 1 - hprefac * 4 / 3
-    b = mu - l**2 * hprefac / 18
     term2 = (a + b * s**2) / (1 + (l*s/2)**4)
     f = term2 + term3
     f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
     return f
+
+def tail_fx_deriv(rho_data):
+    gradn = np.linalg.norm(rho_data[1:4], axis=0)
+    s = get_normalized_grad(rho_data[0], gradn)
+    return tail_fx_deriv_direct(s)
+
+def tail_fx_deriv_direct(s):
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3) 
+    sfac = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
+    term1 = hprefac * 2.0 / 3 * sfac * (1.0 / np.arcsinh(0.5 * sp)\
+            - sp / (2 * np.sqrt(1+sp**2/4) * np.arcsinh(sp/2)**2))
+    term3 = sp / 6 - 17 * sp**3 / 720 + 367 * sp**5 / 80640 - 27859 * sp**7 / 29030400\
+            + 1295803 * sp**9 / 6131220480
+    term3 *= hprefac * 2.0 / 3 * sfac
+    denom = (1 + (l*s/2)**4)
+    term2 = 2 * b * s / denom - l**4 * s**3 * (a + b * s**2) / (4 * denom**2)
+    f = term2 + term3
+    f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
+    return f
+
+def tail_fx_deriv_p(s):
+    return tail_fx_deriv_direct(s) / (2 * s + 1e-16)
 

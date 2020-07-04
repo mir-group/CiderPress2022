@@ -212,7 +212,7 @@ class CCSDCalc(FiretaskBase):
 class TrainingDataCollector(FiretaskBase):
 
     required_params = ['save_root_dir', 'mol_id']
-    optional_params = ['no_overwrite', 'skip_analysis']
+    optional_params = ['no_overwrite', 'skip_analysis', 'ccsd_t']
     implemented_calcs = ['RHF', 'UHF', 'RKS', 'UKS', 'CCSD', 'UCCSD']
 
     def run_task(self, fw_spec):
@@ -272,7 +272,10 @@ class TrainingDataCollector(FiretaskBase):
 
         analyzer = Analyzer(calc, max_mem=safe_mem_cap_mb())
         print('MADE ANALYZER', psutil.virtual_memory().available // 1e6)
-        analyzer.perform_full_analysis()
+        if not self.get('skip_analysis'):
+            analyzer.perform_full_analysis()
+        if calc_type in ['CCSD', 'UCCSD'] and self.get('ccsd_t'):
+            analyzer.calc_pert_triples()
         print('FINISHED ANALYSIS', psutil.virtual_memory().available // 1e6)
         analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
         print('DUMP ANALYSIS', psutil.virtual_memory().available // 1e6)
