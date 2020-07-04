@@ -484,7 +484,7 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    elif type(model) == Predictor:
+    elif isinstance(model, Predictor):
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho

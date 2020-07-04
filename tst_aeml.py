@@ -5,7 +5,7 @@ from pyscf.dft.gen_grid import Grids
 from joblib import load
 
 mol, ae, en, atoms, calc_pbe, acalcs_pbe = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='LDA_VWN')
+        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='PBE')
 print('RKS:', ae, en, atoms)
 
 """
@@ -39,18 +39,24 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 
 mol.basis = 'aug-cc-pvtz'
 mol.build()
-mlfunc = load('mlfunc10_lite.joblib')
+mlfunc = load('mlfunc9c.joblib')
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],
         'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL=mlfunc, mol = mol)
 print('ML:', ae, en, atoms)
 
+mol, ae, en, atoms, calc_pbex, acalcs_pbex = calculate_atomization_energy(os.environ['MLDFTDB'],
+                'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='PBE,', mol = mol)
+
+rho_pbex = rho_data_from_calc(calc_pbex, grid, is_ccsd = False)
 rho_pbe = rho_data_from_calc(calc_pbe, grid, is_ccsd = False)
 rho_ccsd = rho_data_from_calc(calc_ccsdt, grid, is_ccsd = True)
 rho_ml = rho_data_from_calc(calc_ml, grid, is_ccsd = False)
+print('PBEX:', ae, en, atoms)
 
 print(density_similarity(rho_pbe, rho_ccsd, grid, mol))
 print(density_similarity(rho_hf, rho_ccsd, grid, mol))
 print(density_similarity(rho_hf, rho_ml, grid, mol))
 print(density_similarity(rho_ml, rho_ccsd, grid, mol))
 print(density_similarity(rho_pbe, rho_ml, grid, mol))
+print(density_similarity(rho_pbe, rho_pbex, grid, mol))
 
