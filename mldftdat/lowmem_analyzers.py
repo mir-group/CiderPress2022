@@ -357,6 +357,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['calc']['e_corr'] = self.calc.e_corr
         analyzer_dict['data']['ee_total'] = self.ee_total
         analyzer_dict['data']['ecorr_dens'] = self.ecorr_dens
+        analyzer_dict['data']['e_tri'] = self.e_tri
         return analyzer_dict
 
     @classmethod
@@ -389,6 +390,7 @@ class CCSDAnalyzer(ElectronAnalyzer):
                                                     self.jmat, self.kmat)
 
         self.ecorr_dens = None
+        self.e_tri = None
 
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
@@ -427,6 +429,10 @@ class CCSDAnalyzer(ElectronAnalyzer):
             self.ecorr_dens = ecorr_dens
         return self.ecorr_dens
 
+    def calc_pert_triples(self):
+        self.e_tri = self.calc.ccsd_t()
+        return self.e_tri
+
     def perform_full_analysis(self):
         super(CCSDAnalyzer, self).perform_full_analysis()
         self.get_corr_energy_density()
@@ -455,6 +461,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         analyzer_dict['data']['ecorr_dens_ud'] = self.ecorr_dens_ud
         analyzer_dict['data']['ecorr_dens_dd'] = self.ecorr_dens_dd
 
+        analyzer_dict['data']['e_tri'] = self.e_tri
+
         return analyzer_dict
 
     @classmethod
@@ -480,13 +488,6 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         #self.mo_rdm2_file = ext_uccsd_rdm.make_rdm2(self.calc, self.calc.t1,
         #                                    self.calc.t2, self.calc.l1,
         #                                    self.calc.l2)
-        self.mo_rdm2 = self.calc.make_rdm2()
-        self.mo_rdm2_file = lib.H5TmpFile()
-        for i, name in enumerate(['dm2aa', 'dm2ab', 'dm2bb']):
-            dm2 = self.mo_rdm2_file.create_dataset(name,
-                                            self.mo_rdm2[i].shape,
-                                            dtype=self.mo_rdm2[i].dtype)
-            dm2[:,:,:,:] = self.mo_rdm2[i].transpose(1,0,3,2)
         self.mo_rdm2 = None
 
         # These are all three-tuples
@@ -513,6 +514,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.ecorr_dens_ud = None
         self.ecorr_dens_dd = None
 
+        self.e_tri = None
+
     def get_ha_energy_density(self):
         if self.ha_energy_density is None:
             self.ha_energy_density = get_ha_energy_density2(
@@ -522,6 +525,13 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         return self.ha_energy_density
 
     def get_ee_energy_density(self):
+        self.mo_rdm2 = self.calc.make_rdm2()
+        self.mo_rdm2_file = lib.H5TmpFile()
+        for i, name in enumerate(['dm2aa', 'dm2ab', 'dm2bb']):
+            dm2 = self.mo_rdm2_file.create_dataset(name,
+                                            self.mo_rdm2[i].shape,
+                                            dtype=self.mo_rdm2[i].dtype)
+            dm2[:,:,:,:] = self.mo_rdm2[i].transpose(1,0,3,2)
         if self.ee_energy_density is None:
             self.ee_energy_density_uu = get_ee_energy_density_outcore2(
                                     self.mol, self.mo_rdm2_file['dm2aa'],
@@ -590,6 +600,10 @@ class UCCSDAnalyzer(ElectronAnalyzer):
             self.ecorr_dens_dd = ecorr_dens_dd
 
         return self.ecorr_dens
+
+    def calc_pert_triples(self):
+        self.e_tri = self.calc.ccsd_t()
+        return self.e_tri
 
     def perform_full_analysis(self):
         super(UCCSDAnalyzer, self).perform_full_analysis()

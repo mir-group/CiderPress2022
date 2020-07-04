@@ -1,6 +1,7 @@
 import pyscf.dft.numint as pyscf_numint
 from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao, _format_uks_dm
 from pyscf.dft.libxc import eval_xc
+from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 import numpy as np
 from mldftdat.density import get_x_helper_full, LDA_FACTOR,\
@@ -11,6 +12,7 @@ from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
+from mldftdat.dft.correlation import eval_custom_corr, nr_rks_vv10
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -74,13 +76,25 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho = exc = vxc = vrho = vsigma = wv = None
 
+    if ni.vv10:
+        if not hasattr(ni, 'nlcgrids'):
+            nlcgrids = Grids(mol)
+            nlcgrids.level = 1
+            nlcgrids.build()
+            ni.nlcgrids = nlcgrids
+        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms, 
+                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
+
     for i in range(nset):
         vmat[i] = vmat[i] + vmat[i].T
     if nset == 1:
         nelec = nelec[0]
         excsum = excsum[0]
         vmat = vmat.reshape(nao,nao)
-    return nelec, excsum, vmat
+    if ni.vv10:
+        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
+    else:
+        return nelec, excsum, vmat
 
 
 def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
@@ -142,6 +156,16 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
+    if ni.vv10:
+        if not hasattr(ni, 'nlcgrids'):
+            nlcgrids = Grids(mol)
+            nlcgrids.level = 1
+            nlcgrids.build()
+            ni.nlcgrids = nlcgrids
+        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms[0] + dms[1],
+                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
+        vmat_vv10 = np.asarray([vmat_vv10, vmat_vv10])
+
     for i in range(nset):
         vmat[0,i] = vmat[0,i] + vmat[0,i].T
         vmat[1,i] = vmat[1,i] + vmat[1,i].T
@@ -149,7 +173,10 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         vmat = vmat[:,0]
         nelec = nelec.reshape(2)
         excsum = excsum[0]
-    return nelec, excsum, vmat
+    if ni.vv10:
+        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
+    else:
+        return nelec, excsum, vmat
 
 
 class NLNumInt(pyscf_numint.NumInt):
@@ -157,6 +184,33 @@ class NLNumInt(pyscf_numint.NumInt):
     nr_rks = nr_rks
 
     nr_uks = nr_uks
+
+    def __init__(self, mlfunc, mlc = False, vv10_coeff = None,
+                 beta = 1.6, ss_terms = None, os_terms = None):
+        super(NLNumInt, self).__init__()
+        self.mlc = mlc
+        self.beta = beta
+        self.mlfunc = mlfunc
+
+        if self.mlc:
+            if ss_terms is None:
+                ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
+                self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
+                             (ss_terms[2],3,2), (ss_terms[3],4,2)]
+            else:
+                self.ss_terms = ss_terms
+            if os_terms is None:
+                os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
+                self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
+                                 (os_terms[2],3,2), (os_terms[3],0,3)]
+            else:
+                self.os_terms = os_terms
+            
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
 
     def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin = 0,
                 relativity = 0, deriv = 1, omega = None,
@@ -172,17 +226,27 @@ class NLNumInt(pyscf_numint.NumInt):
             grid (Grids): The molecular grid
             rdm1: density matrix
         """
+        if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
+            mol.auxmol, mol.ao_to_aux = setup_aux(mol, self.beta)
+
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
-        if has_base_xc:
-            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity, deriv,
-                                       omega, verbose)
+        if self.mlc:
+            exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin,
+                                                relativity, deriv,
+                                                omega, verbose,
+                                                ss_terms = self.ss_terms,
+                                                os_terms = self.os_terms)
+        elif has_base_xc:
+            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
+                                       deriv, omega, verbose)
+
         if spin == 0:
-            exc, vxc, _, _ = _eval_xc_0(mol, rho_data, grid, rdm1)
+            exc, vxc, _, _ = _eval_xc_0(self.mlfunc, mol, rho_data, grid, rdm1)
         else:
-            uterms = _eval_xc_0(mol, 2 * rho_data[0], grid, 2 * rdm1[0])
-            dterms = _eval_xc_0(mol, 2 * rho_data[1], grid, 2 * rdm1[1])
+            uterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])
+            dterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])
             exc  = uterms[0] * rho_data[0][0,:]
             exc += dterms[0] * rho_data[1][0,:]
             exc /= (rho_data[0][0,:] + rho_data[1][0,:])
@@ -212,7 +276,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vmol[1,:,:] = dterms[1][5]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if has_base_xc:
+        if has_base_xc or self.mlc:
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
@@ -225,13 +289,12 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mol, rho_data, grid, rdm1):
+def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
     chkpt = time.monotonic()
 
     density = np.einsum('npq,pq->n', mol.ao_to_aux, rdm1)
-    mlfunc = mol.mlfunc
     auxmol = mol.auxmol
     naux = auxmol.nao_nr()
     ao_to_aux = mol.ao_to_aux
@@ -240,19 +303,22 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
     ddesc = np.zeros((N, len(mlfunc.desc_list)))
     ao_data, rho_data = get_mgga_data(mol, grid, rdm1)
     ddrho = get_rho_second_deriv(mol, grid, rdm1, ao_data)
-    raw_desc = get_x_helper_full(auxmol, rho_data, ddrho, grid,
-                                 density, ao_to_aux)
+    raw_desc, ovlps = get_x_helper_full(auxmol, rho_data, ddrho, grid,
+                                 density, ao_to_aux, return_ovlp = True)
+    raw_desc_r2 = get_x_helper_full(auxmol, rho_data, ddrho, grid,
+                                    density, ao_to_aux,
+                                    integral_name = 'int1e_r2_origj')
     contracted_desc = contract_exchange_descriptors(raw_desc)
-    for i, d in enumerate(mol.mlfunc.desc_list):
+    for i, d in enumerate(mlfunc.desc_list):
         desc[:,i], ddesc[:,i] = d.transform_descriptor(
                                   contracted_desc, deriv = 1)
 
     print('desc setup', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    F = mol.mlfunc.get_F(desc)
+    F = mlfunc.get_F(desc)
     # shape (N, ndesc)
-    dF = mol.mlfunc.get_derivative(desc)
+    dF = mlfunc.get_derivative(desc)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
@@ -279,36 +345,57 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
         else:
             if d.code in [4, 15, 16]:
                 g = contracted_desc[d.code]
+                if d.code == 4:
+                    ovlp = ovlps[0]
+                    gr2 = raw_desc_r2[12:13]
+                elif d.code == 15:
+                    ovlp = ovlps[3]
+                    gr2 = raw_desc_r2[21:22]
+                else:
+                    ovlp = ovlps[4]
+                    gr2 = raw_desc_r2[22:23]
                 l = 0
             elif d.code == 5:
                 g = raw_desc[13:16]
+                gr2 = raw_desc_r2[13:16]
+                ovlp = ovlps[1]
                 l = 1
             elif d.code == 8:
                 g = raw_desc[16:21]
+                gr2 = raw_desc_r2[16:21]
+                ovlp = ovlps[2]
                 l = 2
             elif d.code == 6:
                 g = raw_desc[13:16]
+                gr2 = raw_desc_r2[13:16]
+                ovlp = ovlps[1]
                 dfmul = svec
                 v_aniso += elda * dFddesc[:,i] * g
                 l = -1
             elif d.code == 12:
                 l = -2
                 g = raw_desc[16:21]
+                gr2 = raw_desc_r2[16:21]
+                ovlp = ovlps[2]
                 dfmul = contract21_deriv(svec)
                 ddesc_dsvec = contract21(g, svec)
                 v_aniso += elda * dFddesc[:,i] * 2 * ddesc_dsvec
             elif d.code == 13:
                 g2 = raw_desc[16:21]
+                g2r2 = raw_desc_r2[16:21]
+                ovlp2 = ovlps[2]
                 g1 = raw_desc[13:16]
+                g1r2 = raw_desc_r2[13:16]
+                ovlp1 = ovlps[1]
                 dfmul = contract21_deriv(svec, g1)
                 ddesc_dsvec = contract21(g2, g1)
                 ddesc_dg1 = contract21(g2, svec)
                 v_aniso += elda * dFddesc[:,i] * ddesc_dsvec
-                vtmp1, dedaux1 = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * ddesc_dg1,
-                                         density, mol.auxmol, g1, l = -1,
+                vtmp1, dedaux1 = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i] * ddesc_dg1,
+                                         density, mol.auxmol, g1, g1r2, ovlp1, l = -1,
                                          mul = d.mul)
-                vtmp2, dedaux2 = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
-                                         density, mol.auxmol, g2, l = -2,
+                vtmp2, dedaux2 = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g2, g2r2, ovlp2, l = -2,
                                          mul = d.mul)
                 vtmp = vtmp1 + vtmp2
                 dedaux = dedaux1 + dedaux2
@@ -316,14 +403,14 @@ def _eval_xc_0(mol, rho_data, grid, rdm1):
                 raise NotImplementedError('Cannot take derivative for code %d' % d.code)
 
             if d.code in [6, 12]:
-                vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i] * dfmul,
-                                         density, mol.auxmol, g, l = l,
+                vtmp, dedaux = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g, gr2, ovlp, l = l,
                                          mul = d.mul)
             elif d.code == 13:
                 pass
             else:
-                vtmp, dedaux = v_nonlocal_fast(rho_data, grid, dFddesc[:,i],
-                                         density, mol.auxmol, g, l = l,
+                vtmp, dedaux = v_nonlocal_extra_fast(rho_data, grid, dFddesc[:,i],
+                                         density, mol.auxmol, g, gr2, ovlp, l = l,
                                          mul = d.mul)
             v_npa += vtmp
             v_aux += dedaux
@@ -359,20 +446,18 @@ def setup_aux(mol, beta):
     return auxmol, ao_to_aux
 
 
-def setup_rks_calc(mol, mlfunc, beta = 1.6):
-    mol.build()
-    mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
-    mol.mlfunc = mlfunc
+def setup_rks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+                   beta = 1.6, ss_terms = None, os_terms = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt()
+    rks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+                           beta, ss_terms, os_terms)
     return rks
 
-def setup_uks_calc(mol, mlfunc, beta = 1.6):
-    mol.build()
-    mol.auxmol, mol.ao_to_aux = setup_aux(mol, beta)
-    mol.mlfunc = mlfunc
+def setup_uks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+                   beta = 1.6, ss_terms = None, os_terms = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt()
+    uks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+                           beta, ss_terms, os_terms)
     return uks
