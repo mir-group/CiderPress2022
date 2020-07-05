@@ -300,7 +300,7 @@ class NoisyEDMGPR(EDMGPR):
         #rbf = PartialRBF([0.3, 0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc+1],
         rbf = PartialRBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
-        rbf = PartialRBF(([0.5] * 15)[:num_desc],
+        rbf = PartialRBF(([0.232, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 1.0, 1.0, 1.0, 1.0])[:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
