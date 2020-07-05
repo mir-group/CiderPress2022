@@ -266,7 +266,7 @@ def get_big_desc2(X, num):
     ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6) 
 
     desc[:,0] = X[:,0]
-    desc[:,1] = s**2 * refs
+    desc[:,1] = tail_fx_direct(s)#s**2 * refs
     desc[:,2] = 2 / (1 + alpha**2) - 1.0
     desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
     desc[:,4] = X[:,5]**2 * scale**6 * ref1
