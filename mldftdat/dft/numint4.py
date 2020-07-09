@@ -316,9 +316,13 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     print('desc setup', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    F = mlfunc.get_F(desc)
-    # shape (N, ndesc)
-    dF = mlfunc.get_derivative(desc)
+    if mlfunc.y_to_f_mul is None:
+        F = mlfunc.get_F(desc)
+        # shape (N, ndesc)
+        dF = mlfunc.get_derivative(desc)
+    else:
+        F = mlfunc.get_F(desc, s = contracted_desc[1])
+        dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
@@ -331,7 +335,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho_data[0]**(4.0/3)
-    svec = rho_data[1:4] / (sprefac * n43 + 1e-9)
+    svec = rho_data[1:4] / (sprefac * n43 + 1e-20)
     v_aniso = np.zeros((3,N))
     v_aux = np.zeros(naux)
 
@@ -421,8 +425,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
     v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
     v_nst = v_basis_transform(rho_data, v_npa)
-    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-10), v_aniso)
-    v_grad = v_aniso / (sprefac * n43 + 1e-10)
+    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
+    v_grad = v_aniso / (sprefac * n43 + 1e-20)
     return exc, (v_nst[0], v_nst[1], v_nst[2], v_nst[3], v_grad, vmol), None, None
 
 

@@ -832,6 +832,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     elif CALC_TYPE in ['UKS', 'UHF']:
         Analyzer = lowmem_analyzers.UHFAnalyzer
 
+    print(type(FUNCTIONAL))
+    print(isinstance(FUNCTIONAL, MLFunctional))
+
     def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
             analyzer = Analyzer.load(path)
@@ -876,16 +879,20 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint4 import setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
-                    dm0 = mf.make_rdm1()
-                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf.xc = None
+                    #mf = run_scf(mol, 'RKS', functional = 'SCAN')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
+                    #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = False)
+                    mf.xc = ',MGGA_C_SCAN'
                 else:
                     from mldftdat.dft.numint4 import setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
-                    dm0 = mf.make_rdm1()
-                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf.xc = None
+                    #mf = run_scf(mol, 'UKS', functional = 'SCAN')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
+                    #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = False)
+                    mf.xc = ',MGGA_C_SCAN'
                 mf.kernel(dm0 = dm0)
                 e_tot = mf.e_tot
                 calc = mf
