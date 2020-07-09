@@ -302,21 +302,17 @@ class PolyAnsatz(nn.Module):
 
 class BayesianLinearFeat(nn.Module):
 
-    def __init__(self, ndesc_in, ndesc_out, X_train, y_train, train_weights, order = 1):
+    def __init__(self, X_train, y_train, train_weights, ndesc_out = 10, order = 1):
         super(BayesianLinearFeat, self).__init__()
-        self.linear = nn.Linear(ndesc_in, ndesc_out, bias = False)
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
-        self.sigmoid = nn.Sigmoid()
+        sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+        self.gammax = nn.Parameter(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2, dtype=torch.float64))
+        self.gamma1 = nn.Parameter(torch.tensor(0.004, dtype=torch.float64))
+        self.gamma2 = nn.Parameter(torch.tensor(0.004, dtype=torch.float64))
         self.noise = nn.Parameter(torch.tensor(1e-4, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
         self.order = order
-        weight = 0 * self.linear.weight
-        print(weight.size())
-        for i in range(8):
-            for j in range(6):
-                weight[i,6*j+i] = 1.0
-        self.linear.weight = nn.Parameter(weight)
         self.w = None
         if order > 4:
             raise ValueError('order must not be higher than 3')
@@ -343,8 +339,32 @@ class BayesianLinearFeat(nn.Module):
             self.order4_inds = order4_inds
 
     def transform_descriptors(self, X):
-        X1 = self.sigmoid(self.linear(X)) - 0.5
-        XT = 1 * X1
+        p, alpha = X[:,1]**2, X[:,2]
+
+        fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+        scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+        ref0a = 0.5 / (1 + X[:,4] * scale**3 / 2)
+        ref0b = 0.125 / (1 + X[:,15] * scale**3 / 8)
+        ref0c = 2 / (1 + X[:,16] * scale**3 / 0.5)
+        ref1 = self.gamma1 / (1 + self.gamma1 * X[:,5]**2 * scale**6)
+        ref2 = self.gamma2 / (1 + self.gamma2 * X[:,8] * scale**6)
+
+        #d0 = X[:,0]
+        d1 = p * refs
+        d2 = 2 / (1 + alpha**2) - 1.0
+        d3 = (X[:,4] * scale**3 - 2.0) * ref0a
+        d4 = X[:,5]**2 * scale**6 * ref1
+        d5 = X[:,8] * scale**6 * ref2
+        d6 = X[:,12] * scale**3 * refs * np.sqrt(ref2)
+        d7 = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
+        d8 = (X[:,15] * scale**3 - 8.0) * ref0b
+        d9 = (X[:,16] * scale**3 - 0.5) * ref0c
+        d10 = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+        #d11 = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+
+        XT = torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9, d10), dim = 1)
+        X1 = 1 * X1
         if self.order > 1:
             X2 = torch.einsum('bi,bj->bij', X1, X1)
             XT = torch.cat((XT, X2.reshape(X2.size(0),-1)[:,self.order2_inds]), dim=1)
@@ -360,7 +380,8 @@ class BayesianLinearFeat(nn.Module):
         X = self.transform_descriptors(self.X_train)
         y = self.y_train * self.train_weights
         #print(X.size(), y.size())
-        A = torch.matmul(X.T, self.train_weights * X) + self.noise
+        A = torch.matmul(X.T, self.train_weights * X)\
+            + self.noise * torch.eye(X.size(1))
         Xy = torch.matmul(X.T, y)
         #print(A.size(), Xy.size())
         return torch.matmul(torch.inverse(A), Xy)
