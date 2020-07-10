@@ -229,6 +229,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
         start = time.monotonic()
         analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        analyzer.get_ao_rho_data()
         if type(analyzer.calc) == scf.hf.RHF:
             restricted = True
         else:
@@ -639,16 +640,16 @@ def error_table_unrestricted(dirs, Analyzer, mlmodel, num = 1):
     for d in dirs:
         print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        analyzer.get_ao_rho_data()
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
         condition = rho > 3e-3
         fx_total_true = predict_total_exchange_unrestricted(analyzer)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
-        count += eps_true.shape[0]
+        count += 1
         for i, model in enumerate(models):
             fx_total_pred = predict_total_exchange_unrestricted(analyzer, model = model, num = num)
-            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+            print(fx_total_pred - fx_total_true)
 
             #ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
             #tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
@@ -885,6 +886,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
     elif CALC_TYPE in ['UKS', 'UHF']:
         Analyzer = lowmem_analyzers.UHFAnalyzer
 
+    print(type(FUNCTIONAL))
+    print(isinstance(FUNCTIONAL, MLFunctional))
+
     def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
             analyzer = Analyzer.load(path)
@@ -929,16 +933,22 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint4 import setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
-                    dm0 = mf.make_rdm1()
-                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    #mf = run_scf(mol, 'RKS', functional = 'SCAN')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
+                    #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True)
                     mf.xc = None
+                    #mf.xc = ',GGA_C_PBE'
                 else:
                     from mldftdat.dft.numint4 import setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
-                    dm0 = mf.make_rdm1()
-                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    #mf = run_scf(mol, 'UKS', functional = 'SCAN')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
+                    #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True)
                     mf.xc = None
+                    #mf.xc = ',GGA_C_PBE'
                 mf.kernel(dm0 = dm0)
                 e_tot = mf.e_tot
                 calc = mf
