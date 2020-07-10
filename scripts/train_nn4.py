@@ -65,7 +65,7 @@ model = BayesianLinearFeat(X_train[::2], y_train[::2].reshape(-1,1),
         train_weights[::2].reshape(-1,1), order = 4)
 #model = PolyAnsatz(NUM)
 model.double()
-criterion, optimizer = get_training_obj(model, lr=1.0)
+criterion, optimizer = get_training_obj(model, lr=5.0)
 converged = False
 i = 0
 #X_val = get_desc2(X_test[4::100])
@@ -83,7 +83,7 @@ while not converged:
         break
 print(converged, np.sqrt(loss))
 print(np.sqrt(validate(X_val, y_val.reshape(-1,1), criterion, model)))
-save_nn(model, 'nnmodel_order4a.pth')
+save_nn(model, 'nnmodel_order4b.pth')
 #print(model.linear.weight)
 #print(model.linear.bias)
 

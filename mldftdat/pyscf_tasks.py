@@ -98,7 +98,10 @@ class MLSCFCalc(FiretaskBase):
         import yaml
 
         mlfunc = joblib.load(self['mlfunc_file'])
-        settings = yaml.load(self['mlfunc_settings_file'], Loader = yaml.Loader)
+        if not hasattr(mlfunc, 'y_to_f_mul'):
+            mlfunc.y_to_f_mul = None
+        with open(self['mlfunc_settings_file'], 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
         if calc_type == 'RKS':
             calc = numint4.setup_rks_calc(mol, mlfunc, **settings)
         else:
