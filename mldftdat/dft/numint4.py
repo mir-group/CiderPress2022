@@ -194,13 +194,15 @@ class NLNumInt(pyscf_numint.NumInt):
 
         if self.mlc:
             if ss_terms is None:
-                ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
+                #ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
+                ss_terms = np.array([1.26505033, -1.53922695,  0.2656504,  -1.03855256])
                 self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
                              (ss_terms[2],3,2), (ss_terms[3],4,2)]
             else:
                 self.ss_terms = ss_terms
             if os_terms is None:
-                os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
+                #os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
+                os_terms = np.array([-1.31971314, -0.32444113,  0.40935749, -3.47602979])
                 self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
                                  (os_terms[2],3,2), (os_terms[3],0,3)]
             else:
