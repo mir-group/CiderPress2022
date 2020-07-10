@@ -26,10 +26,20 @@ def _rks_gga_wv0a(rho, vxc, weight):
     return wv
 
 def _uks_gga_wv0a(rho, vxc, weight):
-    vxca = (vxc[0][:,0], vxc[1][:,0], vxc[2][:,0], vxc[3][:,0], vxc[4][:,:,0])
-    vxcb = (vxc[0][:,1], vxc[1][:,2], vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1])
-    wva = _rks_gga_wv0a(rho[0], vxca, weight)
-    wvb = _rks_gga_wv0a(rho[1], vxcb, weight)
+    rhoa, rhob = rho
+    vrho, vsigma = vxc[:2]
+    vgrad = vxc[4]
+    ngrid = vrho.shape[0]
+    wva = numpy.empty((4,ngrid))
+    wva[0]  = weight * vrho[:,0] * .5  # v+v.T should be applied in the caller
+    wva[1:] = rhoa[1:4] * (weight * vsigma[:,0] * 2)  # sigma_uu
+    wva[1:]+= rhob[1:4] * (weight * vsigma[:,1])      # sigma_ud
+    wva[1:]+= weight * vgrad[:,:,0]
+    wvb = numpy.empty((4,ngrid))
+    wvb[0]  = weight * vrho[:,1] * .5  # v+v.T should be applied in the caller
+    wvb[1:] = rhob[1:4] * (weight * vsigma[:,2] * 2)  # sigma_dd
+    wvb[1:]+= rhoa[1:4] * (weight * vsigma[:,1])      # sigma_ud
+    wvb[1:]+= weight * vgrad[:,:,1]
     return wva, wvb
 
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
