@@ -625,6 +625,59 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl)
 
+def error_table_unrestricted(dirs, Analyzer, mlmodel, num = 1):
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-3
+        fx_total_true = predict_total_exchange_unrestricted(analyzer)
+        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
+        fxlst_true.append(fx_total_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            fx_total_pred = predict_total_exchange_unrestricted(analyzer, model = model, num = num)
+            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+
+            #ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            #tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            #rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            #rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            errlst[i].append(fx_total_pred - fx_total_true)
+        print(errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst),\
+           (columns, rows, errtbl)
+
 def error_table2(dirs, Analyzer, mlmodel, num = 1):
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
     errlst = [[] for _ in models]
