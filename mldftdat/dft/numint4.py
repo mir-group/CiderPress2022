@@ -30,12 +30,12 @@ def _uks_gga_wv0a(rho, vxc, weight):
     vrho, vsigma = vxc[:2]
     vgrad = vxc[4]
     ngrid = vrho.shape[0]
-    wva = numpy.empty((4,ngrid))
+    wva = np.empty((4,ngrid))
     wva[0]  = weight * vrho[:,0] * .5  # v+v.T should be applied in the caller
     wva[1:] = rhoa[1:4] * (weight * vsigma[:,0] * 2)  # sigma_uu
     wva[1:]+= rhob[1:4] * (weight * vsigma[:,1])      # sigma_ud
     wva[1:]+= weight * vgrad[:,:,0]
-    wvb = numpy.empty((4,ngrid))
+    wvb = np.empty((4,ngrid))
     wvb[0]  = weight * vrho[:,1] * .5  # v+v.T should be applied in the caller
     wvb[1:] = rhob[1:4] * (weight * vsigma[:,2] * 2)  # sigma_dd
     wvb[1:]+= rhoa[1:4] * (weight * vsigma[:,1])      # sigma_ud
