@@ -485,8 +485,8 @@ def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
         # not an exact relationship, but should give a decent fit
         X = sl.copy()
-        y = E_ccsd - E_pbe - diff - E_vv10
-        #y = E_ccsd - E_pbe - diff
+        #y = E_ccsd - E_pbe - diff - E_vv10
+        y = E_ccsd - E_pbe - diff
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():

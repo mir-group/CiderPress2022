@@ -12,7 +12,10 @@ L2_CONTRACT_CODE = 4
 """
 
 def identity(x):
-    return x
+    return x.copy()
+
+def single(x):
+    return np.ones(x.shape)
 
 def extract_kernel_components(kernel):
     """
@@ -44,7 +47,7 @@ def extract_kernel_components(kernel):
 class Descriptor():
 
     def __init__(self, code, transform = identity,
-                 transform_deriv = identity, mul = 1.0):
+                 transform_deriv = single, mul = 1.0):
         self._transform = transform
         self._transform_deriv = transform_deriv
         self.code = code
@@ -67,27 +70,109 @@ class MLFunctional(ABC):
     def get_derivative(self, X):
         pass
 
+kappa = 0.804
+mu = 0.2195149727645171
 
 class PBEFunctional(MLFunctional):
 
     def __init__(self):
         self.desc_list = [Descriptor(1)]
+        self.y_to_f_mul = None
 
     def get_F(self, X):
-        p = X.flatten()
+        p = X.flatten()**2
         return 1 + kappa - kappa / (1 + mu * p / kappa)
         
     def get_derivative(self, X):
-        
-        return mu / (1 + mu * p / kappa)**2
+        p = X.flatten()**2
+        return (mu / (1 + mu * p / kappa)**2).reshape(-1,1)
 
+
+class SCANFunctional(MLFunctional):
+
+    def __init__(self):
+        self.desc_list = [Descriptor(1), Descriptor(2)]
+        self.y_to_f_mul = None
+
+    def get_F(self, X):
+        p = X[:,0]**2
+        s = X[:,0]
+        alpha = X[:,1]
+        muak = 10.0 / 81
+        k1 = 0.065
+        b2 = np.sqrt(5913 / 405000)
+        b1 = (511 / 13500) / (2 * b2)
+        b3 = 0.5
+        b4 = muak**2 / k1 - 1606 / 18225 - b1**2
+        h0 = 1.174
+        a1 = 4.9479
+        c1 = 0.667
+        c2 = 0.8
+        dx = 1.24
+        tmp1 = muak * p
+        tmp2 = 1 + b4 * p / muak * np.exp(-np.abs(b4) * p / muak)
+        tmp3 = b1 * p + b2 * (1 - alpha) * np.exp(-b3 * (1 - alpha)**2)
+        x = tmp1 * tmp2 + tmp3**2
+        h1 = 1 + k1 - k1 / (1 + x / k1)
+        gx = 1 - np.exp(-a1 / np.sqrt(s + 1e-9))
+        dgdp = - a1 / 4 * (s + 1e-9)**(-2.5) * np.exp(-a1 / np.sqrt(s + 1e-9))
+        fx = np.exp(-c1 * alpha / (1 - alpha)) * (alpha < 1)\
+             - dx * np.exp(c2 / (1 - alpha)) * (alpha > 1)
+        fx[np.isnan(fx)] = 0
+        assert (not np.isnan(fx).any())
+        Fscan = gx * (h1 + fx * (h0 - h1))
+        return Fscan
+
+    def get_derivative(self, X):
+        p = X[:,0]**2
+        s = X[:,0]
+        alpha = X[:,1]
+        muak = 10.0 / 81
+        k1 = 0.065
+        b2 = np.sqrt(5913 / 405000)
+        b1 = (511 / 13500) / (2 * b2)
+        b3 = 0.5
+        b4 = muak**2 / k1 - 1606 / 18225 - b1**2
+        h0 = 1.174
+        a1 = 4.9479
+        c1 = 0.667
+        c2 = 0.8
+        dx = 1.24
+        tmp1 = muak * p
+        tmp2 = 1 + b4 * p / muak * np.exp(-np.abs(b4) * p / muak)
+        tmp3 = b1 * p + b2 * (1 - alpha) * np.exp(-b3 * (1 - alpha)**2)
+        x = tmp1 * tmp2 + tmp3**2
+        h1 = 1 + k1 - k1 / (1 + x / k1)
+        gx = 1 - np.exp(-a1 / np.sqrt(s + 1e-9))
+        dgdp = - a1 / 4 * (s + 1e-9)**(-2.5) * np.exp(-a1 / np.sqrt(s + 1e-9))
+        fx = np.exp(-c1 * alpha / (1 - alpha)) * (alpha < 1)\
+             - dx * np.exp(c2 / (1 - alpha)) * (alpha > 1)
+        fx[np.isnan(fx)] = 0
+        assert (not np.isnan(fx).any())
+        Fscan = gx * (h1 + fx * (h0 - h1))
+        dxdp = muak * tmp2 + tmp1 * (b4 / muak * np.exp(-np.abs(b4) * p / muak)\
+               - b4 * np.abs(b4) * p / muak**2 * np.exp(-np.abs(b4) * p / muak))\
+               + 2 * tmp3 * b1
+        dxda = 2 * tmp3 * (-b2 * np.exp(-b3 * (1 - alpha)**2) \
+                            + 2 * b2 * b3 * (1 - alpha)**2 * np.exp(-b3 * (1 - alpha)**2) )
+        dhdx = 1 / (1 + x / k1)**2
+        dhdp = dhdx * dxdp
+        dhda = dhdx * dxda
+        dfda = (-c1 * alpha / (1 - alpha)**2 - c1 / (1 - alpha))\
+                * np.exp(-c1 * alpha / (1 - alpha)) * (alpha < 1)\
+                - dx * c2 / (1 - alpha)**2 * np.exp(c2 / (1 - alpha)) * (alpha > 1)
+        dfda[np.isnan(dfda)] = 0
+
+        dFdp = dgdp * (h1 + fx * (h0 - h1)) + gx * (1 - fx) * dhdp
+        dFda = gx * (dhda - fx * dhda + dfda * (h0 - h1))
+        return np.array([dFdp, dFda]).T
 
 
 class GPFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
 
-    def __init__(self, kernel, alpha, X_train, desc_list, y_to_f):
+    def __init__(self, kernel, alpha, X_train, desc_list, y_to_f_mul = None):
         """
         desc_type_list should have the l value of each nonlocal
         descriptor, -1 for p, -2 for alpha
@@ -103,16 +188,22 @@ class GPFunctional(MLFunctional):
         # in front.
         self.kernel = kernel
         self.desc_list = desc_list
-        self.y_to_f = y_to_f
+        if y_to_f_mul is not None:
+            self.y_to_f_mul, self.y_to_f_mul_deriv = y_to_f_mul
+        else:
+            self.y_to_f_mul, self.y_to_f_mul_deriv = None, None
 
-    def get_F(self, X):
+    def get_F(self, X, s = None):
         k = self.kernel(X, self.X_train_)
         y_mean = k.dot(self.alpha_)
         #y = y_mean * self._y_train_std + self._y_train_mean
-        return y_mean + 1
+        if self.y_to_f_mul is None:
+            return y_mean + 1
+        else:
+            return (y_mean + 1) * self.y_to_f_mul(s)
         #F = self.y_to_f(y)
 
-    def get_derivative(self, X):
+    def get_derivative(self, X, s = None, F = None):
         # shape n_test, n_train
         k = self.kernel(X, self.X_train_)
         # X has shape n_test, n_desc
@@ -121,7 +212,14 @@ class GPFunctional(MLFunctional):
         # shape n_test, n_desc
         kaxt = np.dot(ka, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        return (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
+        if self.y_to_f_mul is None:
+            return (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
+        else:
+            term1 = (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
+            term1 *= self.y_to_f_mul(s).reshape(-1,1)
+            term2 = self.y_to_f_mul_deriv(s) * F
+            term1[:,0] += term2
+            return term1
 
     """
     def get_eps(self, X, rho_data):

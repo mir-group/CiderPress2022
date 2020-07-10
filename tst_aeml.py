@@ -5,7 +5,7 @@ from pyscf.dft.gen_grid import Grids
 from joblib import load
 
 mol, ae, en, atoms, calc_pbe, acalcs_pbe = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='PBE')
+        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='SCAN')
 print('RKS:', ae, en, atoms)
 
 """
@@ -39,13 +39,16 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 
 mol.basis = 'aug-cc-pvtz'
 mol.build()
-mlfunc = load('mlfunc9c.joblib')
+mlfunc = load('mlfunc10.joblib')
+mlfunc.y_to_f_mul = None
+#from mldftdat.dft.xc_models import PBEFunctional, SCANFunctional
+#mlfunc = PBEFunctional()
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],
         'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL=mlfunc, mol = mol)
 print('ML:', ae, en, atoms)
 
 mol, ae, en, atoms, calc_pbex, acalcs_pbex = calculate_atomization_energy(os.environ['MLDFTDB'],
-                'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='PBE,', mol = mol)
+                'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='GGA_X_PBE,GGA_C_PBE', mol = mol)
 
 rho_pbex = rho_data_from_calc(calc_pbex, grid, is_ccsd = False)
 rho_pbe = rho_data_from_calc(calc_pbe, grid, is_ccsd = False)

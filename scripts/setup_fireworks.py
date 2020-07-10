@@ -1,5 +1,5 @@
 from mldftdat.pyscf_tasks import SCFCalc, CCSDCalc, TrainingDataCollector,\
-                                LoadCalcFromDB, DFTFromHF
+                                LoadCalcFromDB, DFTFromHF, MLSCFCalc
 from mldftdat.workflow_utils import get_save_dir
 from ase import Atoms
 from fireworks import Firework, LaunchPad
@@ -22,6 +22,17 @@ def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0):
     t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
     return t1, t2
 
+def get_ml_tasks(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
+                 mlfunc_settings_file, charge=0):
+    calc_type = 'RKS' if spin == 0 else 'UKS'
+    struct_dict = struct.todict()
+    t1 = MLSCFCalc(struct=struct_dict, basis=basis, calc_type=calc_type,
+                   spin=spin, charge=charge, mlfunc_name = mlfunc_name,
+                   mlfunc_file = mlfunc_file, mlfunc_settings_file = mlfunc_settings_file)
+    t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id,
+                               skip_analysis = True)
+    return t1, t2
+
 def make_dft_from_hf_firework(functional, hf_type, basis, mol_id):
     if hf_type == 'RHF':
         dft_type = 'RKS'
@@ -42,6 +53,12 @@ def make_hf_firework(struct, mol_id, basis, spin, charge=0, name=None):
 def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0, name=None):
     return Firework(get_dft_tasks(struct, mol_id, basis, spin,
                     functional=functional, charge=charge), name=name)
+
+def make_ml_firework(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
+                     mlfunc_settings_file, charge=0, name=None):
+    return Firework(get_ml_tasks(struct, mol_id, basis, spin,
+                    mlfunc_name, mlfunc_file, mlfunc_settings_file,
+                    charge=charge), name=name)
 
 def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None, **kwargs):
     t1, t2 = get_hf_tasks(struct, mol_id, basis, spin, charge)

@@ -194,13 +194,15 @@ class NLNumInt(pyscf_numint.NumInt):
 
         if self.mlc:
             if ss_terms is None:
-                ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
+                #ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
+                ss_terms = np.array([1.26505033, -1.53922695,  0.2656504,  -1.03855256])
                 self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
                              (ss_terms[2],3,2), (ss_terms[3],4,2)]
             else:
                 self.ss_terms = ss_terms
             if os_terms is None:
-                os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
+                #os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
+                os_terms = np.array([-1.31971314, -0.32444113,  0.40935749, -3.47602979])
                 self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
                                  (os_terms[2],3,2), (os_terms[3],0,3)]
             else:
@@ -316,9 +318,13 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     print('desc setup', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    F = mlfunc.get_F(desc)
-    # shape (N, ndesc)
-    dF = mlfunc.get_derivative(desc)
+    if mlfunc.y_to_f_mul is None:
+        F = mlfunc.get_F(desc)
+        # shape (N, ndesc)
+        dF = mlfunc.get_derivative(desc)
+    else:
+        F = mlfunc.get_F(desc, s = contracted_desc[1])
+        dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
@@ -331,7 +337,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho_data[0]**(4.0/3)
-    svec = rho_data[1:4] / (sprefac * n43 + 1e-9)
+    svec = rho_data[1:4] / (sprefac * n43 + 1e-20)
     v_aniso = np.zeros((3,N))
     v_aux = np.zeros(naux)
 
@@ -421,8 +427,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
     v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
     v_nst = v_basis_transform(rho_data, v_npa)
-    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-10), v_aniso)
-    v_grad = v_aniso / (sprefac * n43 + 1e-10)
+    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
+    v_grad = v_aniso / (sprefac * n43 + 1e-20)
     return exc, (v_nst[0], v_nst[1], v_nst[2], v_nst[3], v_grad, vmol), None, None
 
 

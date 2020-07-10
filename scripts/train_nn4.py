@@ -11,7 +11,7 @@ import os
 from mldftdat.models.nn import *
 import sys
 
-SAVE_ROOT = os.environ['MLDFTDB']
+SAVE_ROOT = os.environ['MLDFTDB_FAST']
 
 #dir1 = os.path.join(SAVE_ROOT, 'DATASETS', 'atoms_locx86')
 #dir2 = os.path.join(SAVE_ROOT, 'DATASETS', 'augG2_locx86_30_50')
@@ -53,21 +53,23 @@ rho_data_train = np.append(rho_data_train, rho_data_test[:,::100], axis=1)
 wttrain = np.append(wttrain, wttest[::100], axis=0)
 
 train_weights = np.abs(LDA_FACTOR * rho_train**(1.0 / 3) * wttrain)
-
+noise = 4.01e-6 + 0.000222 / (1 + 5.37 * rho_train) + 0.0154 / (1 + 731 * rho_train)**2
+train_weights = np.ones(noise.shape)
 print(np.isnan(X_train).any(), np.isnan(y_train).any(), (y_train > 0).any(),
       np.isnan(rho_train).any(), (rho_train < 0).any())
-X_train = get_desc2(X_train)
+#X_train = get_desc2(X_train)
 y_train = get_y_from_xed(y_train, rho_train)
 
 print(X_train.shape, y_train.shape, train_weights.shape)
-model = BayesianLinearFeat(48, 8, X_train[::2], y_train[::2].reshape(-1,1),
+model = BayesianLinearFeat(X_train[::2], y_train[::2].reshape(-1,1),
         train_weights[::2].reshape(-1,1), order = 4)
 #model = PolyAnsatz(NUM)
 model.double()
-criterion, optimizer = get_training_obj(model, lr=0.02)
+criterion, optimizer = get_training_obj(model, lr=5.0)
 converged = False
 i = 0
-X_val = get_desc2(X_test[4::100])
+#X_val = get_desc2(X_test[4::100])
+X_val = X_test[4::100]
 y_val = get_y_from_xed(y_test[4::100], rho_test[4::100])
 while not converged:
     loss = train(X_train[1::2], y_train[1::2].reshape(-1,1), criterion, optimizer, model)
@@ -81,7 +83,7 @@ while not converged:
         break
 print(converged, np.sqrt(loss))
 print(np.sqrt(validate(X_val, y_val.reshape(-1,1), criterion, model)))
-save_nn(model, 'nnmodel_quartic.pth')
+save_nn(model, 'nnmodel_order4b.pth')
 #print(model.linear.weight)
 #print(model.linear.bias)
 
