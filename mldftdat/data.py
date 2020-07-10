@@ -229,6 +229,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
         start = time.monotonic()
         analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        analyzer.get_ao_rho_data()
         if type(analyzer.calc) == scf.hf.RHF:
             restricted = True
         else:
@@ -639,16 +640,16 @@ def error_table_unrestricted(dirs, Analyzer, mlmodel, num = 1):
     for d in dirs:
         print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        analyzer.get_ao_rho_data()
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
         condition = rho > 3e-3
         fx_total_true = predict_total_exchange_unrestricted(analyzer)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
-        count += eps_true.shape[0]
+        count += 1
         for i, model in enumerate(models):
             fx_total_pred = predict_total_exchange_unrestricted(analyzer, model = model, num = num)
-            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
+            print(fx_total_pred - fx_total_true)
 
             #ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
             #tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
