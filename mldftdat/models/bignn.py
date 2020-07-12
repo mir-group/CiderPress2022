@@ -65,8 +65,8 @@ def get_desc3(X):
     desc0[:,8] = X[:,13]
     desc0[:,9] = X[:,14]
     #print('std', np.std(desc0, axis=0))
-    #desc0[:,1:] /= np.array([2.75509692, 6.88291279, 0.64614893, 4.87467219,\
-    #    92.73161058, 14.27137322, 74.4786665, 225.88666535, 10.04826384])
+    desc0[:,1:] /= np.array([2.75509692, 6.88291279, 0.64614893, 4.87467219,\
+        92.73161058, 14.27137322, 74.4786665, 225.88666535, 10.04826384])
     #0.           2.75509692   6.88291279   0.64614893   4.87467219
     #92.73161058  14.27137322  74.4786665  225.88666535  10.04826384
     for i in range(6):
@@ -79,7 +79,7 @@ def get_desc3(X):
                 desc[:,(i*7+j)*10:(i*7+j+1)*10] = \
                     desc0 * (u_partition[i] * w_partition[j]).reshape(-1,1)
     desc[:,420] = scale
-    return np.arcsinh(desc)
+    return desc
 
 def asinh(x):
     return torch.log(x+(x**2+1)**0.5)
@@ -110,9 +110,9 @@ class Predictor():
         return self.y_to_xed(F, rho_data[0])
 
 
-class FeatureExtractor(torch.nn.Sequential):
+class FFNN(torch.nn.Sequential):
     def __init__(self):
-        super(FeatureExtractor, self).__init__()
+        super(FFNN, self).__init__()
         self.add_module('linear1', torch.nn.Linear(421, 400))
         self.add_module('celu1', torch.nn.CELU())
         self.add_module('linear2', torch.nn.Linear(400, 200))
@@ -127,14 +127,13 @@ class FeatureExtractor(torch.nn.Sequential):
 class BigFeatSimple(nn.Module):
 
     def __init__(self, X_train, y_train, train_weights, order = 1):
-        super(LinearBigFeat2, self).__init__()
+        super(BigFeatSimple, self).__init__()
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
         self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(-9.0, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
-        self.isize = 9#self.X_train.size(1) - 2
-        self.n_layer = 3
+        sprefac = 2 * (3 * pi * pi)**(1.0/3)
         self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2,
                                     dtype=torch.float64)))
         self.gamma1 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
@@ -145,8 +144,6 @@ class BigFeatSimple(nn.Module):
         self.w = None
         self.nw = 6
         self.nu = 7
-        sprefac = 2 * (3 * pi * pi)**(1.0/3)
-        self.wsize = self.nw * self.nu * (self.isize + 1) - 1
         self.wsize = 420
 
     def transform_nl_data(self, X):
@@ -186,7 +183,7 @@ class BigFeatSimple(nn.Module):
 
     def get_u_partition(self, s):
         p = s**2
-        u = self.gamma * p / (1 + self.gamma * p)
+        u = self.gammax * p / (1 + self.gammax * p)
         return torch.cat([1-u, u-u**2, u**2-u**3, u**3-u**4,\
                           u**4-u**5, u**5], dim = 1)
 
@@ -224,7 +221,7 @@ class BigFeatSimple(nn.Module):
         y = self.y_train * self.train_weights
         #print(X.size(), y.size())
         A = torch.matmul(X.T, self.train_weights * X)\
-            + torch.exp(self.noise) * torch.eye(self.wsize + 1)
+            + torch.exp(self.noise) * torch.eye(self.wsize - 1)
         Xy = torch.matmul(X.T, y)
         #print(A.size(), Xy.size())
         return torch.matmul(torch.inverse(A), Xy)
@@ -238,10 +235,13 @@ class BigFeatSimple(nn.Module):
         return torch.matmul(X, self.w)
 
 
-def get_training_obj(model, lr = 0.005):
+def get_training_obj(model, lr = 0.005, lfbgs = True):
     criterion = nn.MSELoss()
     #optimizer = torch.optim.SGD(model.parameters(), lr = lr)
-    optimizer = torch.optim.LBFGS(model.parameters(), lr = lr, max_iter = 200, history_size=200)
+    if lfbgs:
+        optimizer = torch.optim.LBFGS(model.parameters(), lr = lr, max_iter = 200, history_size=200)
+    else:
+        optimizer = torch.optim.SGD(model.parameters(), lr = lr)
     return criterion, optimizer
 
 def train(x, y_true, criterion, optimizer, model):

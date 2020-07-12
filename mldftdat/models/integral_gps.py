@@ -271,9 +271,9 @@ def get_big_desc2(X, num):
 
     desc[:,0] = X[:,0]
     #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
-    desc[:,1] = np.arcsinh(0.5 * sp)
+    #desc[:,1] = np.arcsinh(0.5 * sp)
     #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
-    #desc[:,1] = s**2 * refs
+    desc[:,1] = s**2 * refs
     desc[:,2] = 2 / (1 + alpha**2) - 1.0
     #desc[:,2] = np.arcsinh(alpha - 1)
     desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
@@ -327,7 +327,7 @@ class NoisyEDMGPR(EDMGPR):
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors13 if norm_feat\
                                else get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_tail, y_to_xed_tail),
+                       xed_y_converter = (xed_to_y_pbe, y_to_xed_pbe),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     #def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):

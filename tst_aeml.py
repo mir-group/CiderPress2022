@@ -37,9 +37,9 @@ mol, ae, en, atoms, _, _ = calculate_atomization_energy(os.environ['MLDFTDB'],
         'CCSD_T', 'aug-cc-pvqz', 'qm9/3-H2O', mol = mol)
 print('CCSD_T Q-zeta:', ae, en, atoms)
 
-mol.basis = 'aug-cc-pvtz'
-mol.build()
-mlfunc = load('mlfunc10.joblib')
+#mol.basis = 'aug-cc-pvtz'
+#mol.build()
+mlfunc = load('mlfunc10b.joblib')
 mlfunc.y_to_f_mul = None
 #from mldftdat.dft.xc_models import PBEFunctional, SCANFunctional
 #mlfunc = PBEFunctional()
