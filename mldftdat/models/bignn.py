@@ -238,6 +238,117 @@ class BigFeatSimple(nn.Module):
         return torch.matmul(X, self.w)
 
 
+class BigFeatQuadratic(nn.Module):
+
+    def __init__(self, X_train, y_train, train_weights, order = 1):
+        super(LinearBigFeat2, self).__init__()
+        self.X_train = torch.tensor(X_train, requires_grad = False)
+        self.y_train = torch.tensor(y_train, requires_grad = False)
+        self.sigmoid = nn.Sigmoid()
+        self.noise = nn.Parameter(torch.tensor(-9.0, dtype=torch.float64))
+        self.train_weights = torch.tensor(train_weights, requires_grad = False)
+        self.isize = 9#self.X_train.size(1) - 2
+        self.n_layer = 3
+        self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2,
+                                    dtype=torch.float64)))
+        self.gamma1 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
+        self.gamma2 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
+        self.gamma0a = nn.Parameter(torch.log(torch.tensor(0.5, dtype=torch.float64)))
+        self.gamma0b = nn.Parameter(torch.log(torch.tensor(0.125, dtype=torch.float64)))
+        self.gamma0c = nn.Parameter(torch.log(torch.tensor(2.0, dtype=torch.float64)))
+        self.w = None
+        self.nw = 5
+        self.nu = 3
+        self.ndesc = 9
+        sprefac = 2 * (3 * pi * pi)**(1.0/3)
+        self.wsize = self.nw * self.nu * (self.isize + 1) - 1
+        self.wsize = self.nw * self.nu * (45 + 9)
+        order2_inds = []
+        for i in range(9):
+            for j in range(i,9):
+                order2_inds.append(i*ndesc_out+j)
+        self.order2_inds = order2_inds
+
+    def transform_nl_data(self, X):
+        p, alpha = X[:,1]**2, X[:,2]
+
+        fac = (6 * pi**2)**(2.0/3) / (16 * pi)
+        scale = torch.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+        gammax = torch.exp(self.gammax)
+        gamma1 = torch.exp(self.gamma1)
+        gamma2 = torch.exp(self.gamma2)
+        gamma0a = torch.exp(self.gamma0a)
+        gamma0b = torch.exp(self.gamma0c)
+        gamma0c = torch.exp(self.gamma0b)
+
+        refs = gammax / (1 + gammax * p)
+        ref0a = gamma0a / (1 + gamma0a * X[:,4] * scale**3)
+        ref0b = gamma0b / (1 + gamma0b * X[:,15] * scale**3)
+        ref0c = gamma0c / (1 + gamma0c * X[:,16] * scale**3)
+        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+        ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+
+        #d0 = X[:,0]
+        #d1 = p * refs
+        d1 = torch.ones(alpha.size(), dtype=torch.float64)
+        d2 = (X[:,4] * scale**3 - 2.0) * ref0a
+        d3 = X[:,5]**2 * scale**6 * ref1
+        d4 = X[:,8] * scale**6 * ref2
+        d5 = X[:,12] * scale**3 * refs * torch.sqrt(ref2)
+        d6 = X[:,6] * scale**3 * torch.sqrt(refs) * torch.sqrt(ref1)
+        d7 = (X[:,15] * scale**3 - 8.0) * ref0b
+        d8 = (X[:,16] * scale**3 - 0.5) * ref0c
+        d9 = (X[:,13] * scale**6) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
+
+        X1 = torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9), dim = 1)
+        X2 = np.einsum('ni,nj->nij', X1, X1)
+        XT = torch.cat((X1, X2.reshape(X2.size(0),-1)[:,self.order2_inds]), dim=1)
+        return XT
+
+    def get_u_partition(self, s):
+        p = s**2
+        u = self.gammax * p / (1 + self.gammax * p)
+        return torch.cat([1-u, u-u**2, u**2-u**3, u**3-u**4,\
+                          u**4-u**5], dim = 1)
+
+    def get_w_partition(self, a):
+        chi = 1 / (1 + a**2)
+        afilter_mid = 0.5 - torch.cos(2 * pi * chi) / 2
+        afilter_low = 1 - afilter_mid
+        afilter_low[chi > 0.5] = 0
+        afilter_high = 1 - afilter_mid
+        afilter_high[chi < 0.5] = 0
+        return torch.cat([afilter_mid, afilter_low, afilter_high], dim = 1)
+
+    def transform_descriptors(self, X):
+        s = torch.index_select(X, 1, torch.tensor([1]))
+        a = torch.index_select(X, 1, torch.tensor([2]))
+        X = torch.einsum('ni,nj,nk->nijk', self.get_w_partition(s),
+                self.get_u_partition(a), self.transform_nl_data(X))
+        X = torch.reshape(X, (X.size(0), -1))
+        #print('size', X.size())
+        return torch.index_select(X, 1, torch.arange(1,self.wsize))
+
+    def compute_weights(self):
+        X = self.transform_descriptors(self.X_train)
+        y = self.y_train * self.train_weights
+        #print(X.size(), y.size())
+        A = torch.matmul(X.T, self.train_weights * X)\
+            + torch.exp(self.noise) * torch.eye(self.wsize + 1)
+        Xy = torch.matmul(X.T, y)
+        #print(A.size(), Xy.size())
+        return torch.matmul(torch.inverse(A), Xy)
+
+    def forward(self, X):
+        if self.training or self.w is None:
+            self.w = self.compute_weights()
+        #print(torch.isnan(X).any(), X.size(), torch.isnan(self.w).any())
+        X = self.transform_descriptors(X)
+        #print(torch.isnan(X).any(), X.size(), torch.sum(torch.isnan(X)), torch.max(self.C), torch.max(self.A))
+        return torch.matmul(X, self.w)
+
+
 def get_training_obj(model, lr = 0.005):
     criterion = nn.MSELoss()
     #optimizer = torch.optim.SGD(model.parameters(), lr = lr)
