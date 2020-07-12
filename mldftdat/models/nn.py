@@ -394,8 +394,9 @@ class BayesianLinearFeat(nn.Module):
         X = self.transform_descriptors(self.X_train)
         y = self.y_train * self.train_weights
         #print(X.size(), y.size())
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         A = torch.matmul(X.T, self.train_weights * X)\
-            + torch.exp(self.noise) * torch.eye(X.size(1))
+            + torch.exp(self.noise) * torch.eye(X.size(1), dtype = torch.float64, device = device)
         Xy = torch.matmul(X.T, y)
         #print(A.size(), Xy.size())
         return torch.matmul(torch.inverse(A), Xy)
@@ -553,6 +554,9 @@ def train(x, y_true, criterion, optimizer, model):
     model.train()
     x = torch.tensor(x)
     y_true = torch.tensor(y_true)
+    if torch.cuda.is_available():
+        x = x.cuda()
+        y_true = y_true.cuda()
     optimizer.zero_grad()
     y_pred = model(x)
     print(y_pred.size(), y_true.size())
