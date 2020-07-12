@@ -370,11 +370,12 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
     # (ngrid * (2l+1), naux)
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
+    dgda[:,rho<1e-8] = 0
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-6))
-    dadp = np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    dadn = mul * a / (3 * (mul * rho / 2 + 1e-6))
+    dadp = np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
     deda = np.einsum('mi,mi->i', dedb, dgda)
