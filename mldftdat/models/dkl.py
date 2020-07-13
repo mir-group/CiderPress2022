@@ -139,15 +139,11 @@ class AddGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, order = 1, ndim = 9):
         super(AddGPR, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
-        base_module = gpytorch.kernels.GridInterpolationKernel(
+        base_module = \
             gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(ard_num_dims=1)
-            ), num_dims = 1, grid_size = 20
             )
         self.feature_extractor = FeatureNormalizer(ndim)
-        #base_module.base_kernel.lengthscale = torch.tensor(
-        #        [[0.3, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]],
-        #        dtype=torch.float64)
         base_module.outputscale = 1.0
         #self.covar_module = AdditiveStructureKernel(base_module,
         #                        ndim)
