@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from gpytorch.kernels.kernel import Kernel
-from gpytorch.kernels import GridInterpolationKernel
+from gpytorch.kernels import GridInterpolationKernel, ScaleKernel
 import torch
 import gpytorch
 
@@ -39,38 +39,45 @@ class NAdditiveStructureKernel(Kernel):
 
     def __init__(self, base_kernel, num_dims, order = 1, active_dims=None):
         super(NAdditiveStructureKernel, self).__init__(active_dims=active_dims)
-        self.base_kernel = base_kernel
         self.num_dims = num_dims
+        self.base_kernel = base_kernel
+        if order < 1:
+            raise ValueError('order must be positive integer')
         self.order = order
-        self.ew = torch.nn.Parameter(torch.tensor([0] * self.order, dtype=torch.float64))
-        self.base_grid_kernel = GridInterpolationKernel(base_kernel,
-                                        num_dims = 1, grid_size = 100)
         self.sk_kernels = torch.nn.ModuleList()
-        self.sk_kernels.append(self.base_grid_kernel)
+        base_kernel_prods = [self.base_kernel]
         for n in range(self.order - 1):
-            self.sk_kernels.append(self.base_grid_kernel\
-                                   * self.sk_kernels[-1])
+            base_kernel_prods.append(self.base_kernel * base_kernel_prods[-1])
+        for n in range(self.order):
+            gridk = GridInterpolationKernel(ScaleKernel(base_kernel_prods[n]),
+                                                        num_dims = 1, grid_size = 100)
+            self.sk_kernels.append(gridk)
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
         if last_dim_is_batch:
             raise RuntimeError("AdditiveStructureKernel does not accept the last_dim_is_batch argument.")
 
         # b x k x n x m for full or b x k x n for diag
-        res = self.base_kernel(x1, x2, diag=diag, last_dim_is_batch=True, **params)
-        en = [1]
         sk = []
         for i in range(self.order):
             sk.append(self.sk_kernels[i](x1, x2, diag=diag,
                                          last_dim_is_batch=True,
                                          **params).sum(-2 if diag else -3))
+            if self.training == False:
+                sk[-1] = sk[-1].evaluate()
+        en = []
         for n in range(1, self.order + 1):
-            en.append(0)
-            for k in range(1, n+1):
-                en[-1] += (-1)**(k-1) * en[n-k] * sk[k-1]
-            en[-1] /= n
-        res = 0
-        for n in range(1, self.order + 1):
-            res += torch.exp(ew[n-1]) * en[n]
+            en.append(sk[n-1])
+            for k in range(1, n):
+                #en[-1] += (-1)**(k-1) * en[n-k] * sk[k-1]
+                if k % 2 == 1:
+                    en[-1] += en[n-k-1] * sk[k-1]
+                else:
+                    en[-1] -= en[n-k-1] * sk[k-1]
+            #en[-1] /= n
+        res = en[0]
+        for n in range(1, self.order):
+            res += en[n]
         return res
 
     def prediction_strategy(self, train_inputs, train_prior_dist, train_labels, likelihood):

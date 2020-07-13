@@ -139,12 +139,12 @@ class AddGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, order = 1, ndim = 9):
         super(AddGPR, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
-        base_module = \
-            gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.RBFKernel(ard_num_dims=1)
-            )
+        #base_module = \
+        #    gpytorch.kernels.ScaleKernel(
+        #    gpytorch.kernels.RBFKernel(ard_num_dims=1)
+        #    )
+        base_module = gpytorch.kernels.RBFKernel()
         self.feature_extractor = FeatureNormalizer(ndim)
-        base_module.outputscale = 1.0
         #self.covar_module = AdditiveStructureKernel(base_module,
         #                        ndim)
         self.covar_module = NAdditiveStructureKernel(base_module,
@@ -178,7 +178,7 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
     if model_type == 'DKL':
         model = GPRModel(train_x[::2], train_y[::2], likelihood)
     elif model_type == 'ADD':
-        model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 1)
+        model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 3, ndim = 10)
     else:
         model = BigGPR(train_x[::2], train_y[::2], likelihood, ndim=10)
 
@@ -190,7 +190,7 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 1000
+        training_iterations = 20
 
     model.train()
     likelihood.train()
@@ -198,8 +198,8 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
     if not lfbgs:
         optimizer = torch.optim.RMSprop([
             {'params': model.feature_extractor.parameters()},
-            {'params': model.covar_module.parameters(), 'lr': 1e-4},
-            {'params': model.mean_module.parameters(), 'lr': 1e-4},
+            {'params': model.covar_module.parameters()},
+            {'params': model.mean_module.parameters()},
             {'params': model.likelihood.parameters()},
         ], lr=0.01)
     else:
@@ -236,7 +236,7 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
 
     model.eval()
     likelihood.eval()
-    with torch.no_grad(), gpytorch.settings.use_toeplitz(False), gpytorch.settings.fast_pred_var():
+    with torch.no_grad(), gpytorch.settings.use_toeplitz(True), gpytorch.settings.fast_pred_var():
         preds = model(train_x[1::2])
     print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - train_y[1::2]))))
 
