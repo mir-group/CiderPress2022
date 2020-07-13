@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from gpytorch.kernels.kernel import Kernel
+from gpytorch.kernels.kernel import Kernel, AdditiveKernel
 from gpytorch.kernels import GridInterpolationKernel, ScaleKernel
 import torch
 import gpytorch
@@ -40,17 +40,17 @@ class NAdditiveStructureKernel(Kernel):
     def __init__(self, base_kernel, num_dims, order = 1, active_dims=None):
         super(NAdditiveStructureKernel, self).__init__(active_dims=active_dims)
         self.num_dims = num_dims
-        self.base_kernel = base_kernel
+        self.base_kernel = RBFKernel(active_dims=[0])
         if order < 1:
             raise ValueError('order must be positive integer')
         self.order = order
         self.sk_kernels = torch.nn.ModuleList()
-        base_kernel_prods = [self.base_kernel]
+        base_kernel_prods = [[RBFKernel(active_dims=[i]) for i in range(num_dims)]]
         for n in range(self.order - 1):
-            base_kernel_prods.append(self.base_kernel * base_kernel_prods[-1])
+            base_kernel_prods.append([RBFKernel(active_dims=[i]) * base_kernel_prods[-1][i]\
+                                      for i in range(num_dims)])
         for n in range(self.order):
-            gridk = GridInterpolationKernel(ScaleKernel(base_kernel_prods[n]),
-                                                        num_dims = 1, grid_size = 100)
+            gridk = ScaleKernel(AdditiveKernel(*(base_kernel_prods[n])))
             self.sk_kernels.append(gridk)
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
@@ -60,11 +60,7 @@ class NAdditiveStructureKernel(Kernel):
         # b x k x n x m for full or b x k x n for diag
         sk = []
         for i in range(self.order):
-            sk.append(self.sk_kernels[i](x1, x2, diag=diag,
-                                         last_dim_is_batch=True,
-                                         **params).sum(-2 if diag else -3))
-            if self.training == False:
-                sk[-1] = sk[-1].evaluate()
+            sk.append(self.sk_kernels[i](x1, x2, diag=diag))
         en = []
         for n in range(1, self.order + 1):
             en.append(sk[n-1])
