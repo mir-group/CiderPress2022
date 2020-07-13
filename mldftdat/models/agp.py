@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from gpytorch.kernels.kernel import Kernel
+from gpytorch.kernels import GridInterpolationKernel
 import torch
 import gpytorch
 
@@ -42,10 +43,10 @@ class NAdditiveStructureKernel(Kernel):
         self.num_dims = num_dims
         self.order = order
         self.ew = torch.nn.Parameter(torch.tensor([0] * self.order, dtype=torch.float64))
-        #for n in range(self.order):
-        #self.ew = torch.nn.ModuleList()
-        #for n in range(self.order):
-        #    self.ew.append(torch.nn.Parameter(torch.tensor(0, dtype=torch.float64)))
+        self.sk_kernels = torch.nn.ModuleList()
+        for n in range(1, self.order + 1):
+            self.sk_kernels.append(GridInterpolationKernel(base_kernel**n,
+                           num_dims = 1, grid_size = 100))
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
         if last_dim_is_batch:
@@ -53,19 +54,18 @@ class NAdditiveStructureKernel(Kernel):
 
         # b x k x n x m for full or b x k x n for diag
         res = self.base_kernel(x1, x2, diag=diag, last_dim_is_batch=True, **params)
-        sk = [gpytorch.lazy.non_lazy_tensor.NonLazyTensor(torch.ones(res.size(), dtype=torch.float64))]
-        for k in range(1, self.order + 1):
-            #sk.append(torch.pow(res, k).sum(-2 if diag else -3))
-            sk.append(sk[-1] * res)
-        for k in range(self.order):
-            sk[k] = sk[k].sum(-2 if diag else -3)
-        en = [torch.ones(sk[0].size())]
+        en = [1]
+        sk = []
+        for i in range(self.order):
+            sk.append(self.sk_kernels[i](x1, x2, diag=diag,
+                                         last_dim_is_batch=True,
+                                         **params).sum(-2 if diag else -3))
         for n in range(1, self.order + 1):
-            en.append(torch.zeros(sk[0].size()))
+            en.append(0)
             for k in range(1, n+1):
-                en[-1] += (-1)**(k-1) * en[n-k] * sk[k]
+                en[-1] += (-1)**(k-1) * en[n-k] * sk[k-1]
             en[-1] /= n
-        res = 0 * sk[0]
+        res = 0
         for n in range(1, self.order + 1):
             res += torch.exp(ew[n-1]) * en[n]
         return res
