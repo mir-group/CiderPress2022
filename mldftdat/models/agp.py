@@ -43,10 +43,13 @@ class NAdditiveStructureKernel(Kernel):
         self.num_dims = num_dims
         self.order = order
         self.ew = torch.nn.Parameter(torch.tensor([0] * self.order, dtype=torch.float64))
+        self.base_grid_kernel = GridInterpolationKernel(base_kernel,
+                                        num_dims = 1, grid_size = 100)
         self.sk_kernels = torch.nn.ModuleList()
-        for n in range(1, self.order + 1):
-            self.sk_kernels.append(GridInterpolationKernel(base_kernel**n,
-                           num_dims = 1, grid_size = 100))
+        self.sk_kernels.append(self.base_grid_kernel)
+        for n in range(self.order - 1):
+            self.sk_kernels.append(self.base_grid_kernel\
+                                   * self.sk_kernels[-1])
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
         if last_dim_is_batch:
