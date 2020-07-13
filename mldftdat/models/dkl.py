@@ -5,6 +5,8 @@ import copy
 import mldftdat.models.nn
 from torch import nn
 from math import pi
+from mldftdat.models.agp import NAdditiveStructureKernel
+from gpytorch.kernels.additive_structure_kernel import AdditiveStructureKernel
 
 # based on https://github.com/cornellius-gp/gpytorch/blob/master/examples/06_PyTorch_NN_Integration_DKL/KISSGP_Deep_Kernel_Regression_CUDA.ipynb
 
@@ -99,8 +101,8 @@ class FeatureNormalizer(torch.nn.Module):
         ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
 
         #d0 = X[:,0]
-        #d1 = p * refs
-        d1 = X[:,0]
+        d1 = p * refs
+        #d1 = X[:,0]
         d2 = 2 / (1 + alpha**2) - 1.0
         d3 = (X[:,4] * scale**3 - 2.0) * ref0a
         d4 = X[:,5]**2 * scale**6 * ref1
@@ -114,6 +116,7 @@ class FeatureNormalizer(torch.nn.Module):
 
         return torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9, d10)[:self.ndim], dim = 1)
 
+
 class BigGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, ndim = 9):
         super(BigGPR, self).__init__(train_x, train_y, likelihood)
@@ -123,6 +126,33 @@ class BigGPR(gpytorch.models.ExactGP):
         self.covar_module.base_kernel.lengthscale = torch.tensor(
                 [[0.7, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]], dtype=torch.float64)
         self.covar_module.outputscale = 1.0
+
+    def forward(self, x):
+        projected_x = self.feature_extractor(x)
+        mean_x = self.mean_module(projected_x)
+        covar_x = self.covar_module(projected_x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
+class AddGPR(gpytorch.models.ExactGP):
+
+    def __init__(self, train_x, train_y, likelihood, order = 1, ndim = 9):
+        super(AddGPR, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+        base_module = gpytorch.kernels.GridInterpolationKernel(
+            gpytorch.kernels.ScaleKernel(
+            gpytorch.kernels.RBFKernel(ard_num_dims=1)
+            ), num_dims = 1, grid_size = 20
+            )
+        self.feature_extractor = FeatureNormalizer(ndim)
+        #base_module.base_kernel.lengthscale = torch.tensor(
+        #        [[0.3, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]],
+        #        dtype=torch.float64)
+        base_module.outputscale = 1.0
+        #self.covar_module = AdditiveStructureKernel(base_module,
+        #                        ndim)
+        self.covar_module = NAdditiveStructureKernel(base_module,
+                                ndim, order = order)
 
     def forward(self, x):
         projected_x = self.feature_extractor(x)
@@ -151,6 +181,8 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
 
     if model_type == 'DKL':
         model = GPRModel(train_x[::2], train_y[::2], likelihood)
+    elif model_type == 'ADD':
+        model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 1)
     else:
         model = BigGPR(train_x[::2], train_y[::2], likelihood, ndim=10)
 

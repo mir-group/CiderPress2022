@@ -183,7 +183,8 @@ class BigFeatSimple(nn.Module):
 
     def get_u_partition(self, s):
         p = s**2
-        u = self.gammax * p / (1 + self.gammax * p)
+        gammax = torch.exp(self.gammax)
+        u = gammax * p / (1 + gammax * p)
         return torch.cat([1-u, u-u**2, u**2-u**3, u**3-u**4,\
                           u**4-u**5, u**5], dim = 1)
 
@@ -238,14 +239,14 @@ class BigFeatSimple(nn.Module):
 class BigFeatQuadratic(nn.Module):
 
     def __init__(self, X_train, y_train, train_weights, order = 1):
-        super(LinearBigFeat2, self).__init__()
+        super(BigFeatQuadratic, self).__init__()
         self.X_train = torch.tensor(X_train, requires_grad = False)
         self.y_train = torch.tensor(y_train, requires_grad = False)
-        self.sigmoid = nn.Sigmoid()
         self.noise = nn.Parameter(torch.tensor(-9.0, dtype=torch.float64))
         self.train_weights = torch.tensor(train_weights, requires_grad = False)
         self.isize = 9#self.X_train.size(1) - 2
         self.n_layer = 3
+        sprefac = 2 * (3 * pi * pi)**(1.0/3)
         self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2,
                                     dtype=torch.float64)))
         self.gamma1 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
@@ -257,13 +258,12 @@ class BigFeatQuadratic(nn.Module):
         self.nw = 5
         self.nu = 3
         self.ndesc = 9
-        sprefac = 2 * (3 * pi * pi)**(1.0/3)
         self.wsize = self.nw * self.nu * (self.isize + 1) - 1
         self.wsize = self.nw * self.nu * (45 + 9)
         order2_inds = []
         for i in range(9):
             for j in range(i,9):
-                order2_inds.append(i*ndesc_out+j)
+                order2_inds.append(i*self.ndesc+j)
         self.order2_inds = order2_inds
 
     def transform_nl_data(self, X):
@@ -299,13 +299,14 @@ class BigFeatQuadratic(nn.Module):
         d9 = (X[:,13] * scale**6) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
 
         X1 = torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9), dim = 1)
-        X2 = np.einsum('ni,nj->nij', X1, X1)
+        X2 = torch.einsum('ni,nj->nij', X1, X1)
         XT = torch.cat((X1, X2.reshape(X2.size(0),-1)[:,self.order2_inds]), dim=1)
         return XT
 
     def get_u_partition(self, s):
         p = s**2
-        u = self.gammax * p / (1 + self.gammax * p)
+        gammax = torch.exp(self.gammax)
+        u = gammax * p / (1 + gammax * p)
         return torch.cat([1-u, u-u**2, u**2-u**3, u**3-u**4,\
                           u**4-u**5], dim = 1)
 
@@ -332,7 +333,7 @@ class BigFeatQuadratic(nn.Module):
         y = self.y_train * self.train_weights
         #print(X.size(), y.size())
         A = torch.matmul(X.T, self.train_weights * X)\
-            + torch.exp(self.noise) * torch.eye(self.wsize + 1)
+            + torch.exp(self.noise) * torch.eye(self.wsize - 1)
         Xy = torch.matmul(X.T, y)
         #print(A.size(), Xy.size())
         return torch.matmul(torch.inverse(A), Xy)

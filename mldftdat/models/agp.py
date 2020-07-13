@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
-from .kernel import Kernel
+from gpytorch.kernels.kernel import Kernel
 import torch
-from mldftdat.models.dkl import FeatureNormalizer
-
+import gpytorch
 
 class NAdditiveStructureKernel(Kernel):
     r"""
@@ -38,13 +37,15 @@ class NAdditiveStructureKernel(Kernel):
         return self.base_kernel.is_stationary
 
     def __init__(self, base_kernel, num_dims, order = 1, active_dims=None):
-        super(AdditiveStructureKernel, self).__init__(active_dims=active_dims)
+        super(NAdditiveStructureKernel, self).__init__(active_dims=active_dims)
         self.base_kernel = base_kernel
         self.num_dims = num_dims
         self.order = order
-        self.ew = torch.nn.ModuleList()
-        for n in range(self.order):
-            self.ew.append(torch.nn.Parameter(torch.tensor(0, dtype=torch.float64)))
+        self.ew = torch.nn.Parameter(torch.tensor([0] * self.order, dtype=torch.float64))
+        #for n in range(self.order):
+        #self.ew = torch.nn.ModuleList()
+        #for n in range(self.order):
+        #    self.ew.append(torch.nn.Parameter(torch.tensor(0, dtype=torch.float64)))
 
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, **params):
         if last_dim_is_batch:
@@ -52,14 +53,17 @@ class NAdditiveStructureKernel(Kernel):
 
         # b x k x n x m for full or b x k x n for diag
         res = self.base_kernel(x1, x2, diag=diag, last_dim_is_batch=True, **params)
-        sk = []
+        sk = [gpytorch.lazy.non_lazy_tensor.NonLazyTensor(torch.ones(res.size(), dtype=torch.float64))]
         for k in range(1, self.order + 1):
-            sk.append((res**k).sum(-2 if diag else -3))
+            #sk.append(torch.pow(res, k).sum(-2 if diag else -3))
+            sk.append(sk[-1] * res)
+        for k in range(self.order):
+            sk[k] = sk[k].sum(-2 if diag else -3)
         en = [torch.ones(sk[0].size())]
         for n in range(1, self.order + 1):
             en.append(torch.zeros(sk[0].size()))
             for k in range(1, n+1):
-                en[-1] += (-1)**(k-1) * en[n-k] * sk[k-1]
+                en[-1] += (-1)**(k-1) * en[n-k] * sk[k]
             en[-1] /= n
         res = 0 * sk[0]
         for n in range(1, self.order + 1):
@@ -72,26 +76,3 @@ class NAdditiveStructureKernel(Kernel):
     def num_outputs_per_input(self, x1, x2):
         return self.base_kernel.num_outputs_per_input(x1, x2)
 
-
-class AddGPR(gpytorch.models.ExactGP):
-    def __init__(self, train_x, train_y, likelihood, order = 1, ndim = 9):
-        super(BigGPR, self).__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ConstantMean()
-        base_module = gpytorch.kernels.GridInterpolationKernel(
-            gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.RBFKernel(ard_num_dims=1)
-            ), num_dims = 1, grid_size = 1000
-            )
-        self.feature_extractor = FeatureNormalizer(ndim)
-        base_module.base_kernel.lengthscale = torch.tensor(
-                [[0.7, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]],
-                dtype=torch.float64)
-        base_module.outputscale = 1.0
-        self.covar_module = NAdditiveStructureKernel(base_module,
-                                ndim, order)
-
-    def forward(self, x):
-        projected_x = self.feature_extractor(x)
-        mean_x = self.mean_module(projected_x)
-        covar_x = self.covar_module(projected_x)
-        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
