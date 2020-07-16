@@ -166,9 +166,9 @@ class ARBF(RBF):
                  length_scale_bounds = (1e-5, 1e5),
                  scale_bounds = (1e-5, 1e5)):
         super(ARBF, self).__init__(length_scale, length_scale_bounds)
-        self.start = start
         self.order = order
         self.scale = scale or [1.0] * (order + 1)
+        self.scale[0] = 0
         self.scale_bounds = scale_bounds
 
     @property
@@ -181,8 +181,11 @@ class ARBF(RBF):
         if Y is None:
             Y = X
         diff = (X[:,np.newaxis,:] - Y[np.newaxis,:,:]) / self.length_scale
-        k0 = [np.exp(-0.5 * diff**2)]
+        k0 = np.exp(-0.5 * diff**2)
         sk = []
+        scale_terms = []
+        if eval_gradient:
+            derivs = np.zeros((X.shape[0], Y.shape[0], X.shape[1] + len(self.scale)))
         for i in range(self.order):
             sk.append(np.sum(k0**(i+1), axis=-1))
         en = [1]
@@ -190,26 +193,31 @@ class ARBF(RBF):
             en.append(sk[n])
             for k in range(n):
                 en[-1] += (-1)**k * en[n-k] * sk[k]
-        res = scale[n] * en[0]
+            en[-1] /= n + 1
+        print('scale', self.scale, type(self.scale))
+        res = self.scale[n] * en[0]
+        if eval_gradient:
+            derivs[:,:,X.shape[1]] = self.scale[n] * en[0]
         for n in range(1, self.order + 1):
-            res += self.scale[n] * en[n] / n
+            res += self.scale[n] * en[n]
+            if eval_gradient:
+                derivs[:,:,X.shape[1] + n] = self.scale[n] * en[n]
         kernel = res
         en = None
         res = None
 
-        derivs = np.zeros(k0.shape)
         if eval_gradient:
             inds = np.arange(X.shape[1])
             for ind in inds:
                 den = [np.zeros(X.shape)]
-                if order > 0:
-                    den.append(np.ones(X.shape))
+                if self.order > 0:
+                    den.append(np.ones(k0[:,:,ind].shape))
                 for n in range(1,self.order):
-                    den.append(sk[n-1] - k0[:,ind]**(n))
+                    den.append(sk[n-1] - k0[:,:,ind]**(n))
                     for k in range(n-1):
-                        den[-1] += (-1)**k * den[n-k] * (sk[k] - k0[:,ind]**(k+1))
+                        den[-1] += (-1)**k * den[n-k] * (sk[k] - k0[:,:,ind]**(k+1))
                 res = 0
-                if order > 0:
+                if self.order > 0:
                     res += self.scale[1] * den[1]
                 for n in range(2, self.order + 1):
                     res += self.scale[n] * den[n] / (n-1)
@@ -217,10 +225,29 @@ class ARBF(RBF):
                 res *= diff[:,:,ind]**2 * k0[:,:,ind]
                 derivs[:,:,ind] = res
                 den = None
-
+            print(type(kernel), type(derivs))
+            print(kernel.shape, derivs.shape)
             return kernel, derivs
-                
+        
+        print(type(kernel))
+        print(kernel.shape)
         return kernel
+
+
+class PartialARBF(ARBF):
+
+    def __init__(self, order = 1, length_scale=1.0, scale = None,
+                 length_scale_bounds = (1e-5, 1e5),
+                 scale_bounds = (1e-5, 1e5), start = 1):
+        super(PartialARBF, self).__init__(order, length_scale, scale,
+                    length_scale_bounds, scale_bounds)
+        self.start = start
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X = X[:,self.start:]
+        if Y is not None:
+            Y = Y[:,self.start:]
+        return super(PartialARBF, self).__call__(X, Y, eval_gradient)
 
 
 class PartialRBF2(RBF):
