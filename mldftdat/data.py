@@ -459,6 +459,7 @@ def predict_exchange(analyzer, model=None, num=1,
     """
     from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
+    from mldftdat.models.integral_gps import AddEDMGPR
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -501,6 +502,17 @@ def predict_exchange(analyzer, model=None, num=1,
         xef = model.get_F(desc)
         eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
         neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
+    elif isinstance(model, AddEDMGPR):
+        from pyscf import lib
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        gridsize = xdesc.shape[1]
+        neps, std = np.zeros(gridsize), np.zeros(gridsize)
+        blksize = 10000
+        for p0, p1 in lib.prange(0, ngrid, blksize):
+            neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1],
+                                                    rho_data[:,p0:p1], return_std = True)
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     else:# type(model) == integral_gps.NoisyEDMGPR:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
