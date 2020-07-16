@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from gpytorch.kernels.kernel import Kernel, AdditiveKernel
-from gpytorch.kernels import GridInterpolationKernel, ScaleKernel
+from gpytorch.kernels import GridInterpolationKernel, ScaleKernel, RBFKernel
 import torch
 import gpytorch
 
