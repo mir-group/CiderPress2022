@@ -72,7 +72,8 @@ class FeatureNormalizer(torch.nn.Module):
     def __init__(self, ndim = 9):
         super(FeatureNormalizer, self).__init__()
         sprefac = 2 * (3 * pi * pi)**(1.0/3)
-        self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2, dtype=torch.float64)))
+        self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2,
+            dtype=torch.float64)))
         self.gamma1 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
         self.gamma2 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
         self.gamma0a = nn.Parameter(torch.log(torch.tensor(0.5, dtype=torch.float64)))
@@ -121,10 +122,12 @@ class BigGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, ndim = 9):
         super(BigGPR, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
-        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=ndim))
+        self.covar_module = gpytorch.kernels.ScaleKernel(
+            gpytorch.kernels.RBFKernel(ard_num_dims=ndim))
         self.feature_extractor = FeatureNormalizer(ndim)
         self.covar_module.base_kernel.lengthscale = torch.tensor(
-                [[0.7, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]], dtype=torch.float64)
+                [[0.7, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]],
+                dtype=torch.float64)
         self.covar_module.outputscale = 1.0
 
     def forward(self, x):
