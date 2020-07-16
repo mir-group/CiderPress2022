@@ -160,6 +160,69 @@ class PartialRBF(RBF):
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
+class ARBF(RBF):
+
+    def __init__(self, order = 1, length_scale=1.0, scale = None,
+                 length_scale_bounds = (1e-5, 1e5),
+                 scale_bounds = (1e-5, 1e5)):
+        super(ARBF, self).__init__(length_scale, length_scale_bounds)
+        self.start = start
+        self.order = order
+        self.scale = scale or [1.0] * (order + 1)
+        self.scale_bounds = scale_bounds
+
+    @property
+    def hyperparameter_scale(self):
+        return Hyperparameter("scale", "numeric",
+                              self.scale_bounds,
+                              len(self.scale))
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is None:
+            Y = X
+        diff = (X[:,np.newaxis,:] - Y[np.newaxis,:,:]) / self.length_scale
+        k0 = [np.exp(-0.5 * diff**2)]
+        sk = []
+        for i in range(self.order):
+            sk.append(np.sum(k0**(i+1), axis=-1))
+        en = [1]
+        for n in range(self.order):
+            en.append(sk[n])
+            for k in range(n):
+                en[-1] += (-1)**k * en[n-k] * sk[k]
+        res = scale[n] * en[0]
+        for n in range(1, self.order + 1):
+            res += self.scale[n] * en[n] / n
+        kernel = res
+        en = None
+        res = None
+
+        derivs = np.zeros(k0.shape)
+        if eval_gradient:
+            inds = np.arange(X.shape[1])
+            for ind in inds:
+                den = [np.zeros(X.shape)]
+                if order > 0:
+                    den.append(np.ones(X.shape))
+                for n in range(1,self.order):
+                    den.append(sk[n-1] - k0[:,ind]**(n))
+                    for k in range(n-1):
+                        den[-1] += (-1)**k * den[n-k] * (sk[k] - k0[:,ind]**(k+1))
+                res = 0
+                if order > 0:
+                    res += self.scale[1] * den[1]
+                for n in range(2, self.order + 1):
+                    res += self.scale[n] * den[n] / (n-1)
+                #res *= dzdi(X, self.length_scale, ind)
+                res *= diff[:,:,ind]**2 * k0[:,:,ind]
+                derivs[:,:,ind] = res
+                den = None
+
+            return kernel, derivs
+                
+        return kernel
+
+
 class PartialRBF2(RBF):
 
     def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
