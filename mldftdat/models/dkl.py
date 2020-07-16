@@ -220,7 +220,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 40
+        training_iterations = 200
 
     model.train()
     likelihood.train()
@@ -251,8 +251,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     gpytorch.settings.debug(state=True),\
     gpytorch.settings.max_cg_iterations(10000),\
     gpytorch.settings.cg_tolerance(0.01),\
-    gpytorch.settings.max_cholesky_size(40000),\
-    gpytorch.settings.lazily_evaluate_kernels(state=False),\
+    gpytorch.settings.max_cholesky_size(150000),\
+    gpytorch.settings.lazily_evaluate_kernels(state=True),\
     gpytorch.settings.use_toeplitz(state=False),\
     gpytorch.settings.num_trace_samples(0),\
     gpytorch.settings.fast_computations(covar_root_decomposition = False, log_prob = False, solves = False),\
@@ -297,8 +297,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
         else:
             def closure():
                 optimizer.zero_grad()
-                output = model(train_x[::2])
-                loss = -mll(output, train_y[::2])
+                output = model(train_x)
+                loss = -mll(output, train_y)
                 loss.backward()
                 return loss
             optimizer.step(closure)

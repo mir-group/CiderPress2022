@@ -430,3 +430,37 @@ class SmoothEDMGPR(EDMGPR):
         threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
+
+
+class AddEDMGPR(EDMGPR):
+
+    def __init__(self, num_desc, use_algpr = False, norm_feat = False):
+        const = ConstantKernel(0.2)
+        order = 3
+        if not norm_feat:
+            rbf = PartialARBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        else:
+            const = ConstantKernel(0.527**2)
+            rbf = PartialARBF(order = order, length_scale = [0.132, 0.436, 0.122, 0.0797, 0.093, 0.132,\
+                         0.0976, 0.212, 0.0716, 0.0886][:num_desc], scale = [1e-5, 0.536, 0.0428, 0.1],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        cov_kernel = const * rbf
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(EDMGPR, self).__init__(num_desc,
+                       descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
+                               else get_rho_and_edmgga_descriptors,
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred, y_std = self.gp.predict(x, return_std=True)
+        return (y_std > threshold).any()
+
