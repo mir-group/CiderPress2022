@@ -41,10 +41,10 @@ class GPRModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
         super(GPRModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
-        self.covar_module = gpytorch.kernels.GridInterpolationKernel(
-            gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=3)),
+        self.covar_module = gpytorch.kernels.ScaleKernel(
+            gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=3),
             num_dims = 3, grid_size = 20
-        )
+        ))
         self.feature_extractor = FeatureExtractor()
 
     def forward(self, x):
@@ -121,11 +121,31 @@ class BigGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, ndim = 9):
         super(BigGPR, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
+        #self.mean_module.constant = 0.0
         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=ndim))
+        #self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
         self.feature_extractor = FeatureNormalizer(ndim)
         self.covar_module.base_kernel.lengthscale = torch.tensor(
-                [[0.7, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 0.3, 0.3][:ndim]], dtype=torch.float64)
-        self.covar_module.outputscale = 1.0
+                [[0.234, 1.04, 0.33, 0.303, 0.418, 0.427, 0.36, 0.255, 0.241, 0.462][:ndim]], dtype=torch.float64)
+        self.covar_module.outputscale = 3.69**2
+
+    def forward(self, x):
+        projected_x = self.feature_extractor(x)
+        mean_x = self.mean_module(projected_x)
+        covar_x = self.covar_module(projected_x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
+class BigGPRM(gpytorch.models.ExactGP):
+    def __init__(self, train_x, train_y, likelihood, ndim = 9):
+        super(BigGPRM, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+        #self.mean_module.constant = 0.0
+        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.SpectralMixtureKernel(
+                                                        num_mixtures = 2, ard_num_dims=ndim))
+        #self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
+        self.feature_extractor = FeatureNormalizer(ndim)
+        #self.covar_module.outputscale = 3.69**2
 
     def forward(self, x):
         projected_x = self.feature_extractor(x)
@@ -157,14 +177,18 @@ class AddGPR(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = False):
+def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = None, lfbgs = False):
 
     train_x = torch.tensor(train_x)
     train_y = torch.tensor(train_y).squeeze()
+    test_x = torch.tensor(test_x)
+    test_y = torch.tensor(test_y)
 
     if torch.cuda.is_available():
         train_x = train_x.cuda()
         train_y = train_y.cuda()
+        test_x = test_x.cuda()
+        test_y = test_y.cuda()
 
     print(train_x.size(), train_y.size())
 
@@ -173,48 +197,101 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
     else:
         print('using fixed noise')
         likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
-                torch.tensor(fixed_noise[::2], dtype=torch.float64))
+                torch.tensor(fixed_noise, dtype=torch.float64))
 
     if model_type == 'DKL':
         model = GPRModel(train_x[::2], train_y[::2], likelihood)
     elif model_type == 'ADD':
         model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 3, ndim = 10)
+    elif model_type == 'BIG':
+        print('BIG MODEL')
+        model = BigGPR(train_x, train_y, likelihood, ndim = 10)
     else:
-        model = BigGPR(train_x[::2], train_y[::2], likelihood, ndim=10)
+        model = BigGPRM(train_x, train_y, likelihood, ndim = 10)
 
     model = model.double()
     if torch.cuda.is_available():
         model = model.cuda()
-        likelihood = likelihood.cuda()
+        likelihood = model.likelihood
+
+    if model_type == 'MIX':
+        model.covar_module.base_kernel.initialize_from_data(model.feature_extractor(train_x), train_y)
 
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 20
+        training_iterations = 40
 
     model.train()
     likelihood.train()
 
     if not lfbgs:
-        optimizer = torch.optim.RMSprop([
-            {'params': model.feature_extractor.parameters()},
-            {'params': model.covar_module.parameters()},
-            {'params': model.mean_module.parameters()},
-            {'params': model.likelihood.parameters()},
-        ], lr=0.01)
+        """
+        optimizer = torch.optim.SGD([
+            #{'params': model.feature_extractor.parameters()},
+            #{'params': model.covar_module.parameters(), 'lr': 1e-30},
+            #{'params': model.mean_module.parameters()},
+            #{'params': model.likelihood.parameters()},
+        ], lr=1e-30)
+        """
+        optimizer = torch.optim.Adam([
+                {'params': model.parameters()},  # Includes GaussianLikelihood parameters
+                ], lr=4e-2)
     else:
         optimizer = torch.optim.LBFGS(model.parameters(), lr = 0.1, max_iter = 200, history_size=200)
    
     print(optimizer.state_dict())
 
+    torch.manual_seed(0)
+    settings = [\
+    gpytorch.settings.max_root_decomposition_size(1000),\
+    gpytorch.settings.max_eager_kernel_size(40000),\
+    gpytorch.settings.fast_pred_var(state=False),\
+    gpytorch.settings.fast_pred_samples(state=False),\
+    gpytorch.settings.debug(state=True),\
+    gpytorch.settings.max_cg_iterations(10000),\
+    gpytorch.settings.cg_tolerance(0.01),\
+    gpytorch.settings.max_cholesky_size(40000),\
+    gpytorch.settings.lazily_evaluate_kernels(state=False),\
+    gpytorch.settings.use_toeplitz(state=False),\
+    gpytorch.settings.num_trace_samples(0),\
+    gpytorch.settings.fast_computations(covar_root_decomposition = False, log_prob = False, solves = False),\
+    gpytorch.settings.skip_logdet_forward(state=False),\
+    ]
+    for setting in settings:
+        setting.__enter__()
+
+    print('off', gpytorch.settings.fast_computations.log_prob.off())
+    print('off', gpytorch.settings.fast_computations.solves.off())
+    print('off', gpytorch.settings.fast_computations.covar_root_decomposition.off())
+
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
+    mll2 = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
+
+    print(model.state_dict())
+    print(likelihood.state_dict())
+
+    orig_train_y = train_y.clone()
+    orig_mean = likelihood(model(train_x)).mean
+    orig_covar = likelihood(model(train_x)).covariance_matrix
+
+    loss2 = torch.nn.MSELoss()
 
     min_loss = 2.00
     for i in range(training_iterations):
         if not lfbgs:
             optimizer.zero_grad()
-            output = model(train_x[::2])
-            loss = -mll(output, train_y[::2])
+            output = model(train_x)
+            loss = -mll(output, train_y)
+            """
+            print()
+            print([prior[0] for prior in mll.named_priors()])
+            print([lt for lt in mll.model.added_loss_terms()])
+            print(model.likelihood(output).log_prob(train_y))
+            print('TEST LOSS: {}'.format(loss2(output.mean, train_y)))
+            print('TEST MAE: {}'.format(torch.mean(torch.abs(output.mean - train_y))))
+            """
+            #print(loss.item())
             loss.backward()
             optimizer.step()
         else:
@@ -234,10 +311,16 @@ def train(train_x, train_y, model_type = 'DKL', fixed_noise = None, lfbgs = Fals
 
     model.load_state_dict(best_state)
 
+    for setting in settings:
+        setting.__exit__()
+
     model.eval()
     likelihood.eval()
-    with torch.no_grad(), gpytorch.settings.use_toeplitz(True), gpytorch.settings.fast_pred_var():
-        preds = model(train_x[1::2])
-    print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - train_y[1::2]))))
+    with torch.no_grad():#, gpytorch.settings.use_toeplitz(False):#, gpytorch.settings.fast_pred_var():
+        preds = model(test_x)
+    print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - test_y))))
+
+    for setting in settings:
+        setting.__exit__()
 
     return model, min_loss
