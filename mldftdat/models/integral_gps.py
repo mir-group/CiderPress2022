@@ -436,14 +436,14 @@ class AddEDMGPR(EDMGPR):
 
     def __init__(self, num_desc, use_algpr = False, norm_feat = False):
         const = ConstantKernel(0.2)
-        order = 3
+        order = 2
         if not norm_feat:
             rbf = PartialARBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         else:
             const = ConstantKernel(0.527**2)
             rbf = PartialARBF(order = order, length_scale = [0.132, 0.436, 0.122, 0.0797, 0.093, 0.132,\
-                         0.0976, 0.212, 0.0716, 0.0886][:num_desc], scale = [1e-5, 0.536, 0.0428, 0.1],
+                         0.0976, 0.212, 0.0716, 0.0886][:num_desc], scale = [1e-5, 0.536, 0.0428],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
