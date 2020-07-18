@@ -168,7 +168,6 @@ class ARBF(RBF):
         super(ARBF, self).__init__(length_scale, length_scale_bounds)
         self.order = order
         self.scale = scale or [1.0] * (order + 1)
-        self.scale[0] = 0
         self.scale_bounds = scale_bounds
 
     @property
@@ -178,6 +177,10 @@ class ARBF(RBF):
                               len(self.scale))
 
     def __call__(self, X, Y=None, eval_gradient=False):
+        if self.anisotropic:#np.iterable(self.length_scale):
+            num_scale = len(self.length_scale)
+        else:
+            num_scale = 1
         if Y is None:
             Y = X
         diff = (X[:,np.newaxis,:] - Y[np.newaxis,:,:]) / self.length_scale
@@ -185,23 +188,23 @@ class ARBF(RBF):
         sk = []
         scale_terms = []
         if eval_gradient:
-            derivs = np.zeros((X.shape[0], Y.shape[0], X.shape[1] + len(self.scale)))
+            derivs = np.zeros((X.shape[0], Y.shape[0], num_scale + len(self.scale)))
         for i in range(self.order):
             sk.append(np.sum(k0**(i+1), axis=-1))
         en = [1]
         for n in range(self.order):
-            en.append(sk[n])
+            en.append(sk[n] * (-1)**n)
             for k in range(n):
                 en[-1] += (-1)**k * en[n-k] * sk[k]
             en[-1] /= n + 1
         print('scale', self.scale, type(self.scale))
         res = self.scale[n] * en[0]
         if eval_gradient:
-            derivs[:,:,X.shape[1]] = self.scale[n] * en[0]
+            derivs[:,:,num_scale] = self.scale[n] * en[0]
         for n in range(1, self.order + 1):
             res += self.scale[n] * en[n]
             if eval_gradient:
-                derivs[:,:,X.shape[1] + n] = self.scale[n] * en[n]
+                derivs[:,:,num_scale + n] = self.scale[n] * en[n]
         kernel = res
         en = None
         res = None
@@ -213,7 +216,7 @@ class ARBF(RBF):
                 if self.order > 0:
                     den.append(np.ones(k0[:,:,ind].shape))
                 for n in range(1,self.order):
-                    den.append(sk[n-1] - k0[:,:,ind]**(n))
+                    den.append(sk[n-1] - k0[:,:,ind]**(n) * (-1)**(n-1))
                     for k in range(n-1):
                         den[-1] += (-1)**k * den[n-k] * (sk[k] - k0[:,:,ind]**(k+1))
                 res = 0
@@ -223,7 +226,10 @@ class ARBF(RBF):
                     res += self.scale[n] * den[n] / (n-1)
                 #res *= dzdi(X, self.length_scale, ind)
                 res *= diff[:,:,ind]**2 * k0[:,:,ind]
-                derivs[:,:,ind] = res
+                if self.anisotropic:#np.iterable(self.length_scale):
+                    derivs[:,:,ind] = res
+                else:
+                    derivs[:,:,0] += res
                 den = None
             print(type(kernel), type(derivs))
             print(kernel.shape, derivs.shape)
