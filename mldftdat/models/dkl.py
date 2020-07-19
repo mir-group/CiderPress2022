@@ -183,6 +183,7 @@ class AQGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, ndim = 10):
         super(AQGPR, self).__init__(train_x, train_y, likelihood)
         self.feature_extractor = FeatureNormalizer(ndim)
+        self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = AQRBF(ndim)
 
     def forward(self, x):
@@ -222,7 +223,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
         print('BIG MODEL')
         model = BigGPR(train_x, train_y, likelihood, ndim = 10)
     elif model_type == 'AQRBF':
-        model = 
+        model = AQGPR(train_x, train_y, likelihood, ndim = 10) 
     else:
         model = BigGPRM(train_x, train_y, likelihood, ndim = 10)
 
@@ -289,7 +290,6 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
 
     orig_train_y = train_y.clone()
     orig_mean = likelihood(model(train_x)).mean
-    orig_covar = likelihood(model(train_x)).covariance_matrix
 
     loss2 = torch.nn.MSELoss()
 
