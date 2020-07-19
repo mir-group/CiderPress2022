@@ -511,7 +511,7 @@ def predict_exchange(analyzer, model=None, num=1,
         for p0, p1 in lib.prange(0, gridsize, blksize):
             neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1],
                                                     rho_data[:,p0:p1], return_std = True)
-        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
+        print('integrated uncertainty', np.dot(np.abs(std), np.abs(weights)))
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
