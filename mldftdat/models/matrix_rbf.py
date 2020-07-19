@@ -240,6 +240,48 @@ class ARBF(RBF):
         return kernel
 
 
+class QARBF(Kernel):
+
+    def __init__(self, arbf_base, length_scale=1.0,
+                 length_scale_bounds = (1e-5, 1e5),
+                 scale_bounds = (1e-5, 1e5)):
+        super(QARBF, self).__init__()
+        self.order = order
+        ndim = len(arbf_base.length_scale)
+        self.scale = [arbf_base.scale[0]]
+        self.scale += [arbf_base.scale[1]] * (ndim)
+        self.scale += [arbf_base.scale[2]] * (ndim * (ndim - 1) // 2)
+        self.scale_bounds = scale_bounds
+        self.ndim = ndim
+        self.length_scale = np.array(arbf_base.length_scale)
+
+    @property
+    def hyperparameter_scale(self):
+        return Hyperparameter("scale", "numeric",
+                              self.scale_bounds,
+                              len(self.scale))
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is None:
+            Y = X
+        diff = (X[:,np.newaxis,:] - Y[np.newaxis,:,:]) / self.length_scale
+        k0 = np.exp(-0.5 * diff**2)
+        sk = np.zeros((X.shape[0], Y.shape[0], len(self.scale)))
+        sk[:,:,0] = self.scale[0]
+        t = 1
+        for i in range(self.ndim):
+            sk[:,:,t] = self.scale[t] * k0[:,:,i]
+            t += 1
+        for i in range(self.ndim-1):
+            for j in range(i+1,self.ndim):
+                sk[:,:,t] = self.scale[t] * k0[:,:,i] * k[:,:,j]
+                t += 1
+        k = np.sum(sk, axis=-1)
+        if eval_gradient:
+            return k, sk
+        return k
+
+
 class PartialARBF(ARBF):
 
     def __init__(self, order = 1, length_scale=1.0, scale = None,
