@@ -5,7 +5,7 @@ import copy
 import mldftdat.models.nn
 from torch import nn
 from math import pi
-from mldftdat.models.agp import NAdditiveStructureKernel
+from mldftdat.models.agp import NAdditiveStructureKernel, AQRBF
 from gpytorch.kernels.additive_structure_kernel import AdditiveStructureKernel
 
 # based on https://github.com/cornellius-gp/gpytorch/blob/master/examples/06_PyTorch_NN_Integration_DKL/KISSGP_Deep_Kernel_Regression_CUDA.ipynb
@@ -178,6 +178,20 @@ class AddGPR(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
+class AQGPR(gpytorch.models.ExactGP):
+
+    def __init__(self, train_x, train_y, likelihood, ndim = 10):
+        super(AQGPR, self).__init__(train_x, train_y, likelihood)
+        self.feature_extractor = FeatureNormalizer(ndim)
+        self.covar_module = AQRBF(ndim)
+
+    def forward(self, x):
+        projected_x = self.feature_extractor(x)
+        mean_x = self.mean_module(projected_x)
+        covar_x = self.covar_module(projected_x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
 def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = None, lfbgs = False):
 
     train_x = torch.tensor(train_x)
@@ -207,6 +221,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     elif model_type == 'BIG':
         print('BIG MODEL')
         model = BigGPR(train_x, train_y, likelihood, ndim = 10)
+    elif model_type == 'AQRBF':
+        model = 
     else:
         model = BigGPRM(train_x, train_y, likelihood, ndim = 10)
 
@@ -221,7 +237,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 200
+        training_iterations = 20
 
     model.train()
     likelihood.train()
@@ -246,7 +262,6 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     torch.manual_seed(0)
     settings = [\
     gpytorch.settings.max_root_decomposition_size(1000),\
-    gpytorch.settings.max_eager_kernel_size(40000),\
     gpytorch.settings.fast_pred_var(state=False),\
     gpytorch.settings.fast_pred_samples(state=False),\
     gpytorch.settings.debug(state=True),\
@@ -312,12 +327,9 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
 
     model.load_state_dict(best_state)
 
-    for setting in settings:
-        setting.__exit__()
-
     model.eval()
     likelihood.eval()
-    with torch.no_grad():#, gpytorch.settings.use_toeplitz(False):#, gpytorch.settings.fast_pred_var():
+    with torch.no_grad(), gpytorch.settings.skip_posterior_variances(state=True):#, gpytorch.settings.use_toeplitz(False):#, gpytorch.settings.fast_pred_var():
         preds = model(test_x)
     print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - test_y))))
 
