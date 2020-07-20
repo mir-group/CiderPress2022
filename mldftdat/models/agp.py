@@ -86,19 +86,17 @@ class NAdditiveStructureKernel(Kernel):
 def AQRBF(num_dims):
     num_dims = num_dims
     kernel_list = [ScaleKernel(GridInterpolationKernel(
-                                RBFKernel(active_dims=[0]),
-                                num_dims = 1, grid_size = 50
+                                RBFKernel(),
+                                num_dims = 1, grid_size = 10, active_dims=[0]
                                 ))]
     for i in range(1,num_dims):
         kernel_list.append(ScaleKernel(GridInterpolationKernel(
-                                RBFKernel(active_dims=[0,i],
-                                    ard_num_dims = 2),
-                                num_dims = 2, grid_size = 50
+                                RBFKernel(ard_num_dims = 2),
+                                num_dims = 2, grid_size = 10, active_dims=[0,i]
                                 )))
-        for j in range(i+1,num_dims):
-            kernel_list.append(ScaleKernel(GridInterpolationKernel(
-                                RBFKernel(active_dims=[0,i,j],
-                                    ard_num_dims = 3),
-                                num_dims = 3, grid_size = 50
-                                )))
-    full_kernel = AdditiveKernel(*kernel_list)
+        #for j in range(i+1,num_dims):
+        #    kernel_list.append(ScaleKernel(GridInterpolationKernel(
+        #                        RBFKernel(ard_num_dims = 3),
+        #                        num_dims = 3, grid_size = 50, active_dims=[0,i,j]
+        #                        )))
+    return AdditiveKernel(*kernel_list)

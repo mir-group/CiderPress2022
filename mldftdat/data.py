@@ -322,25 +322,27 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     np.savetxt(wt_file, all_weights)
     np.savetxt(cut_file, np.array(cutoffs))
 
-def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, BASIS,
                     Analyzer, spherical_atom = False, locx = False, lam = 0.5,
                     version = 'a'):
 
     import time
     from pyscf import scf
-    all_descriptor_data = None
-    all_rho_data = None
+    all_descriptor_data_u = None
+    all_descriptor_data_d = None
+    all_rho_data_u = None
+    all_rho_data_d = None
     all_values = []
     all_weights = []
     cutoffs = []
 
     for MOL_ID in MOL_IDS:
         print('Working on {}'.format(MOL_ID))
-        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
+        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID)
         start = time.monotonic()
         analyzer = Analyzer.load(data_dir + '/data.hdf5')
         analyzer.get_ao_rho_data()
-        if type(analyzer.calc) == scf.hf.RHF:
+        if type(analyzer.calc) == scf.hf.RHF or CALC_TYPE == 'CCSD':
             restricted = True
         else:
             restricted = False
@@ -353,13 +355,13 @@ def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL
             print('index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_correlation_descriptors(analyzer,
+            descriptor_data = get_exchange_descriptors2(analyzer,
                 restricted = True, version=version)
             descriptor_data_u = descriptor_data
             descriptor_data_d = descriptor_data
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_correlation_descriptors(analyzer,
+                              get_exchange_descriptors2(analyzer,
                                     restricted = False, version=version)
         end = time.monotonic()
         print('get descriptor time', end - start)
@@ -386,7 +388,7 @@ def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL
                                               axis = 1)
             all_descriptor_data_d = np.append(all_descriptor_data_d, descriptor_data_d,
                                               axis = 1)
-        if all_rho_data is None:
+        if all_rho_data_u is None:
             all_rho_data_u = rho_data_u
             all_rho_data_d = rho_data_d
         else:
@@ -407,8 +409,8 @@ def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL
     val_file = os.path.join(save_dir, 'val.npy')
     wt_file = os.path.join(save_dir, 'wt.npy')
     cut_file = os.path.join(save_dir, 'cut.npy')
-    np.save(rho_file, np.stack(all_rho_data_u, all_rho_data_d))
-    np.save(desc_file, np.stack(all_descriptor_data_u, all_descriptor_data_d))
+    np.save(rho_file, np.stack([all_rho_data_u, all_rho_data_d], axis=0))
+    np.save(desc_file, np.stack([all_descriptor_data_u, all_descriptor_data_d], axis=0))
     np.save(val_file, all_values)
     np.save(wt_file, all_weights)
     np.save(cut_file, np.array(cutoffs))
