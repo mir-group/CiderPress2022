@@ -149,14 +149,21 @@ class MatrixRBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
 
 class PartialRBF(RBF):
 
-    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0):
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0,
+                 active_dims = None):
         super(PartialRBF, self).__init__(length_scale, length_scale_bounds)
         self.start = start
+        self.active_dims = active_dims
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        X = X[:,self.start:]
-        if Y is not None:
-            Y = Y[:,self.start:]
+        if active_dims is None:
+            X = X[:,self.start:]
+            if Y is not None:
+                Y = Y[:,self.start:]
+        else:
+            X = X[:,self.active_dims]
+            if Y is not None:
+                Y = Y[:,self.active_dims]
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
@@ -286,15 +293,22 @@ class PartialARBF(ARBF):
 
     def __init__(self, order = 1, length_scale=1.0, scale = None,
                  length_scale_bounds = (1e-5, 1e5),
-                 scale_bounds = (1e-5, 1e5), start = 1):
+                 scale_bounds = (1e-5, 1e5), start = 1,
+                 active_dims = None):
         super(PartialARBF, self).__init__(order, length_scale, scale,
                     length_scale_bounds, scale_bounds)
         self.start = start
+        self.active_dims = active_dims
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        X = X[:,self.start:]
-        if Y is not None:
-            Y = Y[:,self.start:]
+        if active_dims is None:
+            X = X[:,self.start:]
+            if Y is not None:
+                Y = Y[:,self.start:]
+        else:
+            X = X[:,self.active_dims]
+            if Y is not None:
+                Y = Y[:,self.active_dims]
         return super(PartialARBF, self).__call__(X, Y, eval_gradient)
 
 
