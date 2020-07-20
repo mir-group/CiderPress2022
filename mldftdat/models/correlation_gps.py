@@ -7,89 +7,16 @@ from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
 
 
-def ced_to_y_lda(ced, rho_data):
-    if rho_data.ndim == 2:
-        ldac = eval_xc(',LDA_C_PW92_MOD', rho_data)[0] * rho_data[0]
-    else:
-        rhot = rho_data[0][0] + rho_data[1][0]
-        ldac = eval_xc(',LDA_C_PW92_MOD', rho_data, spin = 1)[0] * rhot
-    return ced / (ldac - 1e-12) - 1
+def ced_to_y_lda(ced, rho_data_u, rho_data_d):
+    rhot = rho_data_u[0] + rho_data_d[0]
+    ldac = eval_xc(',LDA_C_PW92_MOD', (rho_data_u, rho_data_d), spin = 1)[0]
+    return ced / (rhot + 1e-20) - ldac
+    #return ced / (ldac - 1e-12) - 1
 
-def y_to_ced_lda(y, rho_data):
-    if rho_data.ndim == 2:
-        ldac = eval_xc(',LDA_C_PW92_MOD', rho_data)[0] * rho_data[0]
-    else:
-        rhot = rho_data[0][0] + rho_data[1][0]
-        ldac = eval_xc(',LDA_C_PW92_MOD', rho_data, spin = 1)[0] * rhot
-    return (y + 1) * ldac
-
-
-class EDMGPR(DFTGPR):
-
-    def __init__(self, num_desc, init_kernel = None, use_algpr = False):
-        super(EDMGPR, self).__init__(num_desc, descriptor_getter = get_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_edmgga, y_to_xed_edmgga),
-                       init_kernel = init_kernel, use_algpr = use_algpr)
-
-    def fit(self, xdesc, xed, rho_data, optimize_theta = True):
-        if optimize_theta:
-            optimizer = 'fmin_l_bfgs_b'
-        else:
-            optimizer = None
-        self.gp.optimizer = optimizer
-        self.X = self.get_descriptors(xdesc, rho_data, num=self.num)
-        self.y = self.xed_to_y(xed, rho_data)
-        print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
-        print(self.X.shape, self.y.shape)
-        self.gp.fit(self.X, self.y)
-        self.gp.kernel = self.gp.kernel_
-
-    def scores(self, xdesc, xed_true, rho_data):
-        # Returns
-        # r^2 of the model itself
-        # rmse of model
-        # rmse of exchange energy density
-        # relative rmse of exchange energy density
-        # score of exchange energy density
-        X_test = self.get_descriptors(xdesc, rho_data, num=self.num)
-        y_true = self.xed_to_y(xed_true, rho_data)
-        y_pred = self.gp.predict(X_test)
-        if len(rho_data.shape) == 2:
-            rho = rho_data[0]
-        else:
-            rho = rho_data
-        xed_pred = self.y_to_xed(y_pred, rho_data)
-        model_score = score(y_true, y_pred)
-        model_rmse = np.sqrt(np.mean((y_true - y_pred)**2))
-        xed_rmse = np.sqrt(np.mean((xed_true - xed_pred)**2 / rho**2))
-        xed_rel_rmse = np.sqrt(np.mean(((xed_true - xed_pred) / (xed_true + 1e-7))**2))
-        xed_score = score(xed_true / rho, xed_pred / rho)
-        return model_score, model_rmse, xed_rmse, xed_rel_rmse, xed_score
-
-    def predict(self, X, rho_data, return_std = False):
-        #X = self.get_descriptors(X, rho_data, num=self.num)
-        #y = self.gp.predict(X, return_std = return_std)
-        #return self.y_to_xed(y, rho_data)
-        X = self.get_descriptors(X, rho_data, num=self.num)
-        y = self.gp.predict(X, return_std = return_std)
-        if return_std:
-            return self.y_to_xed(y[0], rho_data), y[1] * ldax(rho_data[0])
-        else:
-            return self.y_to_xed(y, rho_data)
-
-    def add_point(self, xdesc, xed, rho_data, threshold_factor = 1.2):
-        x = self.get_descriptors(xdesc, rho_data, num=self.num)
-        y = self.xed_to_y(xed, rho_data)
-        if self.is_uncertain(x, y, threshold_factor):
-            self.X = np.append(self.X, x, axis=0)
-            self.y = np.append(self.y, y)
-            if self.al:
-                self.gp.fit_single(x, y)
-            else:
-                prev_optimizer = self.gp.optimizer
-                self.gp.optimizer = None
-                self.gp.fit(self.X, self.y)
-                self.gp.optimizer = prev_optimizer
+def y_to_ced_lda(y, rho_data_u, rho_data_d):
+    rhot = rho_data_u[0] + rho_data_d[0]
+    ldac = eval_xc(',LDA_C_PW92_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot
+    return (y + ldac) * rhot
 
 
 def get_big_desc2(X, num):
@@ -206,10 +133,16 @@ def get_desc_spinpol(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     Xt[2*num] = eval_xc(',LDA_C_PW92_MOD', (rho_data_u[0], rho_data_d[0]), spin = 1)[0]
     return Xt
 
+def spinpol_data(data_arr):
+    if data_arr.ndim == 2:
+        return data_arr, data_arr
+    else:
+        return data_arr[0], data_arr[1]
 
-class CorrGPR(EDMGPR):
 
-    def __init__(self, num_desc, use_algpr = False):
+class CorrGPR(DFTGPR):
+
+    def __init__(self, num_desc):
         constss = ConstantKernel(0.2)
         constos = ConstantKernel(1.0)
         ind = np.arange(num_desc * 3)
@@ -224,12 +157,12 @@ class CorrGPR(EDMGPR):
         cov_kernel = constss * (rbfu + rbfd) + constos * rbft
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
-        super(EDMGPR, self).__init__(num_desc,
+        super(CorrGPR, self).__init__(num_desc,
                        descriptor_getter = get_desc_spinpol,
                        xed_y_converter = (ced_to_y_lda, y_to_ced_lda),
-                       init_kernel = init_kernel, use_algpr = use_algpr)
+                       init_kernel = init_kernel)
 
-    def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
+    def is_uncertain(self, x, y, threshold_factor = 1.2, low_noise_bound = 0.002):
         threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
         y_pred, y_std = self.gp.predict(x, return_std=True)
         return (y_std > threshold).any()
@@ -239,11 +172,11 @@ class CorrGPR(EDMGPR):
             optimizer = 'fmin_l_bfgs_b'
         else:
             optimizer = None
-        xdescu, xdescd = xdesc[0], xdesc[1]
-        rho_data_u, rho_data_u = rho_data[0], rho_data[1]
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(xdesc)
         self.gp.optimizer = optimizer
         self.X = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
-        self.y = self.xed_to_y(ced, rho_data)
+        self.y = self.xed_to_y(ced, rho_data_u, rho_data_d)
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
         self.gp.fit(self.X, self.y)
@@ -256,8 +189,10 @@ class CorrGPR(EDMGPR):
         # rmse of exchange energy density
         # relative rmse of exchange energy density
         # score of exchange energy density
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(xdesc)
         X_test = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
-        y_true = self.xed_to_y(xed_true, rho_data)
+        y_true = self.xed_to_y(xed_true, rho_data_u, rho_data_d)
         y_pred = self.gp.predict(X_test)
         xdescu, xdescd = xdesc[0], xdesc[1]
         rho_data_u, rho_data_u = rho_data[0], rho_data[1]
@@ -265,7 +200,7 @@ class CorrGPR(EDMGPR):
             rho = rho_data[0]
         else:
             rho = rho_data
-        xed_pred = self.y_to_xed(y_pred, rho_data)
+        xed_pred = self.y_to_xed(y_pred, rho_data_u, rho_data_d)
         model_score = score(y_true, y_pred)
         model_rmse = np.sqrt(np.mean((y_true - y_pred)**2))
         xed_rmse = np.sqrt(np.mean((xed_true - xed_pred)**2 / rho**2))
@@ -273,10 +208,12 @@ class CorrGPR(EDMGPR):
         xed_score = score(xed_true / rho, xed_pred / rho)
         return model_score, model_rmse, xed_rmse, xed_rel_rmse, xed_score
 
-    def predict(self, X, rho_data, return_std = False):
-        X = self.get_descriptors(X, num=self.num)
+    def predict(self, xdesc, rho_data, return_std = False):
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(xdesc)
+        X = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
         y = self.gp.predict(X, return_std = return_std)
         if return_std:
-            return self.y_to_xed(y[0], rho_data), y[1] * ldax(rho_data[0])
+            raise NotImplementedError('Uncertainty for correlationo not fully implemented')
         else:
-            return self.y_to_xed(y, rho_data)
+            return self.y_to_xed(y, rho_data_u, rho_data_d)
