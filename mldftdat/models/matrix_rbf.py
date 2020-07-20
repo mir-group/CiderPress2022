@@ -295,6 +295,34 @@ class QARBF(StationaryKernelMixin, Kernel):
             return k, sk
         return k
 
+    def get_sub_kernel(self, inds, scale_ind, X, Y):
+        if inds is None:
+            return self.scale[0] * np.ones((X.shape[0], Y.shape[0]))
+        if isinstance(inds, int):
+            diff = (X[:,np.newaxis,inds] - Y[np.newaxis,:]) / self.length_scale[inds]
+            k0 = np.exp(-0.5 * diff**2)
+            return self.scale[scale_ind] * k0
+        else:
+            diff = (X[:,np.newaxis,inds[0]] - Y[np.newaxis,:,0])\
+                    / self.length_scale[inds[0]]
+            k0  = np.exp(-0.5 * diff**2)
+            diff = (X[:,np.newaxis,inds[1]] - Y[np.newaxis,:,1])\
+                    / self.length_scale[inds[1]]
+            k0 *= np.exp(-0.5 * diff**2)
+            return self.scale[scale_ind] * k0
+
+    def get_funcs_for_spline_conversion(self):
+        funcs = [lambda x, y: self.get_sub_kernel(None, 0, x, y)]
+        t = 1
+        for i in range(self.ndim):
+            funcs.append(lambda x, y: self.get_sub_kernel(i, t, x, y))
+            t += 1
+        for i in range(self.ndim-1):
+            for j in range(i+1,self.ndim):
+                funcs.append(lambda x, y: self.get_sub_kernel((i,j), t, x, y))
+                t += 1
+        return funcs
+
 
 class PartialARBF(ARBF):
 
