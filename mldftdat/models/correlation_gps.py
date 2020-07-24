@@ -9,14 +9,14 @@ from sklearn.gaussian_process.kernels import *
 
 def ced_to_y_lda(ced, rho_data_u, rho_data_d):
     rhot = rho_data_u[0] + rho_data_d[0]
-    ldac = eval_xc(',LDA_C_PW92_MOD', (rho_data_u, rho_data_d), spin = 1)[0]
-    return ced / (rhot + 1e-20) - ldac
+    ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0]
+    return ced / (rhot * ldac + 1e-20) - 1
     #return ced / (ldac - 1e-12) - 1
 
 def y_to_ced_lda(y, rho_data_u, rho_data_d):
     rhot = rho_data_u[0] + rho_data_d[0]
-    ldac = eval_xc(',LDA_C_PW92_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot
-    return (y + ldac) * rhot
+    ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0]
+    return (y + 1) * (rhot * ldac)
 
 
 def get_big_desc2(X, num):
@@ -128,9 +128,9 @@ def get_desc_spinpol(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     Xu = get_big_desc3(Xu, num)
     Xd = get_big_desc3(Xd, num)
     Xt = np.hstack((Xu, Xd, (Xd + Xu) / 2))
-    Xt[0] = eval_xc(',LDA_C_PW92_MOD', (rho_data_u[0], 0 * rho_data_u[0]), spin = 1)[0]
-    Xt[num] = eval_xc(',LDA_C_PW92_MOD', (rho_data_d[0], 0 * rho_data_d[0]), spin = 1)[0]
-    Xt[2*num] = eval_xc(',LDA_C_PW92_MOD', (rho_data_u[0], rho_data_d[0]), spin = 1)[0]
+    Xt[:,0] = eval_xc(',LDA_C_PW_MOD', (rho_data_u[0], 0 * rho_data_u[0]), spin = 1)[0]
+    Xt[:,num] = eval_xc(',LDA_C_PW_MOD', (rho_data_d[0], 0 * rho_data_d[0]), spin = 1)[0]
+    Xt[:,2*num] = eval_xc(',LDA_C_PW_MOD', (rho_data_u[0], rho_data_d[0]), spin = 1)[0]
     return Xt
 
 def spinpol_data(data_arr):
@@ -154,7 +154,8 @@ class CorrGPR(DFTGPR):
         wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        cov_kernel = constss * (rbfu + rbfd) + constos * rbft
+        #cov_kernel = constss * (rbfu + rbfd) + constos * rbft
+        cov_kernel = constos * rbft
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(CorrGPR, self).__init__(num_desc,
