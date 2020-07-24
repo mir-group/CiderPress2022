@@ -726,6 +726,12 @@ class ADKernel(Kernel):
             Y = Y[:,self.active_dims]
         return self.k.__call__(X, Y, eval_gradient)
 
+    def diag(self, X):
+        return self.k.diag(X)
+
+    def __repr__(self):
+        return self.k.__repr__()
+
 
 class SpinSymKernel(ADKernel):
 
