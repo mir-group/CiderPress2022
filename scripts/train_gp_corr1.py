@@ -22,24 +22,33 @@ dir4 = os.path.join(SAVE_ROOT, 'DATASETS', 'spinpol_atoms_corr')
 NUM = int(sys.argv[1])
 print("NUMER OF FEATURES", NUM)
 
-X_train, y_train, rho_data_train = load_descriptors(dir1)
-X_train2, y_train2, rho_data_train2 = load_descriptors(dir4)
-X_train = np.append(X_train, X_train2[::200], axis=0)
+X_train, y_train, rho_data_train = load_descriptors(dir1, binary = True)
+X_train2, y_train2, rho_data_train2 = load_descriptors(dir4, binary = True)
+X_train = np.transpose(X_train, axes=(2,0,1))
+X_train2 = np.transpose(X_train2, axes=(2,0,1))
+print(X_train.shape, X_train2.shape, rho_data_train.shape, rho_data_train2.shape)
+X_train = np.append(X_train, X_train2[:,::200], axis=1)
 y_train = np.append(y_train, y_train2[::200], axis=0)
-rho_data_train = np.append(rho_data_train, rho_data_train2[:,::250], axis=1)
+rho_data_train = np.append(rho_data_train, rho_data_train2[:,:,::200], axis=-1)
 X_train, y_train, rho_train, rho_data_train = filter_descriptors(X_train, y_train, rho_data_train, tol=1e-5)
-X_test, y_test, rho_data_test = load_descriptors(dir2)
+X_test, y_test, rho_data_test = load_descriptors(dir2, binary = True)
+X_test = np.transpose(X_test, axes=(2,0,1))
 X_test, y_test, rho_test, rho_data_test = filter_descriptors(X_test, y_test, rho_data_test, tol=1e-5)
 
-X_train = np.append(X_train, X_test[::300], axis=0)
+X_train = np.append(X_train, X_test[:,::300], axis=1)
 y_train = np.append(y_train, y_test[::300], axis=0)
-rho_train = np.append(rho_train, rho_test[::300], axis=0)
-rho_data_train = np.append(rho_data_train, rho_data_test[:,::300], axis=1)
+rho_train = np.append(rho_train, rho_test[:,::300], axis=1)
+rho_data_train = np.append(rho_data_train, rho_data_test[:,:,::300], axis=-1)
+rho_train /= 2
+rho_data_train /= 2
+rho_data_test /= 2
+rho_test /= 2
 
 gpr = CorrGPR(NUM)
 gpr.fit(X_train, y_train, rho_data_train)
-pred = gpr.xed_to_y(gpr.predict(X_test[4::100], rho_data_test[:,4::100]), rho_data_test[:,4::100])
-abserr = np.abs(pred - gpr.xed_to_y(y_test[4::100], rho_data_test[:,4::100]))
+pred = gpr.xed_to_y(gpr.predict(X_test[:,4::100], rho_data_test[:,:,4::100]),
+        rho_data_test[0,:,4::100], rho_data_test[1,:,4::100])
+abserr = np.abs(pred - gpr.xed_to_y(y_test[4::100], rho_data_test[0,:,4::100], rho_data_test[1,:,4::100]))
 print(gpr.gp.kernel_)
 print(np.mean(abserr))
 

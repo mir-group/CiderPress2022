@@ -446,27 +446,41 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False):
-    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
+def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False,
+                     binary = False):
+    if binary:
+        X = np.load(os.path.join(dirname, 'desc.npy')).transpose()
+    else:
+        X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
     else:
         count = X.shape[0]
     if val_dirname is None:
         val_dirname = dirname
-    y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
-    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
-    if load_wt:
-        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
-        return X, y, rho_data, wt
+    if binary:
+        y = np.load(os.path.join(val_dirname, 'val.npy'))[:count]
+        rho_data = np.load(os.path.join(dirname, 'rho.npy'))[:,:count]
+        if load_wt:
+            wt = np.load(os.path.join(dirname, 'wt.npy'))[:count]
+            return X, y, rho_data, wt
+    else:
+        y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
+        rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+        if load_wt:
+            wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
+            return X, y, rho_data, wt
     return X, y, rho_data
 
 def filter_descriptors(X, y, rho_data, tol=1e-3, wt = None):
-    condition = rho_data[0] > tol
-    X = X[condition,:]
-    y = y[condition]
-    rho = rho_data[0,condition]
-    rho_data = rho_data[:,condition]
+    if rho_data.ndim == 3:
+        condition = np.sum(rho_data[:,0,:], axis=0) > tol
+    else:
+        condition = rho_data[0] > tol
+    X = X[...,condition,:]
+    y = y[...,condition]
+    rho = rho_data[...,0,condition]
+    rho_data = rho_data[...,:,condition]
     if wt is not None:
         wt = wt[condition]
         return X, y, rho, rho_data, wt
@@ -579,7 +593,7 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    elif isinstance(model, Predictor):
+    elif isinstance(model, Predictor) or hasattr(model, 'coeff_sets'):
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
