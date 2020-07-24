@@ -18,6 +18,9 @@ def y_to_ced_lda(y, rho_data_u, rho_data_d):
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0]
     return (y + 1) * (rhot * ldac)
 
+def identity(y, rho_data_u, rho_data_d):
+    return y
+
 
 def get_big_desc2(X, num):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
@@ -133,6 +136,21 @@ def get_desc_spinpol(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     Xt[:,2*num] = eval_xc(',LDA_C_PW_MOD', (rho_data_u[0], rho_data_d[0]), spin = 1)[0]
     return Xt
 
+def get_desc_density(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    Xu = get_big_desc3(Xu, num)
+    Xd = get_big_desc3(Xd, num)
+    Xt = np.hstack((Xu, Xd, (Xd + Xu) / 2))
+    FUNCTIONAL = ',MGGA_C_SCAN'
+    cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
+    cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
+    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+            * (rho_data_u[0] + rho_data_d[0])
+    co -= cu + cd
+    Xt[:,0] = cu
+    Xt[:,num] = cd
+    Xt[:,2*num] = co
+    return Xt
+
 def spinpol_data(data_arr):
     if data_arr.ndim == 2:
         return data_arr, data_arr
@@ -218,3 +236,30 @@ class CorrGPR(DFTGPR):
             raise NotImplementedError('Uncertainty for correlationo not fully implemented')
         else:
             return self.y_to_xed(y, rho_data_u, rho_data_d)
+
+
+class CorrGPR2(DFTGPR):
+
+    def __init__(self, num_desc):
+        constss = ConstantKernel(0.2)
+        constos = ConstantKernel(1.0)
+        ind = np.arange(num_desc * 3)
+        rbfu = PartialRBF([0.3] * num_desc, active_dims = ind[1:num_desc])
+        rbfd = PartialRBF([0.3] * num_desc, active_dims = ind[num_desc+1:2*num_desc])
+        rbft = PartialRBF([0.3] * num_desc, active_dims = ind[2*num_desc+1:3*num_desc])
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        covu = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0) * rbfu
+        covd = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = num_desc) * rbfd
+        covo = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 2*num_desc) * rbft
+        cov_kernel = constss * (covu + covd) + constos * covo
+        #cov_kernel = constos * rbft
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(CorrGPR, self).__init__(num_desc,
+                       descriptor_getter = get_desc_density,
+                       xed_y_converter = (identity, identity),
+                       init_kernel = init_kernel)
