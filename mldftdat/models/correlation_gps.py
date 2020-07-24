@@ -244,18 +244,17 @@ class CorrGPR2(CorrGPR):
         constss = ConstantKernel(1.0)
         constos = ConstantKernel(1.0)
         ind = np.arange(num_desc * 3)
-        rbfu = PartialRBF([0.3] * (num_desc - 1), active_dims = ind[1:num_desc])
-        rbfd = PartialRBF([0.3] * (num_desc - 1), active_dims = ind[num_desc+1:2*num_desc])
-        rbft = PartialRBF([0.3] * (num_desc - 1), active_dims = ind[2*num_desc+1:3*num_desc])
+        rbfss = PartialRBF([0.3] * (num_desc - 1), active_dims = ind[1:num_desc])
+        rbfos = PartialRBF([0.3] * (num_desc - 1), active_dims = ind[2*num_desc+1:3*num_desc])
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
-        wk = WhiteKernel(noise_level=1.0e-2, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=1.0e-2, noise_level_bounds=(1e-04, 1.0e5))
         #wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         #wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        covu = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0) * rbfu
-        covd = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = num_desc) * rbfd
-        covo = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 2*num_desc) * rbft
-        cov_kernel = constss * (covu + covd) + constos * covo
+        covss = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0) * rbfss
+        covss = SpinSymKernel(covss, ind[:num_desc], ind[num_desc:2*num_desc])
+        covos = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 2*num_desc) * rbfos
+        cov_kernel = constss * covss + constos * covos
         #cov_kernel = constos * rbft
         noise_kernel = wk# + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel

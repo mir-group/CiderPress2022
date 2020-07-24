@@ -167,6 +167,30 @@ class PartialRBF(RBF):
         return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
+class SpinSymRBF(RBF):
+    def __init__(self, up_active_dims, down_active_dims, length_scale = 1.0,
+                 length_scale_bounds = (1e-5, 1e5)):
+        super(SpinSymRBF, self).__init__(length_scale, length_scale_bounds)
+        self.up_active_dims = up_active_dims
+        self.down_active_dims = down_active_dims
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        Xup = X[:,self.up_active_dims]
+        Xdown = X[:,self.down_active_dims]
+        if Y is not None:
+            Yup = Y[:,self.up_active_dims]
+            Ydown = Y[:,self.down_active_dims]
+        else:
+            Yup = None
+            Ydown = None
+        uppart = super(SpinSymRBF).__call__(Xup, Yup, eval_gradient)
+        downpart = super(SpinSymRBF).__call__(Xdown, Ydown, eval_gradient)
+        if eval_gradient:
+            return uppart[0] + downpart[0], uppart[1] + downpart[1]
+        else:
+            return uppart + downpart
+
+
 class ARBF(RBF):
 
     def __init__(self, order = 1, length_scale=1.0, scale = None,
@@ -634,3 +658,92 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
     def __repr__(self):
         return "{0}(decay_rate={1:.3g})".format(self.__class__.__name__,
                                                 self.decay_rate)
+
+
+class ADKernel(Kernel):
+
+    def __init__(self, k, active_dims):
+        self.k = k
+        self.active_dims = active_dims
+
+    def get_params(self, deep=True):
+        return self.k.get_params()
+
+    @property
+    def hyperparameters(self):
+        """Returns a list of all hyperparameter."""
+        return self.k.hyperparameters
+
+    @property
+    def theta(self):
+        """Returns the (flattened, log-transformed) non-fixed hyperparameters.
+        Note that theta are typically the log-transformed values of the
+        kernel's hyperparameters as this representation of the search space
+        is more amenable for hyperparameter search, as hyperparameters like
+        length-scales naturally live on a log-scale.
+        Returns
+        -------
+        theta : ndarray of shape (n_dims,)
+            The non-fixed, log-transformed hyperparameters of the kernel
+        """
+        return self.k.theta
+
+    @theta.setter
+    def theta(self, theta):
+        """Sets the (flattened, log-transformed) non-fixed hyperparameters.
+        Parameters
+        ----------
+        theta : ndarray of shape (n_dims,)
+            The non-fixed, log-transformed hyperparameters of the kernel
+        """
+        self.k.theta = theta
+
+    @property
+    def bounds(self):
+        """Returns the log-transformed bounds on the theta.
+        Returns
+        -------
+        bounds : ndarray of shape (n_dims, 2)
+            The log-transformed bounds on the kernel's hyperparameters theta
+        """
+        return self.k.bounds
+
+    def __eq__(self, b):
+        return self.k == b.k and self.active_dims == b.active_dims
+
+    def is_stationary(self):
+        """Returns whether the kernel is stationary. """
+        return self.k.is_stationary()
+
+    @property
+    def requires_vector_input(self):
+        """Returns whether the kernel is stationary. """
+        return self.k.requires_vector_input
+
+    def __call__(self, X, Y = None, eval_gradient = False):
+        X = X[:,self.active_dims]
+        if Y is not None:
+            Y = Y[:,self.active_dims]
+        return self.k.__call__(X, Y, eval_gradient)
+
+
+class SpinSymKernel(ADKernel):
+
+    def __init__(self, k, up_active_dims, down_active_dims):
+        self.k = k
+        self.active_dims = active_dims
+        self.down_active_dims = down_active_dims
+
+    def __call__(self, X, Y = None, eval_gradient = False):
+        Xup = X[:,self.up_active_dims]
+        if Y is not None:
+            Yup = Y[:,self.up_active_dims]
+        kup = self.k.__call__(Xup, Yup, eval_gradient)
+        Xdown = X[:,self.down_active_dims]
+        if Y is not None:
+            Ydown = Y[:,self.down_active_dims]
+        kdown = self.k.__call__(Xdown, Ydown, eval_gradient)
+        if eval_gradient:
+            return kup[0] + kdown[0], kup[1] + kdown[1]
+        else:
+            return kup + kdown
