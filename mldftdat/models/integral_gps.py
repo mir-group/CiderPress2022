@@ -476,14 +476,14 @@ class AddEDMGPR2(EDMGPR):
         else:
             const = ConstantKernel(0.527**2)
             rbf = PartialARBF(order = order, length_scale = [0.35] * (num_desc-1),
-                         scale = [0.3, 0.536 * 0.527**2, 0.0428 * 0.527**2],
+                         scale = [0.3, 0.12 * 0.527**2, 0.4 * 0.527**2],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        cov_kernel = rbf * SingleRBF(length_scale=0.3, index = 1)
+        cov_kernel = rbf * SingleRBF(length_scale=0.21, index = 1)
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,

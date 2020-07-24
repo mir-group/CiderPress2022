@@ -156,7 +156,7 @@ class PartialRBF(RBF):
         self.active_dims = active_dims
 
     def __call__(self, X, Y=None, eval_gradient=False):
-        if active_dims is None:
+        if self.active_dims is None:
             X = X[:,self.start:]
             if Y is not None:
                 Y = Y[:,self.start:]
@@ -174,7 +174,7 @@ class ARBF(RBF):
                  scale_bounds = (1e-5, 1e5)):
         super(ARBF, self).__init__(length_scale, length_scale_bounds)
         self.order = order
-        self.scale = scale if (scale is None) else [1.0] * (order + 1)
+        self.scale = scale# if (scale is None) else [1.0] * (order + 1)
         self.scale_bounds = scale_bounds
 
     @property
@@ -183,7 +183,7 @@ class ARBF(RBF):
                               self.scale_bounds,
                               len(self.scale))
 
-    def __call__(self, X, Y=None, eval_gradient=False):
+    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
         if self.anisotropic:#np.iterable(self.length_scale):
             num_scale = len(self.length_scale)
         else:
@@ -205,14 +205,17 @@ class ARBF(RBF):
                 en[-1] += (-1)**k * en[n-k] * sk[k]
             en[-1] /= n + 1
         print('scale', self.scale, type(self.scale))
-        res = self.scale[n] * en[0]
-        if eval_gradient:
-            derivs[:,:,num_scale] = self.scale[n] * en[0]
-        for n in range(1, self.order + 1):
+        #res = self.scale[0] * en[0]
+        #if eval_gradient:
+        #    derivs[:,:,num_scale] = self.scale[0] * en[0]
+        res = 0
+        for n in range(self.order + 1):
             res += self.scale[n] * en[n]
             if eval_gradient:
                 derivs[:,:,num_scale + n] = self.scale[n] * en[n]
         kernel = res
+        if get_sub_kernels:
+            return kernel, en
         en = None
         res = None
 
@@ -335,8 +338,8 @@ class PartialARBF(ARBF):
         self.start = start
         self.active_dims = active_dims
 
-    def __call__(self, X, Y=None, eval_gradient=False):
-        if active_dims is None:
+    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
+        if True:#active_dims is None:
             X = X[:,self.start:]
             if Y is not None:
                 Y = Y[:,self.start:]
@@ -344,7 +347,7 @@ class PartialARBF(ARBF):
             X = X[:,self.active_dims]
             if Y is not None:
                 Y = Y[:,self.active_dims]
-        return super(PartialARBF, self).__call__(X, Y, eval_gradient)
+        return super(PartialARBF, self).__call__(X, Y, eval_gradient, get_sub_kernels)
 
 
 class PartialQARBF(QARBF):
@@ -582,6 +585,18 @@ class SingleRBF(RBF):
         if Y is not None:
             Y = Y[:,self.index:self.index+1]
         return super(SingleRBF, self).__call__(X, Y, eval_gradient)    
+
+class SingleDot(DotProduct):
+
+    def __init__(self, sigma_0=1.0, sigma_0_bounds=(1e-05, 100000.0), index = 0):
+        super(SingleDot, self).__init__(sigma_0, sigma_0_bounds)
+        self.index = index
+
+    def __call__(self, X, Y = None, eval_gradient = False):
+        X = X[:,self.index:self.index+1]
+        if Y is not None:
+            Y = Y[:,self.index:self.index+1]
+        return super(SingleDot, self).__call__(X, Y, eval_gradient)
 
 
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
