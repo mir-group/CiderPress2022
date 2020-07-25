@@ -593,9 +593,15 @@ def predict_exchange(analyzer, model=None, num=1,
         y_pred, std = model.predict(X, return_std = True)
         eps = get_x(y_pred, rho)
         neps = rho * eps
-    elif isinstance(model, Predictor) or hasattr(model, 'coeff_sets'):
+    elif isinstance(model, Predictor):
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps = model.predict(xdesc.transpose(), rho_data)
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    elif hasattr(model, 'coeff_sets'):
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        neps = model.predict(xdesc.transpose(), rho_data, vec_eval = True)
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)

@@ -3,8 +3,13 @@ import numpy as np
 from interpolation.splines import UCGrid, CGrid, nodes
 from interpolation.splines import filter_cubic, eval_cubic
 from mldftdat.models.matrix_rbf import PartialQARBF, qarbf_args
+from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
+                                                   vec_eval_cubic_splines_G_2,\
+                                                   vec_eval_cubic_splines_G_3
+
 
 def get_vec_eval(grid, coeffs, X, N):
+    coeffs = np.expand_dims(coeffs, coeffs.ndim)
     y = np.zeros((X.shape[0], 1))
     dy = np.zeros((X.shape[0], N, 1))
     a_, b_, orders = zip(*grid)
@@ -17,7 +22,7 @@ def get_vec_eval(grid, coeffs, X, N):
     if N == 3:
         vec_eval_cubic_splines_G_3(a_, b_, orders,
                                    coeffs, X, y, dy)
-    return y.reshape(-1), dy.reshape(-1,N)
+    return np.squeeze(y, -1), np.squeeze(dy, -1)
 
 class Evaluator():
 
@@ -33,34 +38,36 @@ class Evaluator():
         self.num = num
 
     def predict_from_desc(self, X, max_order = 3, vec_eval = False):
-        res = 0
+        res = np.zeros(X.shape[0])
         if vec_eval:
-            dres = 0
+            dres = np.zeros(X.shape)
         #print(np.max(X, axis=0))
         #print(np.min(X, axis=0))
         for t in range(self.nterms):
             if (type(self.ind_sets[t]) == int) or len(self.ind_sets[t]) <= max_order:
                 #print(self.scale[t], self.ind_sets[t])
                 if vec_eval:
-                    y, dy += get_vec_eval(self.spline_grids[t],
+                    y, dy = get_vec_eval(self.spline_grids[t],
                                           self.coeff_sets[t],
                                           X[:,self.ind_sets[t]],
-                                          len(self.ind_sets))
+                                          len(self.ind_sets[t]))
                     res += y * self.scale[t]
-                    dres += dy * self.scale[t]
+                    dres[:,self.ind_sets[t]] += dy * self.scale[t]
                 else:
                     res += eval_cubic(self.spline_grids[t],
                                       self.coeff_sets[t],
                                       X[:,self.ind_sets[t]])\
                            * self.scale[t]
         if vec_eval:
-            return res, dres
+            return res, dres[:,1:]
         else:
             return res
 
     def predict(self, X, rho_data, vec_eval = False):
         desc = self.get_descriptors(X, rho_data, num = self.num)
         F = self.predict_from_desc(desc, vec_eval = vec_eval)
+        if vec_eval:
+            F = F[0]
         return self.y_to_xed(F, rho_data)
 
     def dump(self, fname):
