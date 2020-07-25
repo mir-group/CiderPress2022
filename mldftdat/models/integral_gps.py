@@ -442,8 +442,9 @@ class AddEDMGPR(EDMGPR):
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         else:
             const = ConstantKernel(0.527**2)
-            rbf = PartialARBF(order = order, length_scale = [0.132, 0.436, 0.122, 0.0797, 0.093, 0.132,\
-                         0.0976, 0.212, 0.0716, 0.0886][:num_desc], scale = [2e-5, 0.536 * 0.527**2, 0.0428 * 0.527**2, 0.02 * 0.527**2],
+            rbf = PartialARBF(order = order, length_scale = [0.232, 0.436, 0.222, 0.1797, 0.193, 0.232,\
+                         0.1976, 0.312, 0.1716, 0.1886][:num_desc],
+                         scale = [2e-5, 0.536 * 0.527**2, 0.0428 * 0.527**2, 0.05 * 0.527**2],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
