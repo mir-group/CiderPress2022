@@ -235,7 +235,7 @@ class NormGPFunctional(GPFunctional):
         self.evaluator = evaluator
         self.y_to_f_mul = None
         self.desc_list = desc_list = [
-            Descriptor(1, identity, single, mul = 1.0),\
+            Descriptor(1, square, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
             Descriptor(4, identity, single, mul = 1.0),\
             Descriptor(5, identity, single, mul = 1.0),\
@@ -251,7 +251,6 @@ class NormGPFunctional(GPFunctional):
         mat, dmat = mapper.desc_and_ddesc(X.T)
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        dFddesc[:,0] /= 2 * X[:,0] + 1e-20
         return F, dFddesc
 
     def get_F(self, X):
