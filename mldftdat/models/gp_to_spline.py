@@ -37,7 +37,7 @@ class Evaluator():
         self.get_descriptors = get_descriptors
         self.num = num
 
-    def predict_from_desc(self, X, max_order = 3, vec_eval = False):
+    def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0):
         res = np.zeros(X.shape[0])
         if vec_eval:
             dres = np.zeros(X.shape)
@@ -46,20 +46,24 @@ class Evaluator():
         for t in range(self.nterms):
             if (type(self.ind_sets[t]) == int) or len(self.ind_sets[t]) <= max_order:
                 #print(self.scale[t], self.ind_sets[t])
+                if subind > 0:
+                    ind_set = [ind-subind for ind in self.ind_sets[t]]
+                else:
+                    ind_set = self.ind_sets[t]
                 if vec_eval:
                     y, dy = get_vec_eval(self.spline_grids[t],
                                           self.coeff_sets[t],
-                                          X[:,self.ind_sets[t]],
-                                          len(self.ind_sets[t]))
+                                          X[:,ind_set],
+                                          len(ind_set))
                     res += y * self.scale[t]
-                    dres[:,self.ind_sets[t]] += dy * self.scale[t]
+                    dres[:,ind_set] += dy * self.scale[t]
                 else:
                     res += eval_cubic(self.spline_grids[t],
                                       self.coeff_sets[t],
-                                      X[:,self.ind_sets[t]])\
+                                      X[:,ind_set])\
                            * self.scale[t]
         if vec_eval:
-            return res, dres[:,1:]
+            return res, dres
         else:
             return res
 

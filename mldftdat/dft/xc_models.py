@@ -14,6 +14,9 @@ L2_CONTRACT_CODE = 4
 def identity(x):
     return x.copy()
 
+def square(x):
+    return x**2
+
 def single(x):
     return np.ones(x.shape)
 
@@ -224,12 +227,13 @@ class GPFunctional(MLFunctional):
     def get_F_and_derivative(self, X):
         return self.get_F(X), self.get_derivative(X)
 
-
+import mldftdat.models.map_v1 as mapper
 
 class NormGPFunctional(GPFunctional):
 
     def __init__(self, evaluator):
         self.evaluator = evaluator
+        self.y_to_f_mul = None
         self.desc_list = desc_list = [
             Descriptor(1, identity, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
@@ -242,24 +246,16 @@ class NormGPFunctional(GPFunctional):
             Descriptor(16, identity, single, mul = 4.00),\
             Descriptor(13, identity, single, mul = 1.00),\
         ]
-        import mldftdat.models.map_v1 as mapper
-        self.mapper = mapper
 
     def get_F_and_derivative(self, X):
-        mat, dmat = self.mapper.desc_and_ddesc(X.T)
-        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True)
+        mat, dmat = mapper.desc_and_ddesc(X.T)
+        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        dFddesc[:,0] /= 2 * X[:,1] + 1e-20
+        dFddesc[:,0] /= 2 * X[:,0] + 1e-20
         return F, dFddesc
 
     def get_F(self, X):
-        return self.evaluator.predict(X, None, num = 10)
+        return self.get_F_and_derivative(self, X)[0]
 
     def get_derivative(self, X):
-        # dF is ngrid, ndesc
-        # dmat is ndesc, ndesc, ngrid
-        F, dF = self.evaluator.predict(X, None, vec_eval = True)
-        mat, dmat = self.mapper.desc_and_ddesc(X.T)
-        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        dFddesc[:,0] /= 2 * X[:,1] + 1e-20
-        return dFddesc
+        return self.get_F_and_derivative(self, X)[1]
