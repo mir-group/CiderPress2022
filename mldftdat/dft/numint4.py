@@ -329,9 +329,10 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     chkpt = time.monotonic()
 
     if mlfunc.y_to_f_mul is None:
-        F = mlfunc.get_F(desc)
+        #F = mlfunc.get_F(desc)
         # shape (N, ndesc)
-        dF = mlfunc.get_derivative(desc)
+        #dF = mlfunc.get_derivative(desc)
+        F, dF = mlfunc.get_F_and_derivative(desc)
     else:
         F = mlfunc.get_F(desc, s = contracted_desc[1])
         dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)

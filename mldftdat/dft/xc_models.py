@@ -221,25 +221,45 @@ class GPFunctional(MLFunctional):
             term1[:,0] += term2
             return term1
 
-    """
-    def get_eps(self, X, rho_data):
-        return LDA_FACTOR * self.get_F(X) * rho_data[0]**(1.0/3)
+    def get_F_and_derivative(self, X):
+        return self.get_F(X), self.get_derivative(X)
 
-    def get_potential(self, X, gp_deriv, rho_data):
-        v_npa = np.zeros(4, rho_data.shape[1])
-        F = self.get_F(X)
-        dgpdp = np.zeros(rho_data.shape[1])
-        dgpda = np.zeros(rho_data.shape[1])
-        for i, l in enumerate(self.desc_type_list):
-            if l == -1:
-                dgpdp += gp_deriv[:,i]
-            elif l == -2:
-                dgpda += gp_deriv[:,i]
-            else:
-                v_npa += v_nonlocal(rho_data, grid, gp_deriv[:,i],
-                                    ao_to_aux, rdm1, auxmol, g, l = l,
-                                    mul = self.muls[i])
-        v_npa += v_semilocal(rho_data, F, dgpdp, dgpda)
-        return v_basis_transform(rho_data, v_npa)
-    """     
 
+
+class NormGPFunctional(GPFunctional):
+
+    def __init__(self, evaluator):
+        self.evaluator = evaluator
+        self.desc_list = desc_list = [
+            Descriptor(1, identity, single, mul = 1.0),\
+            Descriptor(2, identity, single, mul = 1.0),\
+            Descriptor(4, identity, single, mul = 1.0),\
+            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(8, identity, single, mul = 1.0),\
+            Descriptor(6, identity, single, mul = 1.00),\
+            Descriptor(12, identity, single, mul = 1.00),\
+            Descriptor(15, identity, single, mul = 0.25),\
+            Descriptor(16, identity, single, mul = 4.00),\
+            Descriptor(13, identity, single, mul = 1.00),\
+        ]
+        import mldftdat.models.map_v1 as mapper
+        self.mapper = mapper
+
+    def get_F_and_derivative(self, X):
+        mat, dmat = self.mapper.desc_and_ddesc(X.T)
+        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True)
+        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
+        dFddesc[:,0] /= 2 * X[:,1] + 1e-20
+        return F, dFddesc
+
+    def get_F(self, X):
+        return self.evaluator.predict(X, None, num = 10)
+
+    def get_derivative(self, X):
+        # dF is ngrid, ndesc
+        # dmat is ndesc, ndesc, ngrid
+        F, dF = self.evaluator.predict(X, None, vec_eval = True)
+        mat, dmat = self.mapper.desc_and_ddesc(X.T)
+        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
+        dFddesc[:,0] /= 2 * X[:,1] + 1e-20
+        return dFddesc
