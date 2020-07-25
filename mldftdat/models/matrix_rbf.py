@@ -667,12 +667,20 @@ class ADKernel(Kernel):
         self.active_dims = active_dims
 
     def get_params(self, deep=True):
-        return self.k.get_params()
+        params = dict(k=self.k, active_dims=self.active_dims)
+        if deep:
+            deep_items = self.k.get_params().items()
+            params.update(('k__' + k, val) for k, val in deep_items)
+
+        return params
 
     @property
     def hyperparameters(self):
         """Returns a list of all hyperparameter."""
-        return self.k.hyperparameters
+        return [Hyperparameter("k__" + hyperparameter.name,
+                            hyperparameter.value_type,
+                            hyperparameter.bounds, hyperparameter.n_elements)
+             for hyperparameter in self.k.hyperparameters]
 
     @property
     def theta(self):
@@ -737,17 +745,30 @@ class SpinSymKernel(ADKernel):
 
     def __init__(self, k, up_active_dims, down_active_dims):
         self.k = k
-        self.active_dims = active_dims
+        self.up_active_dims = up_active_dims
         self.down_active_dims = down_active_dims
+
+    def get_params(self, deep=True):
+        params = dict(k=self.k, up_active_dims=self.up_active_dims,
+                      down_active_dims=self.down_active_dims)
+        if deep:
+            deep_items = self.k.get_params().items()
+            params.update(('k__' + k, val) for k, val in deep_items)
+
+        return params
 
     def __call__(self, X, Y = None, eval_gradient = False):
         Xup = X[:,self.up_active_dims]
         if Y is not None:
             Yup = Y[:,self.up_active_dims]
+        else:
+            Yup = None
         kup = self.k.__call__(Xup, Yup, eval_gradient)
         Xdown = X[:,self.down_active_dims]
         if Y is not None:
             Ydown = Y[:,self.down_active_dims]
+        else:
+            Ydown = None
         kdown = self.k.__call__(Xdown, Ydown, eval_gradient)
         if eval_gradient:
             return kup[0] + kdown[0], kup[1] + kdown[1]
