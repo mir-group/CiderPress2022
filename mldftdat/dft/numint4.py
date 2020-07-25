@@ -332,7 +332,11 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         #F = mlfunc.get_F(desc)
         # shape (N, ndesc)
         #dF = mlfunc.get_derivative(desc)
-        F, dF = mlfunc.get_F_and_derivative(desc)
+        tmp = mlfunc.evaluator.get_descriptors(contracted_desc.T, rho_data, num = 10)
+        print(tmp.shape)
+        Ftmp = mlfunc.evaluator.predict_from_desc(tmp) + 1
+        F, dF = mlfunc.get_F_and_derivative(desc, compare = tmp)
+        print(np.linalg.norm(F-Ftmp))
     else:
         F = mlfunc.get_F(desc, s = contracted_desc[1])
         dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
