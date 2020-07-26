@@ -115,6 +115,10 @@ def get_big_desc3(X, num):
     #desc[:,9] = X[:,16] - 0.5 / scale**3
     desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
     desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    invrs = (4 * np.pi * X[:,0] / 3)**(1.0/3)
+    a = (np.log(2) - 1) / (2 * np.pi**2)
+    b = 20.4562557
+    desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
     return desc[:,:num]
 
 def get_rho_and_edmgga_descriptors13(X, rho_data, num=1):
@@ -246,8 +250,8 @@ class CorrGPR2(CorrGPR):
         constss = ConstantKernel(1.0)
         constos = ConstantKernel(1.0)
         ind = np.arange(num_desc * 3)
-        rbfss = PartialRBF([0.3] * (num_desc), active_dims = ind[0:num_desc])
-        rbfos = PartialRBF([0.3] * (num_desc), active_dims = ind[2*num_desc:3*num_desc])
+        rbfss = PartialRBF([0.3] * (num_desc), active_dims = ind[1:num_desc])
+        rbfos = PartialRBF([0.3] * (num_desc), active_dims = ind[2*num_desc+1:3*num_desc])
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=1.0e-5, noise_level_bounds=(1e-06, 1.0e5))
