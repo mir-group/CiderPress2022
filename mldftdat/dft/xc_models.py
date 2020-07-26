@@ -240,21 +240,24 @@ class NormGPFunctional(GPFunctional):
             Descriptor(4, identity, single, mul = 1.0),\
             Descriptor(5, identity, single, mul = 1.0),\
             Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(6, identity, single, mul = 1.00),\
             Descriptor(12, identity, single, mul = 1.00),\
+            Descriptor(6, identity, single, mul = 1.00),\
             Descriptor(15, identity, single, mul = 0.25),\
             Descriptor(16, identity, single, mul = 4.00),\
             Descriptor(13, identity, single, mul = 1.00),\
         ]
 
-    def get_F_and_derivative(self, X):
+    def get_F_and_derivative(self, X, compare = None):
         mat, dmat = mapper.desc_and_ddesc(X.T)
+        if compare is not None:
+            print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        return F, dFddesc
+        return F + 1, dFddesc
 
     def get_F(self, X):
         return self.get_F_and_derivative(self, X)[0]
 
     def get_derivative(self, X):
         return self.get_F_and_derivative(self, X)[1]
+
