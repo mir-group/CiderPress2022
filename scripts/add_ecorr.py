@@ -10,7 +10,10 @@ for root, dirs, files in os.walk(os.environ['MLDFTDB']):
             analyzer = UCCSDAnalyzer.load(fname, max_mem = 1000)
         else:
             analyzer = CCSDAnalyzer.load(fname, max_mem = 1000)
-        analyzer.get_corr_energy_density()
-        print(analyzer.ecorr_dens.shape)
-        analyzer.dump(fname)
+        if analyzer.ecorr_dens is None:
+            analyzer.get_corr_energy_density()
+            print('Calc', root, analyzer.ecorr_dens.shape)
+            analyzer.dump(fname)
+        else:
+            print('Skipping', root)
         #assert new_size > old_size
