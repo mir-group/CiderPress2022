@@ -8,6 +8,7 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
 from pyscf.dft.numint import eval_ao, eval_rho
@@ -1040,6 +1041,7 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
     for d in dirs:
         print(d.split('/')[-1])
         analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        analyzer.get_ao_rho_data()
         atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
         formula = Counter(atoms)
         element_analyzers = {}
@@ -1053,16 +1055,17 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
                 element_analyzers[Z] = CCSDAnalyzer.load(path)
             else:
                 element_analyzers[Z] = UCCSDAnalyzer.load(path)
+            element_analyzers[Z].get_ao_rho_data()
         weights = analyzer.grid.weights
         rho = analyzer.rho_data[0,:]
         condition = rho > 3e-5
         fx_total_ref_true = 0
         for Z in list(formula.keys()):
             restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
-            _, _, fx_total_ref_true += formula[Z] \
-                                 * predict_correlation(
+            _, _, fx_total_ref_tmp = predict_correlation(
                                         element_analyzers[Z], version=version,
                                         restricted = restricted)
+            fx_total_ref_true += formula[Z] * fx_total_ref_tmp
         eps_true, neps_true, fx_total_true = predict_correlation(
                                                 analyzer, version = version)
         fxlst_true.append(fx_total_true)
@@ -1072,11 +1075,11 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
             fx_total_ref = 0
             for Z in list(formula.keys()):
                 restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
-                fx_total_ref += formula[Z] \
-                                * predict_correlation(
-                                    element_analyzers[Z],
-                                    model = model, num = num, version = version,
-                                    restricted = restricted)
+                _, _, fx_total_tmp = predict_correlation(
+                                        element_analyzers[Z],
+                                        model = model, num = num, version = version,
+                                        restricted = restricted)
+                fx_total_ref += formula[Z] * fx_total_tmp
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num, version = version)
             print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
