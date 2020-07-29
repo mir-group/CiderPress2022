@@ -239,7 +239,7 @@ class CorrGPR(DFTGPR):
         X = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
         y = self.gp.predict(X, return_std = return_std)
         if return_std:
-            raise NotImplementedError('Uncertainty for correlationo not fully implemented')
+            raise NotImplementedError('Uncertainty for correlation not fully implemented')
         else:
             return self.y_to_xed(y, rho_data_u, rho_data_d)
 
