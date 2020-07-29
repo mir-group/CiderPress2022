@@ -730,7 +730,10 @@ def predict_correlation(analyzer, model=None, num=1,
         #    xdesc_u, xdesc_d = xdesc, xdesc
         #else:
         #    xdesc_u, xdesc_d = xdesc
-        neps = model.predict(xdesc.T, rho_data)
+        if restricted:
+            neps = model.predict(xdesc.T, rho_data / 2)
+        else:
+            neps = model.predict(np.stack((xdesc[0].T, xdesc[1].T)), rho_data)
     eps = neps / (rho + 1e-20)
     fx_total = np.dot(neps, weights)
     return eps, neps, fx_total
@@ -1080,8 +1083,8 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
                                         model = model, num = num, version = version,
                                         restricted = restricted)
                 fx_total_ref += formula[Z] * fx_total_tmp
-            xef_pred, eps_pred, neps_pred, fx_total_pred = \
-                predict_exchange(analyzer, model = model, num = num, version = version)
+            eps_pred, neps_pred, fx_total_pred = \
+                predict_correlation(analyzer, model = model, num = num, version = version)
             print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
                                                  - (fx_total_ref - fx_total_ref_true))
 

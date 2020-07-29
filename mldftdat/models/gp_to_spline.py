@@ -6,6 +6,7 @@ from mldftdat.models.matrix_rbf import PartialQARBF, qarbf_args
 from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
                                                    vec_eval_cubic_splines_G_2,\
                                                    vec_eval_cubic_splines_G_3
+from sklearn.gaussian_process.kernels import RBF
 
 
 def get_vec_eval(grid, coeffs, X, N):
@@ -119,8 +120,11 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
     aqrbf = gpr.gp.kernel_.k1.k1
     gradk = gpr.gp.kernel_.k1.k2
     dims = [get_dim(d0, gradk.length_scale, density = 4, bound = (0,1))]
-    ndim, length_scale, scale = qarbf_args(gpr.gp.kernel_.k1.k1)
-    scale = np.array(scale)
+    if isinstance(aqrbf, RBF):
+        ndim, length_scale, scale = qarbf_args(gpr.gp.kernel_.k1.k1)
+        scale = np.array(scale)
+    else:
+        scale = aqrbf.scale
     #dims = [(0, 1, 60)]
     bounds = [(0, 1),\
               (-1,1),\
@@ -169,6 +173,9 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
     evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
                           gpr.y_to_xed, gpr.get_descriptors, gpr.num)
+    if not isinstance(aqrbf, RBF):
+        return evaluator
+
     res, en = aqrbf(X, get_sub_kernels = True)
     resg = gradk(X)
     res = np.dot(alpha, aqrbf.scale[0] * resg)
