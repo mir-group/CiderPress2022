@@ -193,6 +193,40 @@ class AQGPR(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
+class CorrGPR(gpytorch.models.ExactGP):
+    def __init__(self, train_x, train_y, likelihood, ndim = 6, veclength = 16):
+        super(BigGPR, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+        #self.mean_module.constant = 0.0
+        self.covar_module_ss = gpytorch.kernels.ScaleKernel(
+            gpytorch.kernels.LinearKernel(active_dims = 0)\
+            * gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
+                active_dims = [i for i in range(1, ndim)]))
+        self.covar_module_os = gpytorch.kernels.ScaleKernel(
+            gpytorch.kernels.LinearKernel(active_dims = 0)\
+            * gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
+                active_dims = [i for i in range(1, ndim)]))
+        self.feature_extractor_ss = FeatureNormalizer(ndim)
+        self.feature_extractor_nn = FeatureNormalizer(ndim)
+        self.covar_module.base_kernel.lengthscale = torch.tensor(
+            [[0.234, 1.04, 0.33, 0.303, 0.418, 0.427, 0.36, 0.255, 0.241, 0.462][:ndim]],
+            dtype=torch.float64)
+        self.covar_module.outputscale = 3.69**2
+
+    def forward(self, x):
+        xup = x[:,:self.veclength]
+        xdown = x[:,self.veclength:]
+        xtot = (xup + xdown) / 2
+        pxup = self.feature_extractor_ss(xup)
+        pxdown = self.feature_extractor_ss(xdown)
+        pxtot = self.feature_extractor_os(xtot)
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module_ss(pxup)\
+                  + self.covar_module_ss(pxdown)\
+                  + self.covar_module_os(pxtot)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
 def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = None, lfbgs = False):
 
     train_x = torch.tensor(train_x)
@@ -223,7 +257,9 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
         print('BIG MODEL')
         model = BigGPR(train_x, train_y, likelihood, ndim = 10)
     elif model_type == 'AQRBF':
-        model = AQGPR(train_x, train_y, likelihood, ndim = 10) 
+        model = AQGPR(train_x, train_y, likelihood, ndim = 10)
+    elif model_type == 'CORR':
+        model = CorrGPR(train_x, train_y, likelihood, ndim = 6)
     else:
         model = BigGPRM(train_x, train_y, likelihood, ndim = 10)
 
