@@ -227,6 +227,44 @@ class GPFunctional(MLFunctional):
     def get_F_and_derivative(self, X):
         return self.get_F(X), self.get_derivative(X)
 
+
+def get_ref_corr(rho_data_u, rho_data_d, ref_functional):
+    cu = eval_xc(ref_functional, (rho_data_u, 0), spin = 1)[0]
+    cd = eval_xc(ref_functional, (rho_data_d, 0), spin = 1)[0]
+
+
+class CorrGPFunctional(GPFunctional):
+
+    def __init__(self, kernel, alpha, X_train, num_desc):
+        self.ref_functional = ',MGGA_C_SCAN'
+        self.desc_list = [
+            Descriptor(1, square, single, mul = 1.0),\
+            Descriptor(2, identity, single, mul = 1.0),\
+            Descriptor(4, identity, single, mul = 1.0),\
+            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(0, identity, single, mul = 1.0)
+        ]
+        cov_kernel = kernel.k1
+        cov_ss = cov_kernel.k1
+        cov_os = cov_kernel.k2
+        const_ss = cov_ss.k1.constant_value
+        const_os = cov_os.k1.constant_value
+        self.alpha_up = const_ss * alpha * X_train[:,0]
+        self.alpha_down = const_ss * alpha * X_train[:,num_desc]
+        self.alpha_os = const_os * alpha * X_train[:,2*num_desc]
+        self.rbf_os = cov_os.k2.k2
+        self.rbf_ss = cov_ss.k2.k.k2
+        self.X_train = X_train
+
+    def get(self, Xup, Xdown):
+        kup = self.rbf_ss(Xup, self.X_train[1:num_desc])
+        kdown = self.rbf_ss(Xdown, self.X_train[num_desc+1:2*num_desc])
+        kos = self.rbf_os((Xup+Xdown)/2, self.X_train[2*num_desc+1:3*num_desc])
+        return np.dot(kup, self.alpha),\
+               np.dot(kdown, self.alpha),\
+               np.dot(kos, self.alpha)
+
+
 import mldftdat.models.map_v1 as mapper
 
 class NormGPFunctional(GPFunctional):
@@ -234,7 +272,7 @@ class NormGPFunctional(GPFunctional):
     def __init__(self, evaluator):
         self.evaluator = evaluator
         self.y_to_f_mul = None
-        self.desc_list = desc_list = [
+        self.desc_list = [
             Descriptor(1, square, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
             Descriptor(4, identity, single, mul = 1.0),\
