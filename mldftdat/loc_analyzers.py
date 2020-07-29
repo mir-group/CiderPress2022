@@ -63,6 +63,14 @@ def get_fx_energy_density_from_aug(aux_mat_gen, mo_to_aux,
     return - 0.25 * fx_energy_density
 
 class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
+    """
+    An implementation of RHFAnalyzer which implements the transformed
+    exchange energy density calculations described in the MLDFTDAT
+    writeup. Pass lam to the loc_fx_energy_density function to
+    tune the lambda parameter. Note: Do not set lam=1.0, lam=0.0,
+    lam < 0, or lam > 1.0, as the first two will crash numerically
+    and the latter two are unphysical. 
+    """
 
     def post_process(self):
         super(RHFAnalyzer, self).post_process()
@@ -138,6 +146,14 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
 
 
 class UHFAnalyzer(lowmem_analyzers.UHFAnalyzer):
+    """
+    An implementation of UHFAnalyzer which implements the transformed
+    exchange energy density calculations described in the MLDFTDAT
+    writeup. Pass lam to the loc_fx_energy_density function to
+    tune the lambda parameter. Note: Do not set lam=1.0, lam=0.0,
+    lam < 0, or lam > 1.0, as the first two will crash numerically
+    and the latter two are unphysical. 
+    """
 
     def post_process(self):
         super(UHFAnalyzer, self).post_process()
