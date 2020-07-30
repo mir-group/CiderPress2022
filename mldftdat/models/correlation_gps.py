@@ -116,7 +116,8 @@ def get_big_desc3(X, num):
     desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
     desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
     invrs = (4 * np.pi * X[:,0] / 3)**(1.0/3)
-    a = (np.log(2) - 1) / (2 * np.pi**2)
+    #a = (np.log(2) - 1) / (2 * np.pi**2)
+    a = 1.0
     b = 20.4562557
     desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
     return desc[:,:num]
@@ -147,6 +148,7 @@ def get_desc_density(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     rhot = rho_data_u[0] + rho_data_d[0]
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
     FUNCTIONAL = ',MGGA_C_SCAN'
+    FUNCTIONAL = ',LDA_C_PW_MOD'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
     cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
@@ -250,19 +252,19 @@ class CorrGPR2(CorrGPR):
         constss = ConstantKernel(1.0)
         constos = ConstantKernel(1.0)
         ind = np.arange(num_desc * 3)
-        rbfss = PartialRBF([0.3] * (num_desc-1), active_dims = ind[1:num_desc])
-        rbfos = PartialRBF([0.3] * (num_desc-1), active_dims = ind[2*num_desc+1:3*num_desc])
+        rbfss = PartialRBF([0.3] * (num_desc-1), active_dims = ind[1:num_desc],
+                length_scale_bounds = (1e-1, 100))
+        rbfos = PartialRBF([0.3] * (num_desc-1), active_dims = ind[2*num_desc+1:3*num_desc],
+                length_scale_bounds = (1e-1, 100))
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
-        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
-        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
         covss = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0) * rbfss
         covss = SpinSymKernel(covss, ind[:num_desc], ind[num_desc:2*num_desc])
         covos = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 2*num_desc) * rbfos
         cov_kernel = constss * covss + constos * covos
         #cov_kernel = constos * rbft
-        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        noise_kernel = wk
         init_kernel = cov_kernel + noise_kernel
         super(CorrGPR, self).__init__(num_desc,
                        descriptor_getter = get_desc_density,

@@ -4,7 +4,7 @@ import torch
 import copy
 import mldftdat.models.nn
 from torch import nn
-from math import pi
+from math import pi, log
 from mldftdat.models.agp import NAdditiveStructureKernel, AQRBF
 from gpytorch.kernels.additive_structure_kernel import AdditiveStructureKernel
 
@@ -118,6 +118,60 @@ class FeatureNormalizer(torch.nn.Module):
         return torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9, d10)[:self.ndim], dim = 1)
 
 
+class CorrFeatureNormalizer(torch.nn.Module):
+
+    def __init__(self, ndim = 6):
+        super(CorrFeatureNormalizer, self).__init__()
+        sprefac = 2 * (3 * pi * pi)**(1.0/3)
+        self.gammax = nn.Parameter(torch.log(torch.tensor(0.004 * (2**(1.0/3) * sprefac)**2,
+            dtype=torch.float64)))
+        self.gamma1 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
+        self.gamma2 = nn.Parameter(torch.log(torch.tensor(0.004, dtype=torch.float64)))
+        self.gamma0a = nn.Parameter(torch.log(torch.tensor(0.5, dtype=torch.float64)))
+        self.gamma0b = nn.Parameter(torch.log(torch.tensor(0.125, dtype=torch.float64)))
+        self.gamma0c = nn.Parameter(torch.log(torch.tensor(2.0, dtype=torch.float64)))
+        self.ndim = ndim
+
+    def forward(self, X):
+        p, alpha = X[:,1]**2, X[:,2]
+
+        fac = (6 * pi**2)**(2.0/3) / (16 * pi)
+        scale = torch.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+        gammax = torch.exp(self.gammax)
+        gamma1 = torch.exp(self.gamma1)
+        gamma2 = torch.exp(self.gamma2)
+        gamma0a = torch.exp(self.gamma0a)
+        gamma0b = torch.exp(self.gamma0c)
+        gamma0c = torch.exp(self.gamma0b)
+
+        refs = gammax / (1 + gammax * p)
+        ref0a = gamma0a / (1 + gamma0a * X[:,4] * scale**3)
+        ref0b = gamma0b / (1 + gamma0b * X[:,15] * scale**3)
+        ref0c = gamma0c / (1 + gamma0c * X[:,16] * scale**3)
+        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+        ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+
+        invrs = (4 * pi * X[:,0] / 3)**(1.0/3)
+        #a = (log(2.0) - 1) / (2 * pi**2)
+        a = 1.0
+        b = 20.4562557
+        d0 = a * torch.log(1 + b * invrs + b * invrs**2)
+        d1 = p * refs
+        d2 = 2 / (1 + alpha**2) - 1.0
+        d3 = (X[:,4] * scale**3 - 2.0) * ref0a
+        d4 = X[:,5]**2 * scale**6 * ref1
+        d5 = X[:,8] * scale**6 * ref2
+        d6 = X[:,12] * scale**3 * refs * torch.sqrt(ref2)
+        d7 = X[:,6] * scale**3 * torch.sqrt(refs) * torch.sqrt(ref1)
+        d8 = (X[:,15] * scale**3 - 8.0) * ref0b
+        d9 = (X[:,16] * scale**3 - 0.5) * ref0c
+        d10 = (X[:,13] * scale**6) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
+        dn = X[:,-1]
+
+        return torch.stack((dn, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10)[:self.ndim+1], dim = 1)
+
+
 class BigGPR(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, ndim = 9):
         super(BigGPR, self).__init__(train_x, train_y, likelihood)
@@ -194,29 +248,34 @@ class AQGPR(gpytorch.models.ExactGP):
 
 
 class CorrGPR(gpytorch.models.ExactGP):
+
     def __init__(self, train_x, train_y, likelihood, ndim = 6, veclength = 16):
-        super(BigGPR, self).__init__(train_x, train_y, likelihood)
+        super(CorrGPR, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         #self.mean_module.constant = 0.0
+        rbf_ss = gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
+                                active_dims = [i for i in range(1, ndim + 1)])
+        rbf_ss.lengthscale = torch.tensor([[0.5] * ndim], dtype=torch.float64)
         self.covar_module_ss = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.LinearKernel(active_dims = 0)\
-            * gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
-                active_dims = [i for i in range(1, ndim)]))
+            gpytorch.kernels.LinearKernel(active_dims = 0) * rbf_ss)
+        rbf_os = gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
+                                active_dims = [i for i in range(1, ndim + 1)])
+        rbf_os.lengthscale = torch.tensor([[0.5] * ndim], dtype=torch.float64)
         self.covar_module_os = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.LinearKernel(active_dims = 0)\
-            * gpytorch.kernels.RBFKernel(ard_num_dims=ndim,
-                active_dims = [i for i in range(1, ndim)]))
-        self.feature_extractor_ss = FeatureNormalizer(ndim)
-        self.feature_extractor_nn = FeatureNormalizer(ndim)
-        self.covar_module.base_kernel.lengthscale = torch.tensor(
-            [[0.234, 1.04, 0.33, 0.303, 0.418, 0.427, 0.36, 0.255, 0.241, 0.462][:ndim]],
-            dtype=torch.float64)
-        self.covar_module.outputscale = 3.69**2
+            gpytorch.kernels.LinearKernel(active_dims = 0) * rbf_os)
+        self.feature_extractor_ss = CorrFeatureNormalizer(ndim)
+        self.feature_extractor_os = CorrFeatureNormalizer(ndim)
+        #self.covar_module.base_kernel.lengthscale = torch.tensor(
+        #    [[0.234, 1.04, 0.33, 0.303, 0.418, 0.427, 0.36, 0.255, 0.241, 0.462][:ndim]],
+        #    dtype=torch.float64)
+        self.up_ind = [i for i in range(veclength)] + [2 * veclength]
+        self.down_ind = [i+veclength for i in range(veclength)] + [2 * veclength + 1]
 
     def forward(self, x):
-        xup = x[:,:self.veclength]
-        xdown = x[:,self.veclength:]
+        xup = x[:,self.up_ind]
+        xdown = x[:,self.down_ind]
         xtot = (xup + xdown) / 2
+        xtot[:,-1] = x[:,-1]
         pxup = self.feature_extractor_ss(xup)
         pxdown = self.feature_extractor_ss(xdown)
         pxtot = self.feature_extractor_os(xtot)
@@ -227,7 +286,8 @@ class CorrGPR(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = None, lfbgs = False):
+def train(train_x, train_y, test_x, test_y, model_type = 'DKL', 
+          fixed_noise = None, lfbgs = False, veclength = None):
 
     train_x = torch.tensor(train_x)
     train_y = torch.tensor(train_y).squeeze()
@@ -259,7 +319,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     elif model_type == 'AQRBF':
         model = AQGPR(train_x, train_y, likelihood, ndim = 10)
     elif model_type == 'CORR':
-        model = CorrGPR(train_x, train_y, likelihood, ndim = 6)
+        model = CorrGPR(train_x, train_y, likelihood, ndim = 6, veclength = veclength)
     else:
         model = BigGPRM(train_x, train_y, likelihood, ndim = 10)
 
@@ -274,7 +334,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL', fixed_noise = No
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 20
+        training_iterations = 500
 
     model.train()
     likelihood.train()
