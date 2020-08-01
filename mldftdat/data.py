@@ -1197,7 +1197,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, beta = 2.0)
+                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = False, beta = 2.0)
                     mf.xc = None
                     #mf.xc = ',MGGA_C_SCAN'
                 else:
@@ -1206,10 +1206,10 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, beta = 2.0)
+                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = False, beta = 2.0)
                     mf.xc = None
                     #mf.xc = ',MGGA_C_SCAN'
-                mf.kernel(dm0 = dm0)
+                mf.kernel(dm0 = None)
                 e_tot = mf.e_tot
                 calc = mf
 

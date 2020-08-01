@@ -148,7 +148,6 @@ def get_desc_density(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     Xt = np.hstack((Xu, Xd, (Xd + Xu) / 2))
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
     FUNCTIONAL = ',MGGA_C_SCAN'
-    FUNCTIONAL = ',LDA_C_PW_MOD'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
     cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
@@ -206,6 +205,7 @@ class CorrGPR(DFTGPR):
         self.y = self.xed_to_y(ced, rho_data_u, rho_data_d)
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
+        print('SHAPE', self.X.shape)
         self.gp.fit(self.X, self.y)
         self.gp.set_params(kernel = self.gp.kernel_)
 
@@ -239,6 +239,7 @@ class CorrGPR(DFTGPR):
         rho_data_u, rho_data_d = spinpol_data(rho_data)
         xdescu, xdescd = spinpol_data(xdesc)
         X = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
+        print('SHAPE', X.shape)
         y = self.gp.predict(X, return_std = return_std)
         if return_std:
             raise NotImplementedError('Uncertainty for correlation not fully implemented')
@@ -251,7 +252,7 @@ class CorrGPR2(CorrGPR):
     def __init__(self, num_desc):
         constss = ConstantKernel(1.0)
         constos = ConstantKernel(1.0)
-        ind = np.arange(num_desc * 3)
+        ind = np.arange(num_desc * 3 + 1)
         rbfss = PartialRBF([0.3] * (num_desc-1), active_dims = ind[1:num_desc],
                 length_scale_bounds = (1e-1, 100))
         rbfos = PartialRBF([0.3] * (num_desc-1), active_dims = ind[2*num_desc+2:3*num_desc+1],
@@ -279,7 +280,7 @@ class CorrGPR2(CorrGPR):
 def get_desc_tot(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     X = (Xu + Xd) / 2
     X = get_big_desc3(X, num)
-    zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] - Xd[:,0])
+    zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
     zeta = zeta**2
     rhot = rho_data_u[0] + rho_data_d[0]
     X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
@@ -315,15 +316,14 @@ class CorrGPR3(CorrGPR):
     def __init__(self, num_desc):
         const = ConstantKernel(1.0)
         ind = np.arange(num_desc + 2)
-        rbf = PartialRBF([0.3] * (num_desc-1), active_dims = ind[2:num_desc+2])
+        rbf = PartialRBF([0.3] * (num_desc), active_dims = ind[2:num_desc+2])
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
-        covos = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1) * rbfos
-        cov_kernel = constss * covss + constos * covos
+        cov_kernel = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1) * rbf
         init_kernel = cov_kernel + noise_kernel
         super(CorrGPR, self).__init__(num_desc,
                        descriptor_getter = get_desc_tot,
