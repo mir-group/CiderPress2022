@@ -122,6 +122,62 @@ def get_big_desc3(X, num):
     desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
     return desc[:,:num]
 
+def get_big_desc4(X, num):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+
+    gammax = 0.682
+    gamma1 = 0.01552
+    gamma2 = 0.01617
+    gamma0a = 0.64772
+    gamma0b = 0.44065
+    gamma0c = 0.6144
+
+    s = X[:,1]
+    p, alpha = X[:,1]**2, X[:,2]
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+    desc = np.zeros((X.shape[0], 12))
+    refs = gammax / (1 + gammax * s**2)
+    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    ref0a = gamma0a / (1 + X[:,4] * scale**3 * gamma0a)
+    ref0b = gamma0b / (1 + X[:,15] * scale**3 * gamma0b)
+    ref0c = gamma0c / (1 + X[:,16] * scale**3 * gamma0c)
+    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+    ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
+
+    desc[:,0] = X[:,0]
+    #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
+    #desc[:,1] = np.arcsinh(0.5 * sp)
+    #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
+    desc[:,1] = s**2 * refs
+    desc[:,2] = 2 / (1 + alpha**2) - 1.0
+    #desc[:,2] = np.arcsinh(alpha - 1)
+    desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
+    #desc[:,3] = X[:,4] - 2.0 / scale**3
+    desc[:,4] = X[:,5]**2 * scale**6 * ref1
+    desc[:,5] = X[:,8] * scale**6 * ref2
+    desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
+    desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
+    desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
+    desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
+    #desc[:,9] = X[:,16] - 0.5 / scale**3
+    desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+    desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    desc = desc[:,(0,1,3,7,9,5,6,8,2,4,10,11)]
+    invrs = (4 * np.pi * X[:,0] / 3)**(1.0/3)
+    #a = (np.log(2) - 1) / (2 * np.pi**2)
+    a = 1.0
+    b = 20.4562557
+    desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
+    # num=8 should include the important ones
+    return desc[:,:num]
+
 def get_rho_and_edmgga_descriptors13(X, rho_data, num=1):
     X = get_big_desc2(X, num)
     #X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
