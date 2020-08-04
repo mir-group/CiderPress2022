@@ -411,8 +411,8 @@ class CorrGPR3(CorrGPR):
         const = ConstantKernel(1.0)
         ind = np.arange(num_desc + 2)
         #rbf = PartialARBF([0.3] * (num_desc), active_dims = ind[2:num_desc+2])
-        rbf = PartialARBF(order = 2, length_scale = [0.121, 0.94, 0.175, 0.92, 0.207, 0.299, 0.163, 0.594, 0.102, 0.219, 0.527][:num_desc],
-                scale = [1.0, 0.4, 0.2], active_dims = ind[2:num_desc+2])
+        rbf = PartialARBF(order = 3, length_scale = [0.121, 0.94, 0.175, 0.92, 0.207, 0.299, 0.163, 0.594, 0.102, 0.219, 0.527][:num_desc],
+                scale = [0.1, 0.01, 0.05, 0.05], active_dims = ind[2:num_desc+2])
         #rbf = PartialARBF(order = 2, length_scale = [0.121, 0.94, 0.175, 0.92,\
         #        0.207, 0.299, 0.163, 0.594, 0.102, 0.527],
         #        scale = [1.0, 1.0, 1.0], active_dims = ind[[2,3,4,5,6,7,8,9,10,12]])
