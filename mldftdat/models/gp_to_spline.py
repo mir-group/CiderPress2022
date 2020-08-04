@@ -116,7 +116,7 @@ class Evaluator2(Evaluator):
         self.const = const
 
     def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0):
-        return self.const + super(self, Evaluator2).predict_from_desc(
+        return self.const + super(Evaluator2, self).predict_from_desc(
                                 X, max_order, vec_eval, subind)
 
 
@@ -138,7 +138,7 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
     """
     X = gpr.X
     alpha = gpr.gp.alpha_
-    if version == 'a'
+    if version == 'a':
         d0 = X[:,1]
         d1 = X[:,2:]
     elif version == 'b':
@@ -268,21 +268,21 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     version b is for Linear(SCAN) * ARBF(other desc) with X[:,0]=rho
     (used for correlation)
     """
-    X = gpr.X[:,2:]
-    NFEAT = X.shape[1]
+    X = gpr.X
+    d1 = X[:,2:]
+    NFEAT = d1.shape[1]
     alpha = gpr.gp.alpha_
-    print("SHAPES", d0.shape, d1.shape)
     y = gpr.y
     print(gpr.gp.kernel_)
     aqrbf = gpr.gp.kernel_.k1.k2
     dims = []
     if isinstance(aqrbf, RBF):
-        ndim, length_scale, scale = qarbf_args(gpr.gp.kernel_.k1.k1)
+        ndim, length_scale, scale = qarbf_args(aqrbf)
         scale = np.array(scale)
     else:
         scale = aqrbf.scale
     for i in range(NFEAT):
-        dims.append( get_dim(X[:,i], aqrbf.length_scale[i], density = 4, bound=bounds[i+1]) )
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT)]
     k0s = []
@@ -294,7 +294,6 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     spline_grids = []
     ind_sets = []
     for i in range(NFEAT):
-        print(i, dims[0], dims[i+1])
         funcps.append(np.einsum('n,ni->i', alpha, k0s[i]))
         spline_grids.append(UCGrid(dims[i]))
         ind_sets.append((i,))
@@ -307,11 +306,11 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     if triples:
         for i in range(NFEAT - 2):
             for j in range(i+1, NFEAT - 1):
-                for k in range(j+1, NFEAT):
-                    k = np.einsum('ni,nj,nk->nijk', k0s[i], k0s[j], k0s[k])
+                for l in range(j+1, NFEAT):
+                    k = np.einsum('ni,nj,nk->nijk', k0s[i], k0s[j], k0s[l])
                     funcps.append(np.einsum('n,nijk->ijk', alpha, k))
-                    spline_grids.append(UCGrid(dims[i], dims[j], dims[k]))
-                    ind_sets.append((i,j,k))
+                    spline_grids.append(UCGrid(dims[i], dims[j], dims[l]))
+                    ind_sets.append((i,j,l))
     print(spline_grids)
     coeff_sets = []
     for i in range(len(funcps)):
@@ -323,30 +322,23 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
         return evaluator
 
     res, en = aqrbf(X, get_sub_kernels = True)
-    resg = gradk(X)
-    res = np.dot(alpha, aqrbf.scale[0] * resg)
+    res = np.dot(alpha, aqrbf.scale[0])
     print("Comparing K and Kspline!!!")
     print(en[0])
-    tsp = eval_cubic(spline_grids[0],
-                     coeff_sets[0],
-                     X[:,1:2])
-    diff = (d0[:,np.newaxis] - d0[np.newaxis,:]) / gradk.length_scale
-    tk = np.exp(-0.5 * diff**2)
-    print(np.mean(np.abs(gradk(X) - tk)))
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 1))))
+    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 1))))
     print(np.mean(np.abs(res - aqrbf.scale[0] * tsp)))
     print(evaluator.scale[0], scale[0], aqrbf.scale[0])
     print(res[::1000])
     print(tsp[::1000])
     print("checked 1d")
-    print(np.mean(res - evaluator.predict_from_desc(X, max_order = 1)))
-    res += np.dot(alpha, aqrbf.scale[1] * en[1] * resg)
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 2))))
-    res += np.dot(alpha, aqrbf.scale[2] * en[2] * resg)
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 3))))
+    print(np.mean(res - evaluator.predict_from_desc(d1, max_order = 1)))
+    res += np.dot(alpha, aqrbf.scale[1] * en[1])
+    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 2))))
+    res += np.dot(alpha, aqrbf.scale[2] * en[2])
+    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 3))))
 
     ytest = gpr.gp.predict(X)
-    ypred = evaluator.predict_from_desc(X)
+    ypred = evaluator.predict_from_desc(d1)
     test_y = gpr.xed_to_y(test_y, test_rho_data)
     print(np.max(np.abs(ytest - ypred)))
     print(np.max(np.abs(ytest - y)))
