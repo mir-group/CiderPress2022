@@ -575,6 +575,7 @@ def predict_exchange(analyzer, model=None, num=1,
     coords = analyzer.grid.coords
     weights = analyzer.grid.weights
     rho = rho_data[0,:]
+    print('MODEL TYPE', type(model), isinstance(model, CorrGPR))
     if model is None:
         neps = analyzer.get_fx_energy_density()
         eps = neps / (rho + 1e-7)
@@ -709,7 +710,7 @@ def predict_correlation(analyzer, model=None, num=1,
     """
     from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
-    from mldftdat.models.integral_gps import AddEDMGPR, AddEDMGPR2
+    from mldftdat.models.correlation_gps import CorrGPR
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
     coords = analyzer.grid.coords
@@ -724,12 +725,25 @@ def predict_correlation(analyzer, model=None, num=1,
     elif type(model) == str:
         eps = eval_xc(',' + model, rho_data, spin = 0 if restricted else 1)[0]
         neps = eps * rho
+    elif isinstance(model, CorrGPR):
+        from pyscf import lib
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        if restricted:
+            gridsize = xdesc.shape[1]
+        else:
+            gridsize = xdesc[0].shape[1]
+        neps = np.zeros(gridsize)
+        blksize = 20000
+        for p0, p1 in lib.prange(0, gridsize, blksize):
+            if restricted:
+                neps[p0:p1] = model.predict(xdesc.T[p0:p1],
+                                             rho_data[:,p0:p1] / 2)
+            else:
+                neps[p0:p1] = model.predict(np.stack((xdesc[0].T[p0:p1],\
+                                            xdesc[1].T[p0:p1])),
+                                            rho_data[:,:,p0:p1])
     else:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
-        #if restricted:
-        #    xdesc_u, xdesc_d = xdesc, xdesc
-        #else:
-        #    xdesc_u, xdesc_d = xdesc
         if restricted:
             neps = model.predict(xdesc.T, rho_data / 2)
         else:
