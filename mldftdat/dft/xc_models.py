@@ -264,6 +264,56 @@ class CorrGPFunctional(GPFunctional):
                np.dot(kdown, self.alpha),\
                np.dot(kos, self.alpha)
 
+class CorrGPFunctional2(GPFunctional):
+
+    def __init__(self, kernel, alpha, X_train, num_desc):
+        self.ref_functional = ',MGGA_C_SCAN'
+        self.desc_list = [
+            Descriptor(1, square, single, mul = 1.0),\
+            Descriptor(2, identity, single, mul = 1.0),\
+            Descriptor(4, identity, single, mul = 1.0),\
+            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(0, identity, single, mul = 1.0)
+        ]
+        cov_kernel = kernel.k1
+        cov_ss = cov_kernel.k1
+        cov_os = cov_kernel.k2
+        const_ss = cov_ss.k1.constant_value
+        const_os = cov_os.k1.constant_value
+        self.alpha_up = const_ss * alpha * X_train[:,0]
+        self.alpha_down = const_ss * alpha * X_train[:,num_desc]
+        self.alpha_os = const_os * alpha * X_train[:,2*num_desc]
+        self.rbf_os = cov_os.k2.k2
+        self.rbf_ss = cov_ss.k2.k.k2
+        self.X_train = X_train
+
+    def get_F_and_derivative(self, X, rho_data):
+        mat, dmat = mapper.desc_and_ddesc(X.T)
+        if compare is not None:
+            print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
+        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
+
+        FUNCTIONAL = ',MGGA_C_SCAN'
+        rho_data_u, rho_data_d = rho_data
+        eu, vu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[:2]
+        ed, vd = eval_xc(FUNCTIONAL, (0 * rho_data_d, rho_data_d), spin = 1)[:2]
+        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
+        cu = eu * rho_data_u[0]
+        cd = ed * rho_data_d[0]
+        co = eo * (rho_data_u[0] + rho_data_d[0])
+        co -= cu + cd
+        E = F * co
+        for i in range(4):
+            vo[i] -= vu[i] + vd[i]
+            vo[i] *= F
+            vo[i] += vu[i] + vd[i]
+
+        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
+
+        return E, vo, co * dFddesc
+        
+
+
 
 import mldftdat.models.map_v1 as mapper
 
