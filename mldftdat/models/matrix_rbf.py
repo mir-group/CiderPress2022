@@ -364,7 +364,7 @@ class PartialARBF(ARBF):
 
     def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
         # hasattr check for back-compatibility
-        if (not hasattr(self, 'active_dims')) or (active_dims is None):
+        if (not hasattr(self, 'active_dims')) or (self.active_dims is None):
             X = X[:,self.start:]
             if Y is not None:
                 Y = Y[:,self.start:]
