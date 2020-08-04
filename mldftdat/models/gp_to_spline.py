@@ -269,9 +269,10 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     (used for correlation)
     """
     X = gpr.X
+    d0 = X[:,1:]
     d1 = X[:,2:]
     NFEAT = d1.shape[1]
-    alpha = gpr.gp.alpha_
+    alpha = gpr.gp.alpha_ * d0
     y = gpr.y
     print(gpr.gp.kernel_)
     aqrbf = gpr.gp.kernel_.k1.k2
@@ -317,28 +318,28 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
     evaluator = Evaluator2(scale[1:], ind_sets, spline_grids, coeff_sets,
                            gpr.y_to_xed, gpr.get_descriptors, gpr.num,
-                           const = scale[0])
+                           const = scale[0] * np.dot(alpha, d0))
     if not isinstance(aqrbf, RBF):
         return evaluator
 
     res, en = aqrbf(X, get_sub_kernels = True)
-    res = np.dot(alpha, aqrbf.scale[0])
+    res = np.dot(alpha, aqrbf.scale[0] * d0) * d0
     print("Comparing K and Kspline!!!")
     print(en[0])
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 1))))
-    print(np.mean(np.abs(res - aqrbf.scale[0] * tsp)))
+    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 1))))
+    print(np.mean(np.abs(res - evaluator.const * d0)))
     print(evaluator.scale[0], scale[0], aqrbf.scale[0])
     print(res[::1000])
     print(tsp[::1000])
     print("checked 1d")
-    print(np.mean(res - evaluator.predict_from_desc(d1, max_order = 1)))
+    print(np.mean(res - d0 * evaluator.predict_from_desc(d1, max_order = 1)))
     res += np.dot(alpha, aqrbf.scale[1] * en[1])
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 2))))
+    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 2))))
     res += np.dot(alpha, aqrbf.scale[2] * en[2])
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(d1, max_order = 3))))
+    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 3))))
 
     ytest = gpr.gp.predict(X)
-    ypred = evaluator.predict_from_desc(d1)
+    ypred = d0 * evaluator.predict_from_desc(d1)
     test_y = gpr.xed_to_y(test_y, test_rho_data)
     print(np.max(np.abs(ytest - ypred)))
     print(np.max(np.abs(ytest - y)))
