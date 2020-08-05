@@ -302,7 +302,7 @@ class CorrGPFunctional2(GPFunctional):
     def get_F_and_derivative(self, X, rho_data):
         X = (X[0] + X[1]) / 2
         rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
-        mat, dmat = mapper.desc_and_ddesc(X.T)
+        mat, dmat = mapper.desc_and_ddesc_corr(X.T)
         #if compare is not None:
         #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         tmat = np.append(mat, rmat, axis=0)
