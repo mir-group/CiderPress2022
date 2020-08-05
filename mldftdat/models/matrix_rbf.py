@@ -201,6 +201,15 @@ class ARBF(RBF):
         self.scale = scale# if (scale is None) else [1.0] * (order + 1)
         self.scale_bounds = scale_bounds
 
+    def __init__(self, order = 1, length_scale=1.0, scale = None,
+                 length_scale_bounds = (1e-5, 1e5),
+                 scale_bounds = (1e-5, 1e5)):
+        self.length_scale = length_scale
+        self.length_scale_bounds = length_scale_bounds
+        self.order = order
+        self.scale = scale# if (scale is None) else [1.0] * (order + 1)
+        self.scale_bounds = scale_bounds
+
     @property
     def hyperparameter_scale(self):
         return Hyperparameter("scale", "numeric",
@@ -359,6 +368,18 @@ class PartialARBF(ARBF):
                  active_dims = None):
         super(PartialARBF, self).__init__(order, length_scale, scale,
                     length_scale_bounds, scale_bounds)
+        self.start = start
+        self.active_dims = active_dims
+
+    def __init__(self, order = 1, length_scale=1.0, scale = None,
+                 length_scale_bounds = (1e-5, 1e5),
+                 scale_bounds = (1e-5, 1e5), start = 1,
+                 active_dims = None):
+        self.length_scale = length_scale
+        self.length_scale_bounds = length_scale_bounds
+        self.order = order
+        self.scale = scale# if (scale is None) else [1.0] * (order + 1)
+        self.scale_bounds = scale_bounds
         self.start = start
         self.active_dims = active_dims
 

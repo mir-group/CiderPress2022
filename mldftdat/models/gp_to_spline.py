@@ -101,6 +101,13 @@ class Evaluator():
                    state_dict['num'])
 
 
+def spinpol_data(data_arr):
+    if data_arr.ndim == 2:
+        return data_arr, data_arr
+    else:
+        return data_arr[0], data_arr[1]
+
+
 class Evaluator2(Evaluator):
 
     def __init__(self, scale, ind_sets, spline_grids, coeff_sets,
@@ -118,6 +125,16 @@ class Evaluator2(Evaluator):
     def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0):
         return self.const + super(Evaluator2, self).predict_from_desc(
                                 X, max_order, vec_eval, subind)
+
+    def predict(self, X, rho_data, vec_eval = False): 
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(X)
+        desc = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
+        F = self.predict_from_desc(desc[:,2:], vec_eval = vec_eval)
+        if vec_eval:
+            F = F[0]
+        F *= desc[:,1]
+        return self.y_to_xed(F, rho_data_u, rho_data_d)
 
 
 def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
@@ -234,9 +251,9 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
     ytest = gpr.gp.predict(X)
     ypred = evaluator.predict_from_desc(X)
     test_y = gpr.xed_to_y(test_y, test_rho_data)
-    print(np.max(np.abs(ytest - ypred)))
-    print(np.max(np.abs(ytest - y)))
-    print(np.max(np.abs(y - ypred)))
+    print(np.mean(np.abs(ytest - ypred)))
+    print(np.mean(np.abs(ytest - y)))
+    print(np.mean(np.abs(y - ypred)))
     print(np.linalg.norm(ytest - y))
     print(np.linalg.norm(ypred - y))
     print(ytest.shape)
@@ -269,7 +286,7 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     (used for correlation)
     """
     X = gpr.X
-    d0 = X[:,1:]
+    d0 = X[:,1]
     d1 = X[:,2:]
     NFEAT = d1.shape[1]
     alpha = gpr.gp.alpha_ * d0
@@ -283,7 +300,7 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     else:
         scale = aqrbf.scale
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4) )
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 6) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT)]
     k0s = []
@@ -318,37 +335,35 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
     evaluator = Evaluator2(scale[1:], ind_sets, spline_grids, coeff_sets,
                            gpr.y_to_xed, gpr.get_descriptors, gpr.num,
-                           const = scale[0] * np.dot(alpha, d0))
+                           const = scale[0] * np.sum(alpha))
     if not isinstance(aqrbf, RBF):
         return evaluator
 
     res, en = aqrbf(X, get_sub_kernels = True)
-    res = np.dot(alpha, aqrbf.scale[0] * d0) * d0
+    res = np.sum(alpha) * aqrbf.scale[0] * d0
     print("Comparing K and Kspline!!!")
     print(en[0])
-    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 1))))
     print(np.mean(np.abs(res - evaluator.const * d0)))
     print(evaluator.scale[0], scale[0], aqrbf.scale[0])
     print(res[::1000])
-    print(tsp[::1000])
     print("checked 1d")
     print(np.mean(res - d0 * evaluator.predict_from_desc(d1, max_order = 1)))
-    res += np.dot(alpha, aqrbf.scale[1] * en[1])
+    res += np.dot(alpha, aqrbf.scale[1] * en[1]) * d0
+    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 1))))
+    res += np.dot(alpha, aqrbf.scale[2] * en[2]) * d0
     print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 2))))
-    res += np.dot(alpha, aqrbf.scale[2] * en[2])
-    print(np.mean(np.abs(res - d0 * evaluator.predict_from_desc(d1, max_order = 3))))
 
     ytest = gpr.gp.predict(X)
     ypred = d0 * evaluator.predict_from_desc(d1)
-    test_y = gpr.xed_to_y(test_y, test_rho_data)
-    print(np.max(np.abs(ytest - ypred)))
-    print(np.max(np.abs(ytest - y)))
-    print(np.max(np.abs(y - ypred)))
+    print(np.mean(np.abs(ytest - ypred)))
+    print(np.mean(np.abs(ytest - y)))
+    print(np.mean(np.abs(y - ypred)))
     print(np.linalg.norm(ytest - y))
     print(np.linalg.norm(ypred - y))
     print(ytest.shape)
 
     if test_x is not None:
+        test_y = gpr.xed_to_y(test_y, test_rho_data)
         ytest = gpr.xed_to_y(gpr.predict(test_x, test_rho_data), test_rho_data)
         ypred = gpr.xed_to_y(evaluator.predict(test_x, test_rho_data), test_rho_data)
         print(np.max(np.abs(ytest - ypred)))

@@ -412,6 +412,7 @@ class CorrGPR3(CorrGPR):
         ind = np.arange(num_desc + 2)
         #rbf = PartialARBF([0.3] * (num_desc), active_dims = ind[2:num_desc+2])
         rbf = PartialARBF(order = 3, length_scale = [0.121, 0.94, 0.175, 0.92, 0.207, 0.299, 0.163, 0.594, 0.102, 0.219, 0.527][:num_desc],
+                length_scale_bounds="fixed",
                 scale = [0.1, 0.01, 0.05, 0.05], active_dims = ind[2:num_desc+2])
         #rbf = PartialARBF(order = 2, length_scale = [0.121, 0.94, 0.175, 0.92,\
         #        0.207, 0.299, 0.163, 0.594, 0.102, 0.527],
@@ -424,9 +425,11 @@ class CorrGPR3(CorrGPR):
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
+        print ("CHECK FIXED", rbf.hyperparameter_length_scale.fixed, rbf.hyperparameter_scale.fixed, dot.hyperparameter_sigma_0.fixed)
         cov_kernel = dot * rbf
         #cov_kernel = dot + dot * rbf
         init_kernel = cov_kernel + noise_kernel
+        print(init_kernel.theta, init_kernel.bounds)
         super(CorrGPR, self).__init__(num_desc,
                        descriptor_getter = get_desc_tot,
                        xed_y_converter = (ced_to_y_os, y_to_ced_os),
