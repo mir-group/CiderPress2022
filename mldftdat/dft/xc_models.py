@@ -264,6 +264,21 @@ class CorrGPFunctional(GPFunctional):
                np.dot(kdown, self.alpha),\
                np.dot(kos, self.alpha)
 
+
+#import mldftdat.models.map_v2 as mapper_corr
+
+def density_mapper(x1, x2):
+    matrix = np.zeros((2, x1.shape))
+    dmatrix = np.zeros((2, 2, x1.shape))
+
+    matrix[0] = 1.*np.log(1 + 32.97531959770354*(x1 + x2)**0.3333333333333333 + 53.15594987261972*(x1 + x2)**0.6666666666666666)
+    matrix[1] = (x1 - x2)**2/(x1 + x2)**2
+
+    dmatrix[0,0] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
+    dmatrix[0,1] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
+    dmatrix[1,0] = (4*(x1 - x2)*x2)/(x1 + x2)**3
+    dmatrix[1,1] = (-4*x1*(x1 - x2))/(x1 + x2)**3
+
 class CorrGPFunctional2(GPFunctional):
 
     def __init__(self, kernel, alpha, X_train, num_desc):
@@ -273,7 +288,11 @@ class CorrGPFunctional2(GPFunctional):
             Descriptor(2, identity, single, mul = 1.0),\
             Descriptor(4, identity, single, mul = 1.0),\
             Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(0, identity, single, mul = 1.0)
+            Descriptor(8, identity, single, mul = 1.0),\
+            Descriptor(12, identity, single, mul = 1.00),\
+            Descriptor(6, identity, single, mul = 1.00),\
+            Descriptor(15, identity, single, mul = 0.25),\
+            Descriptor(16, identity, single, mul = 4.00),\
         ]
         cov_kernel = kernel.k1
         cov_ss = cov_kernel.k1
@@ -288,10 +307,12 @@ class CorrGPFunctional2(GPFunctional):
         self.X_train = X_train
 
     def get_F_and_derivative(self, X, rho_data):
+        rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
         mat, dmat = mapper.desc_and_ddesc(X.T)
-        if compare is not None:
-            print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
-        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
+        #if compare is not None:
+        #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
+        tmat = np.append(mat, rmat, axis=0)
+        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 1)
 
         FUNCTIONAL = ',MGGA_C_SCAN'
         rho_data_u, rho_data_d = rho_data
@@ -302,13 +323,16 @@ class CorrGPFunctional2(GPFunctional):
         cd = ed * rho_data_d[0]
         co = eo * (rho_data_u[0] + rho_data_d[0])
         co -= cu + cd
-        E = F * co
+        E = F * co + cu + cd
         for i in range(4):
             vo[i] -= vu[i] + vd[i]
             vo[i] *= F
             vo[i] += vu[i] + vd[i]
 
-        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
+        dFddesc = np.einsum('ni,ijn->nj', dF[:,:-2], dmat)
+        dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-2:], rdmat)
+        vo[i][:,0] += co * dFddesc_rho[:,0]
+        vo[i][:,1] += co * dFddesc_rho[:,1]
 
         return E, vo, co * dFddesc
         
