@@ -268,8 +268,8 @@ class CorrGPFunctional(GPFunctional):
 #import mldftdat.models.map_v2 as mapper_corr
 
 def density_mapper(x1, x2):
-    matrix = np.zeros((2, x1.shape))
-    dmatrix = np.zeros((2, 2, x1.shape))
+    matrix = np.zeros((2, x1.shape[0]))
+    dmatrix = np.zeros((2, 2, x1.shape[0]))
 
     matrix[0] = 1.*np.log(1 + 32.97531959770354*(x1 + x2)**0.3333333333333333 + 53.15594987261972*(x1 + x2)**0.6666666666666666)
     matrix[1] = (x1 - x2)**2/(x1 + x2)**2
@@ -279,10 +279,14 @@ def density_mapper(x1, x2):
     dmatrix[1,0] = (4*(x1 - x2)*x2)/(x1 + x2)**3
     dmatrix[1,1] = (-4*x1*(x1 - x2))/(x1 + x2)**3
 
+    return matrix, dmatrix
+
 class CorrGPFunctional2(GPFunctional):
 
-    def __init__(self, kernel, alpha, X_train, num_desc):
+    def __init__(self, evaluator):
         self.ref_functional = ',MGGA_C_SCAN'
+        self.y_to_f_mul = None
+        self.evaluator = evaluator
         self.desc_list = [
             Descriptor(1, square, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
@@ -294,19 +298,9 @@ class CorrGPFunctional2(GPFunctional):
             Descriptor(15, identity, single, mul = 0.25),\
             Descriptor(16, identity, single, mul = 4.00),\
         ]
-        cov_kernel = kernel.k1
-        cov_ss = cov_kernel.k1
-        cov_os = cov_kernel.k2
-        const_ss = cov_ss.k1.constant_value
-        const_os = cov_os.k1.constant_value
-        self.alpha_up = const_ss * alpha * X_train[:,0]
-        self.alpha_down = const_ss * alpha * X_train[:,num_desc]
-        self.alpha_os = const_os * alpha * X_train[:,2*num_desc]
-        self.rbf_os = cov_os.k2.k2
-        self.rbf_ss = cov_ss.k2.k.k2
-        self.X_train = X_train
 
     def get_F_and_derivative(self, X, rho_data):
+        X = (X[0] + X[1]) / 2
         rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
         mat, dmat = mapper.desc_and_ddesc(X.T)
         #if compare is not None:
@@ -335,8 +329,6 @@ class CorrGPFunctional2(GPFunctional):
         vo[i][:,1] += co * dFddesc_rho[:,1]
 
         return E, vo, co * dFddesc
-        
-
 
 
 import mldftdat.models.map_v1 as mapper

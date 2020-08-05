@@ -4,7 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 import numpy as np
-from mldftdat.density import get_x_helper_full, LDA_FACTOR,\
+from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21
 import scipy.linalg
@@ -202,22 +202,6 @@ class NLNumInt(pyscf_numint.NumInt):
         self.mlfunc_x = mlfunc_x
         self.mlfunc_c = mlfunc_c
 
-        if self.mlc:
-            if ss_terms is None:
-                #ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
-                ss_terms = np.array([1.26505033, -1.53922695,  0.2656504,  -1.03855256])
-                self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
-                             (ss_terms[2],3,2), (ss_terms[3],4,2)]
-            else:
-                self.ss_terms = ss_terms
-            if os_terms is None:
-                #os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
-                os_terms = np.array([-1.31971314, -0.32444113,  0.40935749, -3.47602979])
-                self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
-                                 (os_terms[2],3,2), (os_terms[3],0,3)]
-            else:
-                self.os_terms = os_terms
-            
         if vv10_coeff is None:
             self.vv10 = False
         else:
@@ -244,7 +228,7 @@ class NLNumInt(pyscf_numint.NumInt):
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
-        elif has_base_xc:
+        if has_base_xc:
             exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
                                        deriv, omega, verbose)
 
@@ -252,7 +236,7 @@ class NLNumInt(pyscf_numint.NumInt):
             ex, vx, _, _ = _eval_x_0(self.mlfunc_x, mol, rho_data, grid, rdm1)
             ec, vc, _, _ = _eval_c_0(self.mlfunc_c, mol,
                                      (rho_data, rho_data), grid,
-                                     (rdm1[0], rdm1[1]))
+                                     (rdm1, rdm1))
             exc = ex + ec
             # Convert spin-polarized correlation to restricted spin
             vxc = [vx[0] + vc[0][:,0],\
@@ -452,7 +436,7 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
 
     chkpt = time.monotonic()
 
-    density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]).\
+    density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]),\
                np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[1]))
     auxmol = mol.auxmol
     naux = auxmol.nao_nr()
@@ -530,9 +514,10 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
 
 
 def setup_aux(mol, beta):
-    #auxbasis = df.aug_etb(mol, beta = beta)
+    auxbasis = df.aug_etb(mol, beta = beta)
     nao = mol.nao_nr()
-    auxmol = df.make_auxmol(mol, 'weigend')
+    #auxmol = df.make_auxmol(mol, 'weigend')
+    auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
