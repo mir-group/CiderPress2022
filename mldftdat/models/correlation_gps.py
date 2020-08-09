@@ -124,8 +124,8 @@ def get_big_desc3(X, num):
     #a = (np.log(2) - 1) / (2 * np.pi**2)
     a = 1.0
     b = 20.4562557
-    desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
-    return desc[:,:num]
+    desc[:,num] = a * np.log(1 + b * invrs + b * invrs**2)
+    return desc[:,:num+1]
 
 def get_big_desc4(X, num):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
@@ -235,6 +235,7 @@ def get_desc_density2(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     Xt[:,num] = cd / ldac
     Xt[:,2*num] = co / ldac
     return np.hstack((rhot.reshape(-1,1), Xt))
+
 
 def spinpol_data(data_arr):
     if data_arr.ndim == 2:
@@ -356,12 +357,31 @@ class CorrGPR2(CorrGPR):
 
 
 def get_desc_tot(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
     X = (Xu + Xd) / 2
+    X[:,1] = np.sqrt(tmp)
     X = get_big_desc3(X, num)
     zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
     zeta = zeta**2
     rhot = rho_data_u[0] + rho_data_d[0]
     X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
+    ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
+    FUNCTIONAL = ',MGGA_C_SCAN'
+    cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
+    cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
+    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+            * (rho_data_u[0] + rho_data_d[0])
+    co -= cu + cd
+    X[:,1] = co / ldac
+    return X
+
+def get_desc_tot3(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
+    X = (Xu + Xd) / 2
+    X[:,1] = np.sqrt(tmp)
+    X = get_big_desc3(X, num)
+    rhot = rho_data_u[0] + rho_data_d[0]
+    X = np.hstack([rhot.reshape(-1,1), X])
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
     FUNCTIONAL = ',MGGA_C_SCAN'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
@@ -411,9 +431,9 @@ class CorrGPR3(CorrGPR):
         const = ConstantKernel(1.0)
         ind = np.arange(num_desc + 2)
         #rbf = PartialARBF([0.3] * (num_desc), active_dims = ind[2:num_desc+2])
-        rbf = PartialARBF(order = 3, length_scale = [0.121, 0.94, 0.175, 0.92, 0.207, 0.299, 0.163, 0.594, 0.102, 0.219, 0.527][:num_desc],
-                length_scale_bounds="fixed",
-                scale = [0.1, 0.01, 0.05, 0.05], active_dims = ind[2:num_desc+2])
+        rbf = PartialARBF(order = 2, length_scale = [0.3] * num_desc,
+                scale_bounds="fixed",
+                scale = [0.14, 0.01, 1.07], active_dims = ind[2:num_desc+2])
         #rbf = PartialARBF(order = 2, length_scale = [0.121, 0.94, 0.175, 0.92,\
         #        0.207, 0.299, 0.163, 0.594, 0.102, 0.527],
         #        scale = [1.0, 1.0, 1.0], active_dims = ind[[2,3,4,5,6,7,8,9,10,12]])
@@ -431,6 +451,6 @@ class CorrGPR3(CorrGPR):
         init_kernel = cov_kernel + noise_kernel
         print(init_kernel.theta, init_kernel.bounds)
         super(CorrGPR, self).__init__(num_desc,
-                       descriptor_getter = get_desc_tot,
+                       descriptor_getter = get_desc_tot3,
                        xed_y_converter = (ced_to_y_os, y_to_ced_os),
                        init_kernel = init_kernel)

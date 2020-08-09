@@ -23,6 +23,10 @@ mol, ae, en, atoms, calc_rhf, acalcs_rhf = calculate_atomization_energy(os.envir
 print('RHF:', ae, en, atoms)
 
 mol, ae, en, atoms, calc_ccsdt, acalcs_ccsdt = calculate_atomization_energy(os.environ['MLDFTDB'],
+        'CCSD', 'aug-cc-pvtz', 'qm9/3-H2O', mol = mol)
+print('CCSD T-zeta:', ae, en, atoms)
+
+mol, ae, en, atoms, calc_ccsdt, acalcs_ccsdt = calculate_atomization_energy(os.environ['MLDFTDB'],
         'CCSD_T', 'aug-cc-pvtz', 'qm9/3-H2O', mol = mol)
 print('CCSD_T T-zeta:', ae, en, atoms)
 
@@ -41,7 +45,8 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 #mol.build()
 #mlfunc = load('mlfunc10c.joblib')
 #mlfunc.y_to_f_mul = None
-mlfunc = (load('mlfunc10map.joblib'), load('mlfunc_corr.joblib'))
+mlfunc = (load('mlfunc10map.joblib'), load('mlfunc_corr8d.joblib'))
+#mlfunc = load('mlfunc10map.joblib')
 #from mldftdat.dft.xc_models import PBEFunctional, SCANFunctional
 #mlfunc = PBEFunctional()
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],

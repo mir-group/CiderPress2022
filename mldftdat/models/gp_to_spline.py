@@ -123,8 +123,12 @@ class Evaluator2(Evaluator):
         self.const = const
 
     def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0):
-        return self.const + super(Evaluator2, self).predict_from_desc(
+        res = super(Evaluator2, self).predict_from_desc(
                                 X, max_order, vec_eval, subind)
+        if vec_eval:
+            return self.const + res[0], res[1]
+        else:
+            return self.const + res
 
     def predict(self, X, rho_data, vec_eval = False): 
         rho_data_u, rho_data_d = spinpol_data(rho_data)
@@ -293,6 +297,18 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     y = gpr.y
     print(gpr.gp.kernel_)
     aqrbf = gpr.gp.kernel_.k1.k2
+    bounds = [(0, 1),\
+              (-1,1),\
+              (-2*0.64772,1),\
+              (0,1),\
+              (0,1),\
+              (-1,1),\
+              (-1,1),\
+              (-8*0.44065,1),\
+              (-0.5*0.6144,1),\
+              (-1,1),\
+              (0,1.5 * np.max(X[:,-1]))]
+    print('minmax', np.max(X[:,-2]), np.min(X[:,-2]))
     dims = []
     if isinstance(aqrbf, RBF):
         ndim, length_scale, scale = qarbf_args(aqrbf)
@@ -300,7 +316,7 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     else:
         scale = aqrbf.scale
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 6) )
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound = bounds[i]) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT)]
     k0s = []

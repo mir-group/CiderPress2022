@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod, abstractproperty
 import numpy as np
+from pyscf.dft.libxc import eval_xc
 
 """
 NORMALIZED_GRAD_CODE = -1
@@ -272,12 +273,12 @@ def density_mapper(x1, x2):
     dmatrix = np.zeros((2, 2, x1.shape[0]))
 
     matrix[0] = 1.*np.log(1 + 32.97531959770354*(x1 + x2)**0.3333333333333333 + 53.15594987261972*(x1 + x2)**0.6666666666666666)
-    matrix[1] = (x1 - x2)**2/(x1 + x2)**2
+    matrix[1] = (x1 - x2)**2/(x1 + x2 + 0.5e-20)**2
 
-    dmatrix[0,0] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
-    dmatrix[0,1] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
-    dmatrix[1,0] = (4*(x1 - x2)*x2)/(x1 + x2)**3
-    dmatrix[1,1] = (-4*x1*(x1 - x2))/(x1 + x2)**3
+    dmatrix[0,0] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2 + 1e-20)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
+    dmatrix[0,1] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2 + 1e-20)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
+    dmatrix[1,0] = (4*(x1 - x2)*x2)/(x1 + x2 + 0.5e-20)**3
+    dmatrix[1,1] = (-4*x1*(x1 - x2))/(x1 + x2 + 0.5e-20)**3
 
     return matrix, dmatrix
 
@@ -299,14 +300,22 @@ class CorrGPFunctional2(GPFunctional):
             Descriptor(16, identity, single, mul = 4.00),\
         ]
 
-    def get_F_and_derivative(self, X, rho_data):
+    def get_F_and_derivative(self, X, rho_data, compare = None):
+        # TODO: The derivative wrt p is incorrect, must take into account
+        # spin polarization
+        #tmp = ( np.sqrt(X[0][:,0]) + np.sqrt(X[1][:,0]) ) / 2
         X = (X[0] + X[1]) / 2
+        #X[:,0] = tmp**2
         rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
         mat, dmat = mapper.desc_and_ddesc_corr(X.T)
         #if compare is not None:
         #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         tmat = np.append(mat, rmat, axis=0)
-        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 1)
+        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 0)
+        if compare is not None:
+            Xinit = compare
+            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
+            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
 
         FUNCTIONAL = ',MGGA_C_SCAN'
         rho_data_u, rho_data_d = rho_data
@@ -317,18 +326,87 @@ class CorrGPFunctional2(GPFunctional):
         cd = ed * rho_data_d[0]
         co = eo * (rho_data_u[0] + rho_data_d[0])
         co -= cu + cd
-        E = F * co + cu + cd
+        E = (F * co + cu + cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
+        vo = list(vo)
         for i in range(4):
-            vo[i] -= vu[i] + vd[i]
-            vo[i] *= F
-            vo[i] += vu[i] + vd[i]
+            j = 2 if i == 1 else 1
+            vo[i][:,0] -= vu[i][:,0]
+            vo[i][:,j] -= vd[i][:,j]
+            vo[i] *= F.reshape(-1,1)
+            vo[i][:,0] += vu[i][:,0]
+            vo[i][:,j] += vd[i][:,j]
 
         dFddesc = np.einsum('ni,ijn->nj', dF[:,:-2], dmat)
+        #dF[:,-1] = 0
         dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-2:], rdmat)
-        vo[i][:,0] += co * dFddesc_rho[:,0]
-        vo[i][:,1] += co * dFddesc_rho[:,1]
+        vo[0][:,0] += co * dFddesc_rho[:,0]
+        vo[0][:,1] += co * dFddesc_rho[:,1]
 
-        return E, vo, co * dFddesc
+        return E, vo, co.reshape(-1,1) * dFddesc
+
+
+class CorrGPFunctional4(GPFunctional):
+
+    def __init__(self, evaluator):
+        self.ref_functional = ',MGGA_C_SCAN'
+        self.y_to_f_mul = None
+        self.evaluator = evaluator
+        self.desc_list = [
+            Descriptor(1, square, single, mul = 1.0),\
+            Descriptor(2, identity, single, mul = 1.0),\
+            Descriptor(4, identity, single, mul = 1.0),\
+            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(8, identity, single, mul = 1.0),\
+            Descriptor(12, identity, single, mul = 1.00),\
+            Descriptor(6, identity, single, mul = 1.00),\
+            Descriptor(15, identity, single, mul = 0.25),\
+            Descriptor(16, identity, single, mul = 4.00),\
+            Descriptor(13, identity, single, mul = 1.00)
+        ]
+
+    def get_F_and_derivative(self, X, rho_data, compare = None):
+        # TODO: The derivative wrt p is incorrect, must take into account
+        # spin polarization
+        #tmp = ( np.sqrt(X[0][:,0]) + np.sqrt(X[1][:,0]) ) / 2
+        X = (X[0] + X[1]) / 2
+        #X[:,0] = tmp**2
+        rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
+        mat, dmat = mapper.desc_and_ddesc(X.T)
+        #if compare is not None:
+        #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
+        tmat = np.append(mat, rmat[:1], axis=0)
+        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 0)
+        if compare is not None:
+            Xinit = compare
+            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
+            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
+
+        FUNCTIONAL = ',MGGA_C_SCAN'
+        rho_data_u, rho_data_d = rho_data
+        eu, vu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[:2]
+        ed, vd = eval_xc(FUNCTIONAL, (0 * rho_data_d, rho_data_d), spin = 1)[:2]
+        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
+        cu = eu * rho_data_u[0]
+        cd = ed * rho_data_d[0]
+        co = eo * (rho_data_u[0] + rho_data_d[0])
+        co -= cu + cd
+        E = (F * co + cu + cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
+        vo = list(vo)
+        for i in range(4):
+            j = 2 if i == 1 else 1
+            vo[i][:,0] -= vu[i][:,0]
+            vo[i][:,j] -= vd[i][:,j]
+            vo[i] *= F.reshape(-1,1)
+            vo[i][:,0] += vu[i][:,0]
+            vo[i][:,j] += vd[i][:,j]
+
+        dFddesc = np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
+        #dF[:,-1] = 0
+        dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-1:], rdmat[:1,:])
+        vo[0][:,0] += co * dFddesc_rho[:,0]
+        vo[0][:,1] += co * dFddesc_rho[:,1]
+
+        return E, vo, co.reshape(-1,1) * dFddesc
 
 
 import mldftdat.models.map_v1 as mapper

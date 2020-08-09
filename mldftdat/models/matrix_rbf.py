@@ -228,7 +228,14 @@ class ARBF(RBF):
         sk = []
         scale_terms = []
         if eval_gradient:
-            derivs = np.zeros((X.shape[0], Y.shape[0], num_scale + len(self.scale)))
+            deriv_size = 0
+            if not self.hyperparameter_length_scale.fixed:
+                deriv_size += num_scale
+            else:
+                num_scale = 0
+            if not self.hyperparameter_scale.fixed:
+                deriv_size += len(self.scale)
+            derivs = np.zeros((X.shape[0], Y.shape[0], deriv_size))
         for i in range(self.order):
             sk.append(np.sum(k0**(i+1), axis=-1))
         en = [1]
@@ -237,14 +244,14 @@ class ARBF(RBF):
             for k in range(n):
                 en[-1] += (-1)**k * en[n-k] * sk[k]
             en[-1] /= n + 1
-        print('scale', self.scale, type(self.scale))
+        print('scale', self.scale, self.length_scale)
         #res = self.scale[0] * en[0]
         #if eval_gradient:
         #    derivs[:,:,num_scale] = self.scale[0] * en[0]
         res = 0
         for n in range(self.order + 1):
             res += self.scale[n] * en[n]
-            if eval_gradient:
+            if eval_gradient and not self.hyperparameter_scale.fixed:
                 derivs[:,:,num_scale + n] = self.scale[n] * en[n]
         kernel = res
         if get_sub_kernels:
@@ -252,7 +259,7 @@ class ARBF(RBF):
         en = None
         res = None
 
-        if eval_gradient:
+        if eval_gradient and not self.hyperparameter_length_scale.fixed:
             inds = np.arange(X.shape[1])
             for ind in inds:
                 den = [np.zeros(X.shape)]
@@ -276,6 +283,8 @@ class ARBF(RBF):
                 den = None
             print(type(kernel), type(derivs))
             print(kernel.shape, derivs.shape)
+        
+        if eval_gradient:
             return kernel, derivs
         
         print(type(kernel))
@@ -362,17 +371,8 @@ class QARBF(StationaryKernelMixin, Kernel):
 
 class PartialARBF(ARBF):
 
-    def __init__(self, order = 1, length_scale=1.0, scale = None,
-                 length_scale_bounds = (1e-5, 1e5),
-                 scale_bounds = (1e-5, 1e5), start = 1,
-                 active_dims = None):
-        super(PartialARBF, self).__init__(order, length_scale, scale,
-                    length_scale_bounds, scale_bounds)
-        self.start = start
-        self.active_dims = active_dims
-
-    def __init__(self, order = 1, length_scale=1.0, scale = None,
-                 length_scale_bounds = (1e-5, 1e5),
+    def __init__(self, order = 1, length_scale=1.0,
+                 length_scale_bounds = (1e-5, 1e5), scale = 1.0,
                  scale_bounds = (1e-5, 1e5), start = 1,
                  active_dims = None):
         self.length_scale = length_scale
@@ -385,6 +385,8 @@ class PartialARBF(ARBF):
 
     def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
         # hasattr check for back-compatibility
+        if not np.iterable(self.scale):
+            self.scale = [self.scale] * (self.order + 1)
         if (not hasattr(self, 'active_dims')) or (self.active_dims is None):
             X = X[:,self.start:]
             if Y is not None:
