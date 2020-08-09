@@ -2,6 +2,9 @@ import numpy as np
 from mldftdat.pyscf_utils import *
 from mldftdat.workflow_utils import safe_mem_cap_mb
 from pyscf.dft.numint import eval_ao, make_mask
+from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
+                             contract_exchange_descriptors,\
+                             contract21_deriv, contract21
 
 def dtauw(rho_data):
     return - get_gradient_magnitude(rho_data)**2 / (8 * rho_data[0,:]**2 + 1e-16),\
@@ -441,6 +444,7 @@ def functional_derivative_loop(mol, mlfunc, dEddesc, contracted_desc,
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho_data[0]**(4.0/3)
     svec = rho_data[1:4] / (sprefac * n43 + 1e-20)
+    v_npa = np.zeros((4, N))
     v_aniso = np.zeros((3, N))
     v_aux = np.zeros(naux)
 

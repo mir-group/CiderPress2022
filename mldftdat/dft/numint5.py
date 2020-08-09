@@ -244,15 +244,17 @@ class NLNumInt(pyscf_numint.NumInt):
                    vx[2] + vc[2][:,0],\
                    vx[3] + vc[3][:,0],\
                    vx[4] + vc[4][:,:,0],\
-                   vx[5] + vx[5][0,:,:]
+                   vx[5] + vc[5][0,:,:]
             ]
         else:
             uterms = _eval_x_0(self.mlfunc_x, mol, 2 * rho_data[0], grid, 2 * rdm1[0])
             dterms = _eval_x_0(self.mlfunc_x, mol, 2 * rho_data[1], grid, 2 * rdm1[1])
-            ec, vc, _, _ = _eval_c_0(self.mlfunc_c, mol, 2 * rho_data, grid, 2 * rdm1)
+            ec, vc, _, _ = _eval_c_0(self.mlfunc_c, mol, (2 * rho_data[0], 2 * rho_data[1]),
+                                     grid, (2 * rdm1[0], 2 * rdm1[1]))
             exc  = uterms[0] * rho_data[0][0,:]
             exc += dterms[0] * rho_data[1][0,:]
-            exc /= (rho_data[0][0,:] + rho_data[1][0,:])
+            exc /= (rho_data[0][0,:] + rho_data[1][0,:] + 1e-20)
+            exc += ec
             vrho = np.zeros((N, 2))
             vsigma = np.zeros((N, 3))
             vlapl = np.zeros((N, 2))
@@ -264,7 +266,7 @@ class NLNumInt(pyscf_numint.NumInt):
             vrho[:,1] = dterms[1][0] + vc[0][:,1]
 
             vsigma[:,0] = 2 * uterms[1][1] + vc[1][:,0]
-            vsigma[:,1] = vc[:,1]
+            vsigma[:,1] = vc[1][:,1]
             vsigma[:,2] = 2 * dterms[1][1] + vc[1][:,2]
 
             vlapl[:,0] = uterms[1][2] + vc[2][:,0]
@@ -474,11 +476,8 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
     # wrt the inputs to pyscf eval_xc function. I.e. it should
     # apply to the reference functional.
     ec, vref, dec = mlfunc.get_F_and_derivative(desc,
-                        (rho_data[0]/2, rho_data[1]/2))
-    v_npa = [None, None]
-    dgpdp = np.zeros((2, rho_data.shape[1]))
-    dgpda = np.zeros((2, rho_data.shape[1]))
-    dEddesc = (dec[0] * ddesc[0], dec[1] * ddesc[1])
+                        (rho_data[0]/2, rho_data[1]/2), compare=contracted_desc)
+    dEddesc = (dec * ddesc[0] * 0.5, dec * ddesc[1] * 0.5)
 
     print('run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -496,8 +495,8 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
                 rho_data[spin], density[spin],
                 ovlps[spin], grid)
 
-    v_nst = np.stack(v_nst, axis=1)
-    v_grad = np.stack(v_grad, axis=2)
+    v_nst = np.stack(v_nst, axis=-1)
+    v_grad = np.stack(v_grad, axis=-1)
     vmol = np.stack(vmol, axis=0)
 
     print('v_nonlocal', time.monotonic() - chkpt)
@@ -510,14 +509,14 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
     vtot[1][:,2] += 2 * v_nst[1][:,1]
     vtot[2] += v_nst[2]
     vtot[3] += v_nst[3]
-    return exc, (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
+    return ec, (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
 
 
 def setup_aux(mol, beta):
     auxbasis = df.aug_etb(mol, beta = beta)
     nao = mol.nao_nr()
-    #auxmol = df.make_auxmol(mol, 'weigend')
-    auxmol = df.make_auxmol(mol, auxbasis)
+    auxmol = df.make_auxmol(mol, 'weigend')
+   # auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
