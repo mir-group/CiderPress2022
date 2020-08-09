@@ -312,7 +312,7 @@ class CorrGPFunctional2(GPFunctional):
         #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         tmat = np.append(mat, rmat, axis=0)
         F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 0)
-        if compare is not None:
+        if False:#compare is not None:
             Xinit = compare
             test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
             print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
