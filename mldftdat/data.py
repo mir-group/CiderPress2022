@@ -1302,3 +1302,43 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     return mol, atomization_energy, mol_energy, atomic_energies, mol_calc, atomic_calcs
     
+
+def get_accdb_formula_entry(entry_names, fname):
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            lines[i] = line.split(',')
+        formulas = {}
+        for line in lines:
+            counts = line[1:-1:2]
+            structs = line[2:-1:2]
+            energy = float(line[-1])
+            counts = [int(c) for c in counts]
+            formulas[line[0]] = {'structs': structs, 'counts': counts, 'energy': energy}
+    if type(entry_names) == str:
+        return formulas[entry_names]
+    res = {}
+    for name in entry_names:
+        res[name] = formulas[name]
+    return res
+
+def get_run_total_energy(dirname):
+    with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    return data['e_tot']
+
+def get_accdb_data(formula, functional, basis):
+
+    pred_energy = 0
+    for sname, count in zip(formula[structs], formula[counts]):
+        struct, mol_id, spin, charge = read_accdb_struct(sname)
+        if spin == 0:
+            CALC_TYPE = 'RKS'
+        else:
+            CALC_TYPE = 'UKS'
+        dname = get_save_dir(ROOT, CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
+        pred_energy += count * get_run_total_energy(dname)
+
+    return pred_energy, energy
+
+
