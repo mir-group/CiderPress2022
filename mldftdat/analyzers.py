@@ -7,6 +7,7 @@ import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
 import psutil
+from pyscf.scf.hf import get_jk
 
 
 def recursive_remove_none(obj):
@@ -569,6 +570,8 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.get_corr_energy_density()
 
 
+from mldftdat.data import density_similarity
+
 class XCPotentialAnalyzer():
 
     def __init__(self, analyzer):
@@ -593,6 +596,7 @@ class XCPotentialAnalyzer():
         Returns the wf_term as well as mu_max (most negative
         eigenvalue of G), h1e_ao, and the Hartree potential.
         """
+        from scipy.linalg import eigvalsh
         no_occ, no_coeff, no_rdm2, no_eri = self.get_no_rdm()
         print(no_occ)
         #eri_trace = np.sum(no_eri * no_rdm2, axis = (2,3))
@@ -602,11 +606,13 @@ class XCPotentialAnalyzer():
         for i in range(nno):
             for j in range(nno):
                 eri_trace[i,j] = np.sum(no_rdm2[j,:,:,:] * no_eri[i,:,:,:])
+        #eri_trace *= 2
         h1e_ao = self.analyzer.calc._scf.get_hcore(self.analyzer.mol)
         #no_ao_coeff = np.dot()
         h1e_no = transform_basis_1e(h1e_ao, self.analyzer.mo_coeff)
         h1e_no = transform_basis_1e(h1e_no, no_coeff)
         lambda_ij = np.dot(h1e_no, np.diag(no_occ)) + eri_trace
+        print(np.linalg.eigvalsh(lambda_ij))
         vs_xc = self.analyzer.get_ee_energy_density()\
                 - self.analyzer.get_ha_energy_density()
         ao_data, rho_data = get_mgga_data(
@@ -618,26 +624,45 @@ class XCPotentialAnalyzer():
         eps_wf = np.dot(no, lambda_ij)
         eps_wf = np.einsum('ni,ni->n', no, eps_wf)
         eps_wf /= (rho_data[0] + 1e-20)
-        mu_max = np.min(np.linalg.eigvalsh(lambda_ij))
+        fac = np.sqrt(np.outer(no_occ, no_occ) + 1e-10)
+        mu_max = np.max(np.linalg.eigvalsh(lambda_ij / fac))
+        mu_max = np.max(eigvalsh(lambda_ij, np.diag(no_occ + 1e-10)))
+        print('MU_MAX', mu_max)
         return vs_xc - eps_wf + tau_rho, mu_max, h1e_ao,\
             2 * self.analyzer.get_ha_energy_density() / (rho_data[0] + 1e-20)
+        #return eps_wf, mu_max, h1e_ao,\
+        #    2 * self.analyzer.get_ha_energy_density() / (rho_data[0] + 1e-20)
 
-    def initial_dft_guess(self, mu_max):
-        mf = run_scf(self.analyzer.mol, 'RKS', functional = 'SCAN')
+    def initial_dft_guess(self, mu_max, return_mf = False):
+        from pyscf import lib
+        mf = run_scf(self.analyzer.mol, 'RKS', functional = 'PBE')
         ao_data, rho_data = get_mgga_data(self.analyzer.mol,
             self.analyzer.grid, mf.make_rdm1())
         mo_data = np.dot(ao_data[0], mf.mo_coeff)**2
         ehomo = np.max(mf.mo_energy[mf.mo_occ > 1e-10])
         mo_energy = mf.mo_energy + mu_max - ehomo
         tau_rho = rho_data[5] / (rho_data[0] + 1e-20)
+        print('KS', mf.mo_energy, ehomo)
         eps_ks = np.dot(mo_data, mf.mo_occ * mo_energy)
         eps_ks /= (rho_data[0] + 1e-20)
-        return eps_ks - tau_rho, rho_data, mf.make_rdm1()
+        dm = mf.make_rdm1()
+        if return_mf:
+            dm = lib.tag_array(dm, mo_coeff=mf.mo_coeff, mo_occ=mf.mo_occ,
+                               mo_energy=mf.mo_energy)
+            return rho_data, dm, mf
+        else:
+            return eps_ks - tau_rho, rho_data, dm
+
+    def initialize_for_scf(self):
+        self.wf_term, self.mu_max, self.h1e_ao, self.vha = \
+            self.compute_lambda_ij()
+        self.ao_data = eval_ao(self.analyzer.mol,
+                               self.analyzer.grid.coords,
+                               deriv = 2)
+        self.analyzer.get_ao_rho_data()
 
     def solve_vxc(self):
-        from mldftdat.data import density_similarity
         from scipy.linalg import eigh
-        from pyscf.scf.hf import get_jk
         mol = self.analyzer.mol
         wf_term, mu_max, h1e_ao, vha = self.compute_lambda_ij()
         ks_term, ks_rho_data, dm = self.initial_dft_guess(mu_max)
@@ -652,7 +677,7 @@ class XCPotentialAnalyzer():
         iter_num = 0
         init_sim = density_similarity(self.analyzer.rho_data,
             ks_rho_data, self.analyzer.grid, mol, exponent = 1, inner_r = 0.01)
-        while iter_num < 1000 and np.dot(np.abs(vxc - vxc_old), weight) > 1e-8:
+        while iter_num < 4000 and np.dot(np.abs(vxc - vxc_old), weight) > 1e-8:
             vxc_old = vxc
             vrho = vxc + vha
             #vrho = vxc
@@ -666,6 +691,7 @@ class XCPotentialAnalyzer():
             mocc = coeff[:,occ>0]
             dm = np.dot(mocc*occ[occ>0], mocc.conj().T)
             ehomo = np.max(energy[occ > 1e-10])
+            #print(ehomo, mu_max, 2 * (ehomo - mu_max))
             energy += mu_max - ehomo
             rho_data = eval_rho2(mol, ao_data, coeff, occ, xctype='MGGA')
             tau_rho = rho_data[5] / (rho_data[0] + 1e-20)
@@ -673,9 +699,19 @@ class XCPotentialAnalyzer():
             eps_ks = np.dot(mo_data, occ * energy)
             eps_ks /= rho_data[0] + 1e-20
             ks_term = eps_ks - tau_rho
-            vxc = wf_term + ks_term
+            ds = density_similarity(self.analyzer.rho_data,
+                    rho_data, self.analyzer.grid, mol,
+                    exponent = 1, inner_r = 0.01)
+            if ds[0] > 0.01:
+                vxc = (wf_term + ks_term) * 0.001 + 0.999 * vxc
+            elif ds[0] > 0.004:
+                vxc = (wf_term + ks_term) * 0.01 + 0.99 * vxc
+            elif ds[0] > 0.0008:
+                vxc = (wf_term + ks_term) * 0.1 + 0.9 * vxc
+            else:
+                vxc = wf_term + ks_term
             iter_num += 1
-            print('iter', iter_num, np.dot(np.abs(vxc - vxc_old), weight))
+            print('iter', iter_num, np.dot(np.abs(vxc - vxc_old), weight), ds)
         print('iter', iter_num, np.dot(np.abs(vxc - vxc_old), weight))
         final_sim = density_similarity(self.analyzer.rho_data,
             rho_data, self.analyzer.grid, mol,
@@ -685,3 +721,78 @@ class XCPotentialAnalyzer():
         print(np.dot(ks_rho_data[0], weight))
         return vxc, rho_data, np.dot(np.abs(vxc - vxc_old), weight)
 
+    def get_veff(self, mol, dm, dm_last=None, vhf_last=None,
+                 hermi=1, vhfopt=None):
+
+        mo_occ = dm.mo_occ
+        mo_coeff = dm.mo_coeff
+        mo_energy = dm.mo_energy
+        mu_max = self.mu_max
+        wf_term = self.wf_term
+        ao_data = self.ao_data
+        weight = self.analyzer.grid.weights
+        ao = ao_data[0]
+
+        ehomo = np.max(mo_energy[mo_occ > 0])
+        mo_energy = mo_energy + mu_max - ehomo
+        rho_data = eval_rho2(mol, ao_data, mo_coeff, mo_occ, xctype='MGGA')
+        tau_rho = rho_data[5] / (rho_data[0] + 1e-20)
+        mo_data = np.dot(ao, mo_coeff)**2
+        eps_ks = np.dot(mo_data, mo_occ * mo_energy)
+        eps_ks /= rho_data[0] + 1e-20
+        ks_term = eps_ks - tau_rho
+        vrho = ks_term + wf_term
+
+        aow = np.einsum('pi,p->pi', ao, .5*weight*vrho)
+        vmat = np.dot(ao.T, aow)
+
+        return vmat + vmat.T + get_jk(mol, dm)[0]
+
+    def scf(self, **kwargs):
+
+        from pyscf.lib import logger
+
+        import time
+        self.initialize_for_scf()
+        rho_data, dm0, mf = self.initial_dft_guess(self.mu_max, return_mf=True)
+
+        cput0 = (time.clock(), time.time())
+
+        from mldftdat.external.pyscf_scf_vxcopt import kernel
+
+        ds_init = density_similarity(self.analyzer.rho_data,
+                        rho_data, self.analyzer.grid,
+                        self.analyzer.mol,
+                        exponent = 1, inner_r = 0.01)
+
+        def check_convergence(kwargs):
+            rho_data = eval_rho2(self.analyzer.mol,
+                             self.ao_data, kwargs['mo_coeff'],
+                             kwargs['mo_occ'], xctype='MGGA')
+            ds = density_similarity(self.analyzer.rho_data,
+                        rho_data, self.analyzer.grid,
+                        self.analyzer.mol,
+                        exponent = 1, inner_r = 0.01)[0]
+            print('CONV CHECK', ds)
+            return ds < 0.001
+
+        mf.check_convergence = check_convergence
+
+        mf.dump_flags()
+        mf.build(mf.mol)
+        self.converged, self.e_tot, \
+                self.mo_energy, self.mo_coeff, self.mo_occ = \
+                kernel(self, mf, mf.conv_tol, mf.conv_tol_grad,
+                       dm0=dm0, callback=mf.callback,
+                       conv_check=mf.conv_check, **kwargs)
+
+        logger.timer(mf, 'VXCOPT', *cput0)
+        rho_data = eval_rho2(self.analyzer.mol,
+                             self.ao_data, self.mo_coeff,
+                             self.mo_occ, xctype='MGGA')
+        self.ds = density_similarity(self.analyzer.rho_data,
+                    rho_data, self.analyzer.grid,
+                    self.analyzer.mol,
+                    exponent = 1, inner_r = 0.01)
+        mf._finalize()
+        return self.ds, ds_init
