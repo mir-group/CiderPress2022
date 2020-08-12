@@ -4,8 +4,18 @@ from mldftdat.workflow_utils import get_save_dir
 from ase import Atoms
 from fireworks import Firework, LaunchPad
 import os
+import ase.io
 
 SAVE_ROOT = os.environ['MLDFTDB']
+ACCDB_DIR = os.environ['ACCDB']
+
+def read_accdb_structure(struct_id,):
+    fname = os.path.join(ACCDB_DIR, 'Geometries', struct_id)
+    struct = ase.io.read(fname, format='xyz')
+    with open(fname, 'r') as f:
+        charge_and_spin = f.readlines()[1].split()
+        charge, spin = int(charge_and_spin[0]), int(charge_and_spin[1]) - 1
+    return struct, os.path.join('ACCDB', struct_id), spin, charge
 
 def get_hf_tasks(struct, mol_id, basis, spin, charge=0, **kwargs):
     calc_type = 'RHF' if spin == 0 else 'UHF'
