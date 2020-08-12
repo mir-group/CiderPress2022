@@ -141,6 +141,41 @@ class Evaluator2(Evaluator):
         return self.y_to_xed(F, rho_data_u, rho_data_d)
 
 
+class EvaluatorSum():
+
+    def __init__(self, eval_ss, eval_os, NSS, NOS):
+        self.eval_ss = eval_ss
+        self.eval_os = eval_os
+        self.NOS = NOS
+        self.NSS = NSS
+
+    def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0,
+                          sum_terms = True):
+        NOS, NSS = self.NOS, self.NSS
+        os_term = eval_os.predict_from_desc(X[:,2:NOS+2],
+                                            max_order, vec_eval, subind)
+        u_term = eval_ss.predict_from_desc(X[:,NOS+3:NOS+NSS+3],
+                                           max_order, vec_eval, subind)
+        d_term = eval_ss.predict_from_desc(X[:,NOS+NSS+4:NOS+2*NSS+4],
+                                           max_order, vec_eval, subind)
+        if vec_eval:
+            os_term, dos_term = os_term
+            u_term, du_term = u_term
+            d_term, dd_term = d_term
+            return (os_term, u_term, d_term), (dos_term, du_term, d_term)
+        elif sum_terms:
+            return os_term * X[:,1] + u_term * X[:,NOS+2] + d_term * X[:,NOS+NSS+3]
+        else:
+            return os_term, u_term, d_term
+
+    def predict(self, X, rho_data, vec_eval = False): 
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(X)
+        desc = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
+        F = self.predict_from_desc(desc, sum_terms = True)
+        return self.y_to_xed(F, rho_data_u, rho_data_d)
+
+
 def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
     mini = np.min(x) - buff
     maxi = np.max(x) + buff
@@ -396,5 +431,104 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
         print(np.linalg.norm(ypred - ytest))
         print(np.mean(np.abs(ypred - ytest)))
         print(np.mean(ypred - ytest))
+
+    return evaluator
+
+
+def get_sub_evaluator(kernel, X, alpha, bounds):
+    d0 = X[:,0]
+    d1 = X[:,1:]
+    NFEAT = d1.shape[1]
+    linear = kernel.k1
+    aqrbf = kernel.k2
+    alpha = alpha * d0
+    dims = []
+    if isinstance(aqrbf, RBF):
+        ndim, length_scale, scale = qarbf_args(aqrbf)
+        scale = np.array(scale)
+    else:
+        scale = aqrbf.scale
+    for i in range(NFEAT):
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound = bounds[i]) )
+    grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
+            for i in range(NFEAT)]
+    k0s = []
+    for i in range(NFEAT):
+        print(aqrbf.length_scale[i])
+        diff = (d1[:,i:i+1] - grid[i][np.newaxis,:]) / aqrbf.length_scale[i]
+        k0s.append(np.exp(-0.5 * diff**2))
+    funcps = []
+    spline_grids = []
+    ind_sets = []
+    for i in range(NFEAT):
+        funcps.append(np.einsum('n,ni->i', alpha, k0s[i]))
+        spline_grids.append(UCGrid(dims[i]))
+        ind_sets.append((i,))
+    for i in range(NFEAT - 1):
+        for j in range(i+1, NFEAT):
+            k = np.einsum('ni,nj->nij', k0s[i], k0s[j])
+            funcps.append(np.einsum('n,nij->ij', alpha, k))
+            spline_grids.append(UCGrid(dims[i], dims[j]))
+            ind_sets.append((i,j))
+    if triples:
+        for i in range(NFEAT - 2):
+            for j in range(i+1, NFEAT - 1):
+                for l in range(j+1, NFEAT):
+                    k = np.einsum('ni,nj,nk->nijk', k0s[i], k0s[j], k0s[l])
+                    funcps.append(np.einsum('n,nijk->ijk', alpha, k))
+                    spline_grids.append(UCGrid(dims[i], dims[j], dims[l]))
+                    ind_sets.append((i,j,l))
+    print(spline_grids)
+    coeff_sets = []
+    for i in range(len(funcps)):
+        coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
+    evaluator = Evaluator2(scale[1:], ind_sets, spline_grids, coeff_sets,
+                           gpr.y_to_xed, gpr.get_descriptors, gpr.num,
+                           const = scale[0] * np.sum(alpha))
+    if not isinstance(aqrbf, RBF):
+        return evaluator
+
+
+def get_mapped_gp_evaluator_corr_sp(gpr, triples = False):
+    X = gpr.X
+    NOS = 12
+    NSS = 4
+    bounds_os = [(0, 1),\
+                 (-1,1),\
+                 (-2*0.64772,1),\
+                 (0,1),\
+                 (0,1),\
+                 (-1,1),\
+                 (-1,1),\
+                 (-8*0.44065,1),\
+                 (-0.5*0.6144,1),\
+                 (-1,1),\
+                 (0,1.5 * np.max(X[:,NOS+1])),\
+                 (0,1)]
+    bounds_ss = [(0,1),\
+                 (-2*0.64772,1),\
+                 (-1,1),\
+                 (0,1.5 * np.max(X[:,NOS+1]))]
+    eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[1:NOS+2],
+                                gpr.gp.alpha_, bounds_os)
+    eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[NOS+2:NOS+NSS+3],
+                                gpr.gp.alpha_, bounds_ss)
+
+    evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS)
+
+    y = gpr.y
+
+    res, en = aqrbf(X, get_sub_kernels = True)
+    print("checked 1d")
+    print(np.mean(np.abs(res - evaluator.predict_from_desc(X, sum_terms = True))))
+
+    ytest = gpr.gp.predict(X)
+    ypred = evaluator.predict_from_desc(X, sum_terms = True)
+    print(np.mean(np.abs(ytest - ypred)))
+    print(np.mean(np.abs(ytest - y)))
+    print(np.mean(np.abs(y - ypred)))
+    print(np.linalg.norm(ytest - y))
+    print(np.linalg.norm(ypred - y))
+    print(ytest.shape)
 
     return evaluator
