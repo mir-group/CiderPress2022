@@ -307,7 +307,8 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
               (-8*0.44065,1),\
               (-0.5*0.6144,1),\
               (-1,1),\
-              (0,1.5 * np.max(X[:,-1]))]
+              (0,1.5 * np.max(X[:,-2])),\
+              (0,1)]
     print('minmax', np.max(X[:,-2]), np.min(X[:,-2]))
     dims = []
     if isinstance(aqrbf, RBF):
