@@ -570,8 +570,6 @@ class UCCSDAnalyzer(ElectronAnalyzer):
         self.get_corr_energy_density()
 
 
-from mldftdat.data import density_similarity
-
 class XCPotentialAnalyzer():
 
     def __init__(self, analyzer):

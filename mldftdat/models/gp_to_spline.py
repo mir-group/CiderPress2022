@@ -143,20 +143,24 @@ class Evaluator2(Evaluator):
 
 class EvaluatorSum():
 
-    def __init__(self, eval_ss, eval_os, NSS, NOS):
+    def __init__(self, eval_ss, eval_os, NSS, NOS,
+                 y_to_xed, get_descriptors, num):
         self.eval_ss = eval_ss
         self.eval_os = eval_os
         self.NOS = NOS
         self.NSS = NSS
+        self.y_to_xed = y_to_xed
+        self.get_descriptors = get_descriptors
+        self.num = num
 
     def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0,
                           sum_terms = True):
         NOS, NSS = self.NOS, self.NSS
-        os_term = eval_os.predict_from_desc(X[:,2:NOS+2],
+        os_term = self.eval_os.predict_from_desc(X[:,2:NOS+2],
                                             max_order, vec_eval, subind)
-        u_term = eval_ss.predict_from_desc(X[:,NOS+3:NOS+NSS+3],
+        u_term = self.eval_ss.predict_from_desc(X[:,NOS+3:NOS+NSS+3],
                                            max_order, vec_eval, subind)
-        d_term = eval_ss.predict_from_desc(X[:,NOS+NSS+4:NOS+2*NSS+4],
+        d_term = self.eval_ss.predict_from_desc(X[:,NOS+NSS+4:NOS+2*NSS+4],
                                            max_order, vec_eval, subind)
         if vec_eval:
             os_term, dos_term = os_term
@@ -438,9 +442,11 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
 def get_sub_evaluator(kernel, X, alpha, bounds):
     d0 = X[:,0]
     d1 = X[:,1:]
+    triples = False
     NFEAT = d1.shape[1]
     linear = kernel.k1
     aqrbf = kernel.k2
+    print(alpha.shape, d0.shape)
     alpha = alpha * d0
     dims = []
     if isinstance(aqrbf, RBF):
@@ -449,7 +455,7 @@ def get_sub_evaluator(kernel, X, alpha, bounds):
     else:
         scale = aqrbf.scale
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound = bounds[i]) )
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 6, bound = bounds[i]) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT)]
     k0s = []
@@ -483,10 +489,9 @@ def get_sub_evaluator(kernel, X, alpha, bounds):
     for i in range(len(funcps)):
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
     evaluator = Evaluator2(scale[1:], ind_sets, spline_grids, coeff_sets,
-                           gpr.y_to_xed, gpr.get_descriptors, gpr.num,
+                           None, None, NFEAT,
                            const = scale[0] * np.sum(alpha))
-    if not isinstance(aqrbf, RBF):
-        return evaluator
+    return evaluator
 
 
 def get_mapped_gp_evaluator_corr_sp(gpr, triples = False):
@@ -503,24 +508,25 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False):
                  (-8*0.44065,1),\
                  (-0.5*0.6144,1),\
                  (-1,1),\
-                 (0,1.5 * np.max(X[:,NOS+1])),\
+                 (0,1.5 * np.max(X[:,NOS])),\
                  (0,1)]
     bounds_ss = [(0,1),\
                  (-2*0.64772,1),\
                  (-1,1),\
-                 (0,1.5 * np.max(X[:,NOS+1]))]
-    eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[1:NOS+2],
+                 (0,1.5 * np.max(X[:,NOS]))]
+    eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
                                 gpr.gp.alpha_, bounds_os)
-    eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[NOS+2:NOS+NSS+3],
+    eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
                                 gpr.gp.alpha_, bounds_ss)
 
-    evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS)
+    evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS,
+                             gpr.y_to_xed, gpr.get_descriptors, gpr.num)
 
     y = gpr.y
 
-    res, en = aqrbf(X, get_sub_kernels = True)
+    #res, en = aqrbf(X, get_sub_kernels = True)
     print("checked 1d")
-    print(np.mean(np.abs(res - evaluator.predict_from_desc(X, sum_terms = True))))
+    #print(np.mean(np.abs(res - evaluator.predict_from_desc(X, sum_terms = True))))
 
     ytest = gpr.gp.predict(X)
     ypred = evaluator.predict_from_desc(X, sum_terms = True)
