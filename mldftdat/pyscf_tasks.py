@@ -78,7 +78,8 @@ class MLSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type',\
                        'mlfunc_name', 'mlfunc_file', 'mlfunc_settings_file']
-    optional_params = ['spin', 'charge', 'max_conv_tol']
+    optional_params = ['spin', 'charge', 'max_conv_tol',\
+                       'mlfunc_c_file']
 
     DEFAULT_MAX_CONV_TOL = 1e-9
 
@@ -94,18 +95,29 @@ class MLSCFCalc(FiretaskBase):
         calc_type = self['calc_type']
 
         import joblib
-        from mldftdat.dft import numint4
+        if self.get('mlfunc_c_file') is None:
+            from mldftdat.dft import numint4 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+        else:
+            from mldftdat.dft import numint5 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+            mlfunc_c = joblib.load(self['mlfunc_file_c'])
         import yaml
 
-        mlfunc = joblib.load(self['mlfunc_file'])
-        if not hasattr(mlfunc, 'y_to_f_mul'):
-            mlfunc.y_to_f_mul = None
+        #if not hasattr(mlfunc, 'y_to_f_mul'):
+        #    mlfunc.y_to_f_mul = None
         with open(self['mlfunc_settings_file'], 'r') as f:
             settings = yaml.load(f, Loader = yaml.Loader)
-        if calc_type == 'RKS':
-            calc = numint4.setup_rks_calc(mol, mlfunc, **settings)
+        if self.get('mlfunc_c_file') is None:
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
         else:
-            calc = numint4.setup_uks_calc(mol, mlfunc, **settings)
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
 
         start_time = time.monotonic()
         calc.kernel()
