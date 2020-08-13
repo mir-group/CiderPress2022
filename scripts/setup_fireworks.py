@@ -9,7 +9,7 @@ import ase.io
 SAVE_ROOT = os.environ['MLDFTDB']
 ACCDB_DIR = os.environ['ACCDB']
 
-def read_accdb_structure(struct_id,):
+def read_accdb_structure(struct_id):
     fname = os.path.join(ACCDB_DIR, 'Geometries', struct_id)
     struct = ase.io.read(fname, format='xyz')
     with open(fname, 'r') as f:
@@ -24,12 +24,14 @@ def get_hf_tasks(struct, mol_id, basis, spin, charge=0, **kwargs):
     t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
     return t1, t2
 
-def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0):
+def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0,
+                  skip_analysis = False):
     calc_type = 'RKS' if spin == 0 else 'UKS'
     struct_dict = struct.todict()
     t1 = SCFCalc(struct=struct_dict, basis=basis, calc_type=calc_type,
                 spin=spin, charge=charge, functional=functional)
-    t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id)
+    t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id,
+                               skip_analysis = skip_analysis)
     return t1, t2
 
 def get_ml_tasks(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
@@ -60,9 +62,11 @@ def make_dft_from_hf_firework(functional, hf_type, basis, mol_id):
 def make_hf_firework(struct, mol_id, basis, spin, charge=0, name=None):
     return Firework(get_hf_tasks(struct, mol_id, basis, spin, charge), name=name)
 
-def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0, name=None):
+def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0,
+                      name=None, skip_analysis = False):
     return Firework(get_dft_tasks(struct, mol_id, basis, spin,
-                    functional=functional, charge=charge), name=name)
+                    functional=functional, charge=charge,
+                    skip_analysis=skip_analysis), name=name)
 
 def make_ml_firework(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
                      mlfunc_settings_file, charge=0, name=None):
