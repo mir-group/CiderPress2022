@@ -575,7 +575,6 @@ def predict_exchange(analyzer, model=None, num=1,
     coords = analyzer.grid.coords
     weights = analyzer.grid.weights
     rho = rho_data[0,:]
-    print('MODEL TYPE', type(model), isinstance(model, CorrGPR))
     if model is None:
         neps = analyzer.get_fx_energy_density()
         eps = neps / (rho + 1e-7)

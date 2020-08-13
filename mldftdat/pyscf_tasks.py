@@ -81,7 +81,7 @@ class MLSCFCalc(FiretaskBase):
     optional_params = ['spin', 'charge', 'max_conv_tol',\
                        'mlfunc_c_file']
 
-    DEFAULT_MAX_CONV_TOL = 1e-9
+    DEFAULT_MAX_CONV_TOL = 1e-7
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -101,13 +101,15 @@ class MLSCFCalc(FiretaskBase):
         else:
             from mldftdat.dft import numint5 as numint
             mlfunc = joblib.load(self['mlfunc_file'])
-            mlfunc_c = joblib.load(self['mlfunc_file_c'])
+            mlfunc_c = joblib.load(self['mlfunc_c_file'])
         import yaml
 
         #if not hasattr(mlfunc, 'y_to_f_mul'):
         #    mlfunc.y_to_f_mul = None
         with open(self['mlfunc_settings_file'], 'r') as f:
             settings = yaml.load(f, Loader = yaml.Loader)
+            if settings is None:
+                settings = {}
         if self.get('mlfunc_c_file') is None:
             if calc_type == 'RKS':
                 calc = numint.setup_rks_calc(mol, mlfunc, **settings)

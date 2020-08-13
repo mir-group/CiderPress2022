@@ -7,7 +7,7 @@ import os
 import ase.io
 
 SAVE_ROOT = os.environ['MLDFTDB']
-ACCDB_DIR = os.environ['ACCDB']
+ACCDB_DIR = os.environ.get('ACCDB')
 
 def read_accdb_structure(struct_id):
     fname = os.path.join(ACCDB_DIR, 'Geometries', struct_id)
@@ -35,12 +35,13 @@ def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0,
     return t1, t2
 
 def get_ml_tasks(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
-                 mlfunc_settings_file, charge=0):
+                 mlfunc_settings_file, mlfunc_c_file = None, charge=0):
     calc_type = 'RKS' if spin == 0 else 'UKS'
     struct_dict = struct.todict()
     t1 = MLSCFCalc(struct=struct_dict, basis=basis, calc_type=calc_type,
                    spin=spin, charge=charge, mlfunc_name = mlfunc_name,
-                   mlfunc_file = mlfunc_file, mlfunc_settings_file = mlfunc_settings_file)
+                   mlfunc_file = mlfunc_file, mlfunc_settings_file = mlfunc_settings_file,
+                   mlfunc_c_file = mlfunc_c_file)
     t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id,
                                skip_analysis = True)
     return t1, t2
@@ -69,10 +70,10 @@ def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0,
                     skip_analysis=skip_analysis), name=name)
 
 def make_ml_firework(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
-                     mlfunc_settings_file, charge=0, name=None):
+                     mlfunc_settings_file, mlfunc_c_file = None, charge=0, name=None):
     return Firework(get_ml_tasks(struct, mol_id, basis, spin,
                     mlfunc_name, mlfunc_file, mlfunc_settings_file,
-                    charge=charge), name=name)
+                    charge=charge, mlfunc_c_file = mlfunc_c_file), name=name)
 
 def make_ccsd_firework(struct, mol_id, basis, spin, charge=0, name=None, **kwargs):
     t1, t2 = get_hf_tasks(struct, mol_id, basis, spin, charge)
