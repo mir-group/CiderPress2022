@@ -436,10 +436,10 @@ class CorrGPFunctional5(GPFunctional):
         bmat, bdmat = mapper.desc_and_ddesc(X[1].T)
         ramat, radmat = density_mapper(2 * rho_data[0][0], 0 * rho_data[0][0])
         rbmat, rbdmat = density_mapper(2 * rho_data[1][0], 0 * rho_data[1][0])
-        ssind = [0,2,6]
-        amat, admat = amat[ssind], admat[ssind,ssind]
+        ssind = np.array([0,2,6])
+        amat, admat = amat[ssind], admat[ssind[:,None],ssind,:]
         ramat, radmat = ramat[:1], 2 * radmat[0,0]
-        bmat, bdmat = bmat[ssind], bdmat[ssind,ssind]
+        bmat, bdmat = bmat[ssind], bdmat[ssind[:,None],ssind,:]
         rbmat, rbdmat = rbmat[:1], 2 * rbdmat[0,0]
 
         X = (X[0] + X[1]) / 2
@@ -454,10 +454,10 @@ class CorrGPFunctional5(GPFunctional):
         Fu, dFu = self.evaluator.eval_ss.predict_from_desc(tmat.T, vec_eval = True)
         tmat = np.concatenate([bmat, rbmat], axis=0)
         Fd, dFd = self.evaluator.eval_ss.predict_from_desc(tmat.T, vec_eval = True)
-        if compare is not None:
-            Xinit = compare
-            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
-            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
+        #if compare is not None:
+        #    Xinit = compare
+        #    test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
+        #    print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
 
         FUNCTIONAL = ',MGGA_C_SCAN'
         rho_data_u, rho_data_d = rho_data
@@ -468,19 +468,21 @@ class CorrGPFunctional5(GPFunctional):
         cd = ed * rho_data_d[0]
         co = eo * (rho_data_u[0] + rho_data_d[0])
         co -= cu + cd
-        E = (F * co + cu + cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
+        E = (F * co + Fu * cu + Fd * cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
         vo = list(vo)
         for i in range(4):
             j = 2 if i == 1 else 1
             vo[i][:,0] -= vu[i][:,0]
             vo[i][:,j] -= vd[i][:,j]
             vo[i] *= F.reshape(-1,1)
-            vo[i][:,0] += vu[i][:,0] * Fu.reshape(-1,1)
-            vo[i][:,j] += vd[i][:,j] * Fd.reshape(-1,1)
+            #print(vo[i][:,0].shape, vu[i][:,0].shape, Fu.shape)
+            vo[i][:,0] += vu[i][:,0] * Fu
+            vo[i][:,j] += vd[i][:,j] * Fd
 
         dEddesc = co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-2], dmat)
-        dEddesc[ssind] += cu.reshape(-1,1) * np.einsum('ni,ijn->nj', dFu[:,:-1], dmat)
-        dEddesc[ssind] += cd.reshape(-1,1) * np.einsum('ni,ijn->nj', dFd[:,:-1], dmat)
+        print(admat.shape, bdmat.shape)
+        dEddesc[:,ssind] += cu.reshape(-1,1) * np.einsum('ni,ijn->nj', dFu[:,:-1], admat)
+        dEddesc[:,ssind] += cd.reshape(-1,1) * np.einsum('ni,ijn->nj', dFd[:,:-1], bdmat)
         #dF[:,-1] = 0
         dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-2:], rdmat)
         vo[0][:,0] += co * dFddesc_rho[:,0]
