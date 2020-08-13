@@ -227,7 +227,8 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
               (-1,1),\
               (-8*0.44065,1),\
               (-0.5*0.6144,1),\
-              (-1,1)]
+              (-1,1),
+              (-1,1)][:d1.shape[1]+1]
     for i in range(X.shape[1] - 2):
         dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound=bounds[i+1]) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
