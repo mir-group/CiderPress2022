@@ -1,7 +1,7 @@
 
 import numpy as np
 
-def desc_and_ddesc(x):
+def desc_and_ddesc(x, normp = True):
 
     matrix = np.zeros((10, x.shape[-1]))
     dmatrix = np.zeros((10, 10, x.shape[-1]))
@@ -13,7 +13,10 @@ def desc_and_ddesc(x):
     gamma0b = 0.44065
     gamma0c = 0.6144
 
-    matrix[0] = (gammax*x[0])/(1 + gammax*x[0])
+    if normp:
+        matrix[0] = (gammax*x[0])/(1 + gammax*x[0])
+    else:
+        matrix[0] = np.arcsinh(x[0])
     matrix[1] = -1 + 2/(1 + x[1]**2)
     matrix[2] = (gamma0a*(-2 + (1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**1.5*x[2]))/(1 + gamma0a*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**1.5*x[2])
     matrix[3] = (gamma1*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**3*x[3]**2)/(1 + gamma1*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**3*x[3]**2)
@@ -24,7 +27,10 @@ def desc_and_ddesc(x):
     matrix[8] = (gamma0c*(-0.5 + (1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**1.5*x[8]))/(1 + gamma0c*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**1.5*x[8])
     matrix[9] = np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**3*np.sqrt(gamma1/(1 + gamma1*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**3*x[3]**2))*np.sqrt(gamma2/(1 + gamma2*(1 + 0.302248491378088*x[0] + 0.18134909482685282*(-1 + x[1]))**3*x[4]))
 
-    dmatrix[0,0] = -((gammax**2*x[0])/(1 + gammax*x[0])**2) + gammax/(1 + gammax*x[0])
+    if normp:
+        dmatrix[0,0] = -((gammax**2*x[0])/(1 + gammax*x[0])**2) + gammax/(1 + gammax*x[0])
+    else:
+        dmatrix[0,0] = 1 / np.sqrt(1 + x[0]**2)
     dmatrix[0,1] = 0
     dmatrix[0,2] = 0
     dmatrix[0,3] = 0
