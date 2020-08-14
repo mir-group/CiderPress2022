@@ -497,7 +497,7 @@ import mldftdat.models.map_v1 as mapper
 
 class NormGPFunctional(GPFunctional):
 
-    def __init__(self, evaluator):
+    def __init__(self, evaluator, normp = True):
         self.evaluator = evaluator
         self.y_to_f_mul = None
         self.desc_list = [
@@ -512,9 +512,10 @@ class NormGPFunctional(GPFunctional):
             Descriptor(16, identity, single, mul = 4.00),\
             Descriptor(13, identity, single, mul = 1.00),\
         ]
+        self.normp = normp
 
     def get_F_and_derivative(self, X, compare = None):
-        mat, dmat = mapper.desc_and_ddesc(X.T)
+        mat, dmat = mapper.desc_and_ddesc(X.T, normp = self.normp)
         if compare is not None:
             print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
