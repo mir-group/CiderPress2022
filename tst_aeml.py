@@ -45,7 +45,7 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 #mol.build()
 #mlfunc = load('mlfunc10c.joblib')
 #mlfunc.y_to_f_mul = None
-mlfunc = (load('mlfunc10map_big.joblib'), load('mlfunc_corr12.joblib'))
+mlfunc = (load('mlfunc10map_lam1.joblib'), load('mlfunc_corr12.joblib'))
 #mlfunc = load('mlfunc10map.joblib')
 #from mldftdat.dft.xc_models import PBEFunctional, SCANFunctional
 #mlfunc = PBEFunctional()
