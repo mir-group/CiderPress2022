@@ -10,11 +10,27 @@ SAVE_ROOT = os.environ['MLDFTDB']
 ACCDB_DIR = os.environ.get('ACCDB')
 
 def read_accdb_structure(struct_id):
-    fname = os.path.join(ACCDB_DIR, 'Geometries', struct_id)
-    struct = ase.io.read(fname, format='xyz')
+    fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
     with open(fname, 'r') as f:
-        charge_and_spin = f.readlines()[1].split()
-        charge, spin = int(charge_and_spin[0]), int(charge_and_spin[1]) - 1
+        print(fname)
+        lines = f.readlines()
+        natom = int(lines[0])
+        charge_and_spin = lines[1].split()
+        charge = int(charge_and_spin[0].strip().strip(','))
+        spin = int(charge_and_spin[1].strip().strip(',')) - 1
+        symbols = []
+        coords = []
+        for i in range(natom):
+            line = lines[2+i]
+            symbol, x, y, z = line.split()
+            if symbol.isdigit():
+                symbol = int(symbol)
+            else:
+                symbol = symbol[0] + symbol[1:].lower()
+            symbols.append(symbol)
+            coords.append([x,y,z])
+        struct = Atoms(symbols, positions = coords)
+        print(charge, spin, struct)
     return struct, os.path.join('ACCDB', struct_id), spin, charge
 
 def get_hf_tasks(struct, mol_id, basis, spin, charge=0, **kwargs):
