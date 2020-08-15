@@ -294,6 +294,7 @@ def get_desc_tot4(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     X[:,1] = co / ldac
     X[:,num+2] = cu / ldac
     X[:,num+3+NS] = cd / ldac
+    print('DESC SHAPE', X.shape)
     return X
 
 def get_desc_tot2(Xu, Xd, rho_data_u, rho_data_d, num = 1):
@@ -395,14 +396,14 @@ class CorrGPR5(CorrGPR):
                 0.198, 0.192, 0.277, 0.141, 0.319, 0.115, 0.156, 0.306][:num_desc-1],
                 length_scale_bounds = 'fixed',
                 scale = [0.14, 0.01, 1.07], active_dims=ind[2:num_desc+1])
-        rbf *= SingleRBF(length_scale=0.3, index=num_desc+2)
+        rbf *= SingleRBF(length_scale=0.3, index=num_desc+1)
         dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
         covos = dot * rbf
 
         rbfss = PartialARBF(order = 2, length_scale = [0.165, 0.161, 0.141],
                 length_scale_bounds='fixed',
                 scale=[0.25, 0.01, 0.041], active_dims=ind[1:NS])
-        rbfss *= SingleRBF(length_scale=0.3, index = NS+1)
+        rbfss *= SingleRBF(length_scale=0.3, index = NS)
         dotss = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0)
         covss = dotss * rbfss
         covss = SpinSymKernel(covss, ind[num_desc+2:num_desc+3+NS],
