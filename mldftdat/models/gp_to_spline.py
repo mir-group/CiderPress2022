@@ -499,8 +499,54 @@ def get_sub_evaluator(kernel, X, alpha, bounds):
                            const = scale[0] * np.sum(alpha))
     return evaluator
 
+def get_sub_evaluator2(kernel, X, alpha, bounds):
+    d2 = X[:,0]
+    d1 = X[:,1:-1]
+    d0 = X[:,-1]
+    alpha = alpha * d2
+    NFEAT = d1.shape[1]
+    linear = kernel.k1
+    aqrbf, srbf = kernel.k2.k1, kernel.k2.k2
+    ndim, length_scale, scale = qarbf_args(aqrbf)
+    scale = np.array(scale)
+    dims = []
+    for i in range(NFEAT):
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale, density=4, bound=bounds[i]) )
+    dims.append(get_dim(d0, srbf.length_scale, density = 4, bound = bounds[-1]))
+    grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
+            for i in range(NFEAT + 1)]
+    
+    k0s = []
+    diff = (d0[:,np.newaxis] - grid[-1][np.newaxis,:]) / srbf.length_scale
+    for i in range(NFEAT):
+        diff = (d1[:,i:i+1] - grid[i+1][np.newaxis,:]) / aqrbf.length_scale
+        k0s.append(np.exp(-0.5 * diff**2))
+    k0s.append(np.exp(-0.5 * diff**2))
 
-def get_mapped_gp_evaluator_corr_sp(gpr, triples = False):
+    funcps = [np.dot(alpha, k0s[-1])]
+    spline_grids = [UCGrid(dims[0])]
+    ind_sets = [(-1,)]
+    for i in range(NFEAT):
+        k = np.einsum('ni,nj->nij', k0s[-1], k0s[i])
+        funcps.append(np.einsum('n,nij->ij', alpha, k))
+        spline_grids.append(UCGrid(dims[-1], dims[i]))
+        ind_sets.append((-1,i))
+    for i in range(NFEAT - 1):
+        for j in range(i+1, NFEAT):
+            k = np.einsum('ni,nj,nk->nijk', k0s[-1], k0s[i], k0s[j])
+            funcps.append(UCGrid(dims[-1], dims[i], dims[j]))
+            ind_sets.append((-1,i,j))
+
+    coeff_sets = []
+    for i in range(len(funcps)):
+        coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
+    evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
+                          None, None, NFEAT)
+
+    return evaluator
+
+
+def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
     X = gpr.X
     NOS = 12
     NSS = 4
@@ -520,10 +566,16 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False):
                  (-2*0.64772,1),\
                  (-1,1),\
                  (0,1.5 * np.max(X[:,NOS]))]
-    eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
-                                gpr.gp.alpha_, bounds_os)
-    eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
-                                gpr.gp.alpha_, bounds_ss)
+    if version2:
+        eval_os = get_sub_evaluator2(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
+                                     gpr.gp.alpha_, bounds_os)
+        eval_ss = get_sub_evaluator2(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
+                                     gpr.gp.alpha_, bounds_ss)
+    else:
+        eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
+                                    gpr.gp.alpha_, bounds_os)
+        eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
+                                    gpr.gp.alpha_, bounds_ss)
 
     evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS,
                              gpr.y_to_xed, gpr.get_descriptors, gpr.num)
