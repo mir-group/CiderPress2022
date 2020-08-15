@@ -159,9 +159,9 @@ class EvaluatorSum():
         os_term = self.eval_os.predict_from_desc(X[:,2:NOS+2],
                                             max_order, vec_eval, subind)
         u_term = self.eval_ss.predict_from_desc(X[:,NOS+3:NOS+NSS+3],
-                                           max_order, vec_eval, subind)
+                                           max_order = 1, vec_eval = vec_eval, subind = subind)
         d_term = self.eval_ss.predict_from_desc(X[:,NOS+NSS+4:NOS+2*NSS+4],
-                                           max_order, vec_eval, subind)
+                                           max_order = 1, vec_eval = vec_eval, subind = subind)
         if vec_eval:
             os_term, dos_term = os_term
             u_term, du_term = u_term
@@ -181,6 +181,7 @@ class EvaluatorSum():
 
 
 def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
+    print(length_scale, bound)
     mini = np.min(x) - buff
     maxi = np.max(x) + buff
     if bound is not None:
@@ -507,24 +508,25 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
     NFEAT = d1.shape[1]
     linear = kernel.k1
     aqrbf, srbf = kernel.k2.k1, kernel.k2.k2
+    print(type(aqrbf), type(srbf), d1.shape)
     ndim, length_scale, scale = qarbf_args(aqrbf)
     scale = np.array(scale)
     dims = []
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale, density=4, bound=bounds[i]) )
-    dims.append(get_dim(d0, srbf.length_scale, density = 4, bound = bounds[-1]))
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density=2, bound=bounds[i]) )
+    dims.append(get_dim(d0, srbf.length_scale, density = 2, bound = bounds[-1]))
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT + 1)]
     
     k0s = []
-    diff = (d0[:,np.newaxis] - grid[-1][np.newaxis,:]) / srbf.length_scale
     for i in range(NFEAT):
-        diff = (d1[:,i:i+1] - grid[i+1][np.newaxis,:]) / aqrbf.length_scale
+        diff = (d1[:,i:i+1] - grid[i][np.newaxis,:]) / aqrbf.length_scale[i]
         k0s.append(np.exp(-0.5 * diff**2))
+    diff = (d0[:,np.newaxis] - grid[-1][np.newaxis,:]) / srbf.length_scale
     k0s.append(np.exp(-0.5 * diff**2))
 
     funcps = [np.dot(alpha, k0s[-1])]
-    spline_grids = [UCGrid(dims[0])]
+    spline_grids = [UCGrid(dims[-1])]
     ind_sets = [(-1,)]
     for i in range(NFEAT):
         k = np.einsum('ni,nj->nij', k0s[-1], k0s[i])
@@ -534,7 +536,8 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
     for i in range(NFEAT - 1):
         for j in range(i+1, NFEAT):
             k = np.einsum('ni,nj,nk->nijk', k0s[-1], k0s[i], k0s[j])
-            funcps.append(UCGrid(dims[-1], dims[i], dims[j]))
+            funcps.append(np.einsum('n,nijk->ijk', alpha, k))
+            spline_grids.append(UCGrid(dims[-1], dims[i], dims[j]))
             ind_sets.append((-1,i,j))
 
     coeff_sets = []
@@ -548,8 +551,9 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
 
 def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
     X = gpr.X
-    NOS = 12
+    NOS = 11
     NSS = 4
+    print('MAX', np.max(X[:,NOS+1]))
     bounds_os = [(0, 1),\
                  (-1,1),\
                  (-2*0.64772,1),\
@@ -560,12 +564,11 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
                  (-8*0.44065,1),\
                  (-0.5*0.6144,1),\
                  (-1,1),\
-                 (0,1.5 * np.max(X[:,NOS])),\
-                 (0,1)]
+                 (0,1.0 * np.max(X[:,NOS+1]))]
     bounds_ss = [(0,1),\
                  (-2*0.64772,1),\
                  (-1,1),\
-                 (0,1.5 * np.max(X[:,NOS]))]
+                 (0,1.0 * np.max(X[:,NOS+1]))]
     if version2:
         eval_os = get_sub_evaluator2(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
                                      gpr.gp.alpha_, bounds_os)
