@@ -1326,7 +1326,7 @@ def get_run_total_energy(dirname):
         data = json.load(f)
     return data['e_tot']
 
-def get_accdb_data(formula, functional, basis):
+def get_accdb_data(formula, FUNCTIONAL, BASIS):
 
     pred_energy = 0
     for sname, count in zip(formula[structs], formula[counts]):
@@ -1338,6 +1338,23 @@ def get_accdb_data(formula, functional, basis):
         dname = get_save_dir(ROOT, CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
         pred_energy += count * get_run_total_energy(dname)
 
-    return pred_energy, energy
+    return pred_energy, formula['energy']
 
-
+def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
+    single = False
+    if not isinstance(data_point_names, list):
+        data_point_names = [data_point_names]
+        single = True
+    result = {}
+    for data_point_name in data_point_names:
+        db_name, ref_name = data_point_name.split('_', 1)
+        dataset_eval_name = os.path.join(db_name, 'DatasetEval.csv')
+        formula = get_accdb_formula_entry(ref_name, dataset_eval_name)
+        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
+        result[data_point_name] = {
+            'pred' : pred_energy,
+            'true' : energy
+        }
+    if single:
+        return result[data_point_names[0]]
+    return result
