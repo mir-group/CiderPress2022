@@ -59,6 +59,10 @@ class Evaluator():
                     res += y * self.scale[t]
                     dres[:,ind_set] += dy * self.scale[t]
                 else:
+                    y = eval_cubic(self.spline_grids[t],
+                                      self.coeff_sets[t],
+                                      X[:,ind_set])
+                    print('RANGE', t, np.min(y), np.max(y)) 
                     res += eval_cubic(self.spline_grids[t],
                                       self.coeff_sets[t],
                                       X[:,ind_set])\
@@ -101,6 +105,19 @@ class Evaluator():
                    state_dict['num'])
 
 
+class EvaluatorCorr(Evaluator):
+
+    def predict(self, X, rho_data, vec_eval = False):
+        rho_data_u, rho_data_d = spinpol_data(rho_data)
+        xdescu, xdescd = spinpol_data(X)
+        desc = self.get_descriptors(xdescu, xdescd, rho_data_u, rho_data_d, num=self.num)
+        F = self.predict_from_desc(desc[:,2:], vec_eval = vec_eval)
+        if vec_eval:
+            F = F[0]
+        F *= desc[:,1]
+        return self.y_to_xed(F, rho_data_u, rho_data_d)
+
+
 def spinpol_data(data_arr):
     if data_arr.ndim == 2:
         return data_arr, data_arr
@@ -141,6 +158,15 @@ class Evaluator2(Evaluator):
         return self.y_to_xed(F, rho_data_u, rho_data_d)
 
 
+class LinearEvaluator():
+
+    def __init__(self, alpha, d0):
+        self.const = np.dot(alpha, d0)
+
+    def predict_from_desc(self, X, max_order=3, vec_eval=False, subind=0):
+        return X[:,0] * self.const
+
+
 class EvaluatorSum():
 
     def __init__(self, eval_ss, eval_os, NSS, NOS,
@@ -159,9 +185,9 @@ class EvaluatorSum():
         os_term = self.eval_os.predict_from_desc(X[:,2:NOS+2],
                                             max_order, vec_eval, subind)
         u_term = self.eval_ss.predict_from_desc(X[:,NOS+3:NOS+NSS+3],
-                                           max_order = 1, vec_eval = vec_eval, subind = subind)
+                                           max_order, vec_eval = vec_eval, subind = subind)
         d_term = self.eval_ss.predict_from_desc(X[:,NOS+NSS+4:NOS+2*NSS+4],
-                                           max_order = 1, vec_eval = vec_eval, subind = subind)
+                                           max_order, vec_eval = vec_eval, subind = subind)
         if vec_eval:
             os_term, dos_term = os_term
             u_term, du_term = u_term
@@ -187,7 +213,7 @@ def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
     if bound is not None:
         mini, maxi = bound[0], bound[1]
     ran = maxi - mini
-    ngrid = int(density * ran / length_scale) + 1
+    ngrid = max(int(density * ran / length_scale) + 1, 3)
     return (mini, maxi, ngrid)
 
 def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = None,
@@ -254,6 +280,7 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
         print(i, dims[0], dims[i+1])
         k = np.einsum('ni,nj->nij', k0s[0], k0s[i+1])
         funcps.append(np.einsum('n,nij->ij', alpha, k))
+        print('range', i, np.min(funcps[-1]), np.max(funcps[-1]))
         spline_grids.append(UCGrid(dims[0], dims[i+1]))
         if i == 0:
             print(nodes(spline_grids[-1]))
@@ -264,6 +291,7 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
             print(i, j, dims[i+1], dims[j+1])
             k = np.einsum('ni,nj,nk->nijk', k0s[0], k0s[i+1], k0s[j+1])
             funcps.append(np.einsum('n,nijk->ijk', alpha, k))
+            print('range', i, j, np.min(funcps[-1]), np.max(funcps[-1]))
             spline_grids.append(UCGrid(dims[0], dims[i+1], dims[j+1]))
             ind_sets.append((1,i+2,j+2))
     print(spline_grids)
@@ -513,8 +541,8 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
     scale = np.array(scale)
     dims = []
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density=2, bound=bounds[i]) )
-    dims.append(get_dim(d0, srbf.length_scale, density = 2, bound = bounds[-1]))
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density=3, bound=bounds[i]) )
+    dims.append(get_dim(d0, srbf.length_scale, density=3, bound = bounds[-1]))
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT + 1)]
     
@@ -543,13 +571,13 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
     coeff_sets = []
     for i in range(len(funcps)):
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
-    evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
-                          None, None, NFEAT)
+    evaluator = EvaluatorCorr(scale, ind_sets, spline_grids, coeff_sets,
+                              None, None, NFEAT)
 
     return evaluator
 
 
-def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
+def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version = 'a'):
     X = gpr.X
     NOS = 11
     NSS = 4
@@ -564,24 +592,34 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
                  (-8*0.44065,1),\
                  (-0.5*0.6144,1),\
                  (-1,1),\
-                 (0,1.0 * np.max(X[:,NOS+1]))]
+                 (-4,1.2 * np.max(X[:,NOS+1]))]
     bounds_ss = [(0,1),\
                  (-2*0.64772,1),\
                  (-1,1),\
-                 (0,1.0 * np.max(X[:,NOS+1]))]
-    if version2:
+                 (-4,1.2 * np.max(X[:,NOS+1]))]
+    if version == 'a':
+        eval_os = get_sub_evaluator2(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
+                                     gpr.gp.alpha_, bounds_os)
+        eval_ss = LinearEvaluator(gpr.gp.alpha_, X[:,NOS+2])
+        #eval_ss = get_sub_evaluator2(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
+        #                             gpr.gp.alpha_, bounds_ss)
+    elif version == 'b':
         eval_os = get_sub_evaluator2(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
                                      gpr.gp.alpha_, bounds_os)
         eval_ss = get_sub_evaluator2(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
                                      gpr.gp.alpha_, bounds_ss)
+    elif version == 'c':
+        evaluator = get_sub_evaluator2(gpr.gp.kernel.k1, X[:,1:NOS+2],
+                                       gpr.gp.alpha_, bounds_os)
+        evaluator.y_to_xed = gpr.y_to_xed
+        evaluator.get_descriptors = gpr.get_descriptors
+        evaluator.num = gpr.num
     else:
-        eval_os = get_sub_evaluator(gpr.gp.kernel_.k1.k1, X[:,1:NOS+2],
-                                    gpr.gp.alpha_, bounds_os)
-        eval_ss = get_sub_evaluator(gpr.gp.kernel_.k1.k2.k, X[:,NOS+2:NOS+NSS+3],
-                                    gpr.gp.alpha_, bounds_ss)
+        raise ValueError('version must be a, b, or c')
 
-    evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS,
-                             gpr.y_to_xed, gpr.get_descriptors, gpr.num)
+    if version != 'c':
+        evaluator = EvaluatorSum(eval_ss, eval_os, NSS, NOS,
+                                 gpr.y_to_xed, gpr.get_descriptors, gpr.num)
 
     y = gpr.y
 
@@ -590,7 +628,10 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version2 = False):
     #print(np.mean(np.abs(res - evaluator.predict_from_desc(X, sum_terms = True))))
 
     ytest = gpr.gp.predict(X)
-    ypred = evaluator.predict_from_desc(X, sum_terms = True)
+    if version == 'c':
+        ypred = X[:,1] * evaluator.predict_from_desc(X[:,2:NOS+2])
+    else:
+        ypred = evaluator.predict_from_desc(X, sum_terms = True)
     print(np.mean(np.abs(ytest - ypred)))
     print(np.mean(np.abs(ytest - y)))
     print(np.mean(np.abs(y - ypred)))
