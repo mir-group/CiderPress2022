@@ -59,10 +59,10 @@ class Evaluator():
                     res += y * self.scale[t]
                     dres[:,ind_set] += dy * self.scale[t]
                 else:
-                    y = eval_cubic(self.spline_grids[t],
-                                      self.coeff_sets[t],
-                                      X[:,ind_set])
-                    print('RANGE', t, np.min(y), np.max(y)) 
+                    #y = eval_cubic(self.spline_grids[t],
+                    #                  self.coeff_sets[t],
+                    #                  X[:,ind_set])
+                    #print('RANGE', t, np.min(y), np.max(y)) 
                     res += eval_cubic(self.spline_grids[t],
                                       self.coeff_sets[t],
                                       X[:,ind_set])\
@@ -364,7 +364,7 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
     (used for correlation)
     """
     X = gpr.X
-    d0 = X[:,1]
+    d0 = np.ones(X[:,1].shape[0])
     d1 = X[:,2:]
     NFEAT = d1.shape[1]
     alpha = gpr.gp.alpha_ * d0
@@ -381,9 +381,9 @@ def get_mapped_gp_evaluator_corr(gpr, test_x = None, test_y = None,
               (-8*0.44065,1),\
               (-0.5*0.6144,1),\
               (-1,1),\
-              (0,1.5 * np.max(X[:,-2])),\
-              (0,1)]
-    print('minmax', np.max(X[:,-2]), np.min(X[:,-2]))
+              (0,1.2 * np.max(X[:,-1]))]#,\
+    #(0,1)]
+    print('minmax', np.max(X[:,-1]), np.min(X[:,-1]))
     dims = []
     if isinstance(aqrbf, RBF):
         ndim, length_scale, scale = qarbf_args(aqrbf)
@@ -528,14 +528,22 @@ def get_sub_evaluator(kernel, X, alpha, bounds):
                            const = scale[0] * np.sum(alpha))
     return evaluator
 
-def get_sub_evaluator2(kernel, X, alpha, bounds):
-    d2 = X[:,0]
-    d1 = X[:,1:-1]
-    d0 = X[:,-1]
-    alpha = alpha * d2
-    NFEAT = d1.shape[1]
-    linear = kernel.k1
-    aqrbf, srbf = kernel.k2.k1, kernel.k2.k2
+def get_sub_evaluator2(kernel, X, alpha, bounds, version = 'c'):
+    if version == 'c':
+        d2 = np.ones(X[:,0].shape)
+        d1 = X[:,1:-1]
+        d0 = X[:,-1]
+        alpha = alpha
+        NFEAT = d1.shape[1]
+        aqrbf, srbf = kernel.k1, kernel.k2
+    else:
+        d2 = X[:,0]
+        d1 = X[:,1:-1]
+        d0 = X[:,-1]
+        alpha = alpha * d2
+        NFEAT = d1.shape[1]
+        linear = kernel.k1
+        aqrbf, srbf = kernel.k2.k1, kernel.k2.k2
     print(type(aqrbf), type(srbf), d1.shape)
     ndim, length_scale, scale = qarbf_args(aqrbf)
     scale = np.array(scale)
@@ -571,8 +579,12 @@ def get_sub_evaluator2(kernel, X, alpha, bounds):
     coeff_sets = []
     for i in range(len(funcps)):
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
-    evaluator = EvaluatorCorr(scale, ind_sets, spline_grids, coeff_sets,
+    if version == 'c':
+        evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
                               None, None, NFEAT)
+    else:
+        evaluator = EvaluatorCorr(scale, ind_sets, spline_grids, coeff_sets,
+                                  None, None, NFEAT)
 
     return evaluator
 
@@ -629,7 +641,8 @@ def get_mapped_gp_evaluator_corr_sp(gpr, triples = False, version = 'a'):
 
     ytest = gpr.gp.predict(X)
     if version == 'c':
-        ypred = X[:,1] * evaluator.predict_from_desc(X[:,2:NOS+2])
+        ypred = evaluator.predict_from_desc(X[:,2:NOS+2])
+        #ypred = X[:,1] * evaluator.predict_from_desc(X[:,2:NOS+2])
     else:
         ypred = evaluator.predict_from_desc(X, sum_terms = True)
     print(np.mean(np.abs(ytest - ypred)))
