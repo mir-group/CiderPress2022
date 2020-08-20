@@ -477,7 +477,10 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
     # apply to the reference functional.
     ec, vref, dec = mlfunc.get_F_and_derivative(desc,
                         (rho_data[0]/2, rho_data[1]/2), compare=contracted_desc)
-    dEddesc = (dec * ddesc[0] * 0.5, dec * ddesc[1] * 0.5)
+    if type(dec) == tuple:
+        dEddesc = (dec[0] * ddesc[0], dec[1] * ddesc[1])
+    else:
+        dEddesc = (dec * ddesc[0] * 0.5, dec * ddesc[1] * 0.5)
 
     print('run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -503,7 +506,13 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
     chkpt = time.monotonic()
 
     # TODO v_nst[1] should have 3 dimensions on axis 0 not 2
-    vtot = vref
+    vtot = list(vref)
+    if vtot[1] is None:
+        vtot[1] = np.zeros((vtot[0].shape[0],3))
+    if vtot[2] is None:
+        vtot[2] = np.zeros((vtot[0].shape[0],2))
+    if vtot[3] is None:
+        vtot[3] = np.zeros((vtot[0].shape[0],2))
     vtot[0] += v_nst[0]
     vtot[1][:,0] += 2 * v_nst[1][:,0]
     vtot[1][:,2] += 2 * v_nst[1][:,1]

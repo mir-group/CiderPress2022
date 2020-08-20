@@ -665,11 +665,14 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
         if Y is None:
             K = np.diag(self.diag(X))
-            if eval_gradient:
+            if eval_gradient and not self.hyperparameter_decay_rate.fixed:
                 rho = X[:,0]
                 grad = np.empty((_num_samples(X), _num_samples(X), 1))
                 grad[:,:,0] = np.diag(- rho / (1 + self.decay_rate * rho)**2)
-                return K, grad 
+                return K, grad
+            elif eval_gradient:
+                grad = np.zeros((X.shape[0], X.shape[0], 0))
+                return K, grad
             else:
                 return K
         else:

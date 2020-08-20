@@ -446,7 +446,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 def setup_aux(mol, beta):
     auxbasis = df.aug_etb(mol, beta = beta)
     nao = mol.nao_nr()
-    auxmol = df.make_auxmol(mol, auxbasis)
+    auxmol = df.make_auxmol(mol, 'weigend')
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
