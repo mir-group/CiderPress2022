@@ -103,7 +103,9 @@ def get_big_desc(X, num, plus_one):
     a = 1.0
     b = 20.4562557
     if plus_one:
-        desc[:,num] = a * np.log(1 + b * invrs + b * invrs**2)
+        #desc[:,num] = a * np.log(1 + b * invrs + b * invrs**2)
+        desc[:,num] = a * np.arcsinh(b * X[:,0])
+        desc[:,num] = np.log10(X[:,0] + 1e-3)
         return desc[:,:num+1]
     else:
         desc[:,num-1] = a * np.log(1 + b * invrs + b * invrs**2)
@@ -257,18 +259,33 @@ def get_desc_tot6(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
     X = (Xu + Xd) / 2
     X[:,1] = np.sqrt(tmp)
-    X = get_big_desc3(X, num)
-    zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
-    zeta = zeta**2
+    X = get_big_desc(X, num, True)
+    #zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
+    #zeta = zeta**2
     rhot = rho_data_u[0] + rho_data_d[0]
-    X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
+    #X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
+    X = np.hstack([rhot.reshape(-1,1), X])
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
     FUNCTIONAL = ',MGGA_C_SCAN'
-    cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
-    cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
             * (rho_data_u[0] + rho_data_d[0])
-    #co -= cu + cd
+    X[:,1] = co / ldac
+    return X
+
+def get_desc_tot7(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
+    X = (Xu + Xd) / 2
+    X[:,1] = np.sqrt(tmp)
+    X = get_big_desc(X, num, True)
+    #zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
+    #zeta = zeta**2
+    rhot = rho_data_u[0] + rho_data_d[0]
+    #X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
+    X = np.hstack([rhot.reshape(-1,1), X])
+    ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
+    FUNCTIONAL = ',MGGA_C_SCAN'
+    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+            * (rho_data_u[0] + rho_data_d[0])
     X[:,1] = co / ldac
     return X
 
@@ -280,12 +297,12 @@ def get_desc_tot4(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     X = (Xu + Xd) / 2
     X[:,1] = np.sqrt(tmp)
     X = get_big_desc(X, num, True)
-    zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
-    zeta = zeta**2
+    #zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
+    #zeta = zeta**2
     rhot = rho_data_u[0] + rho_data_d[0]
     X = np.hstack([rhot.reshape(-1,1), X, descu, descd])
     ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-20
-    FUNCTIONAL = ',MGGA_C_SCAN'
+    FUNCTIONAL = ',LDA_C_PW_MOD'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
     cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
@@ -312,6 +329,20 @@ def get_desc_tot2(Xu, Xd, rho_data_u, rho_data_d, num = 1):
             * (rho_data_u[0] + rho_data_d[0])
     X[:,1] = co / ldac
     return X
+
+def get_desc_tot8(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    NS = 4
+    descu = get_big_desc(Xu, NS, True)
+    descd = get_big_desc(Xd, NS, True)
+    tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
+    X = (Xu + Xd) / 2
+    X[:,1] = np.sqrt(tmp)
+    X = get_big_desc(X, num, True)
+    #zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
+    #zeta = zeta**2
+    rhot = rho_data_u[0] + rho_data_d[0]
+    X = np.hstack([rhot.reshape(-1,1), X[:,1:], descu[:,1:], descd[:,1:]])
+    return X    
 
 
 class CorrGPR3(CorrGPR):
@@ -394,16 +425,16 @@ class CorrGPR5(CorrGPR):
         #rbf = PartialARBF(order = 2, length_scale = [0.3] * num_desc,
         rbf = PartialARBF(order = 2, length_scale = [0.165, 0.606, 0.161,\
                 0.198, 0.192, 0.277, 0.141, 0.319, 0.115, 0.156, 0.306][:num_desc-1],
-                length_scale_bounds = 'fixed',
-                scale = [0.14, 0.01, 1.07], active_dims=ind[2:num_desc+1])
-        rbf *= SingleRBF(length_scale=0.3, index=num_desc+1)
+                length_scale_bounds = 'fixed', scale_bounds = 'fixed',
+                scale = [0.02797253, 0.00077693, 0.63756865], active_dims=ind[2:num_desc+1])
+        rbf *= SingleRBF(length_scale=1.0, index=num_desc+1)
         dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
         covos = dot * rbf
 
-        rbfss = PartialARBF(order = 2, length_scale = [0.165, 0.161, 0.141],
-                length_scale_bounds='fixed',
-                scale=[0.25, 0.01, 0.041], active_dims=ind[1:NS])
-        rbfss *= SingleRBF(length_scale=0.3, index = NS)
+        rbfss = PartialARBF(order = 2, length_scale = [0.265, 0.606, 0.261],
+                length_scale_bounds = 'fixed',
+                scale=[2.76341524e-01, 0.1, 0.1], active_dims=ind[1:NS])
+        rbfss *= SingleRBF(length_scale=1.0, index = NS)
         dotss = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 0)
         covss = dotss * rbfss
         covss = SpinSymKernel(covss, ind[num_desc+2:num_desc+3+NS],
@@ -411,15 +442,86 @@ class CorrGPR5(CorrGPR):
 
         cov_kernel = covos + covss
 
-        rhok1 = FittedDensityNoise(decay_rate = 2.0)
-        rhok2 = FittedDensityNoise(decay_rate = 600.0)
-        wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
-        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
-        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        rhok1 = FittedDensityNoise(decay_rate = 80.0, decay_rate_bounds='fixed')
+        rhok2 = FittedDensityNoise(decay_rate = 1400.0)
+        #wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=4.0e-4)
+        wk1 = WhiteKernel(noise_level=1e-5, noise_level_bounds='fixed')
+        wk2 = WhiteKernel(noise_level=0.0036)
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
 
         init_kernel = cov_kernel + noise_kernel
         super(CorrGPR, self).__init__(num_desc,
                        descriptor_getter = get_desc_tot4,
-                       xed_y_converter = (ced_to_y_scan, y_to_ced_scan),
+                       xed_y_converter = (ced_to_y_lda, y_to_ced_lda),
+                       init_kernel = init_kernel)
+
+
+class CorrGPR6(CorrGPR):
+
+    def __init__(self, num_desc):
+        ind = np.arange(num_desc + 2)
+
+        #rbf = PartialARBF(order = 2, length_scale = [0.3] * num_desc,
+        rbf = PartialARBF(order = 2, length_scale = [0.165, 0.606, 0.161,\
+                0.198, 0.192, 0.277, 0.141, 0.319, 0.115, 0.156, 0.306][:num_desc-1],
+                length_scale_bounds = 'fixed', scale_bounds = 'fixed',
+                scale = [0.02797253, 0.00077693, 0.63756865], active_dims=ind[2:num_desc+1])
+        rbf *= SingleRBF(length_scale=0.26, index=num_desc+1, length_scale_bounds='fixed')
+        dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
+        covos = rbf
+
+        cov_kernel = covos
+
+        rhok1 = FittedDensityNoise(decay_rate = 80.0, decay_rate_bounds='fixed')
+        rhok2 = FittedDensityNoise(decay_rate = 1400.0, decay_rate_bounds='fixed')
+        #wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds='fixed')
+        wk1 = WhiteKernel(noise_level=1e-5, noise_level_bounds='fixed')
+        wk2 = WhiteKernel(noise_level=0.0036, noise_level_bounds='fixed')
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+
+        init_kernel = cov_kernel + noise_kernel
+        super(CorrGPR, self).__init__(num_desc,
+                       descriptor_getter = get_desc_tot6,
+                       xed_y_converter = (ced_to_y_lda, y_to_ced_lda),
+                       init_kernel = init_kernel)
+
+
+class CorrGPR7(CorrGPR):
+
+    def __init__(self, num_desc):
+        NS = 4
+        ind = np.arange(num_desc + 1 + 2 * NS)
+
+        rbf = PartialARBF(order = 2, length_scale = [0.165, 0.606, 0.161,\
+                0.198, 0.192, 0.277, 0.141, 0.319, 0.115, 0.156, 0.306][:num_desc-1],
+                length_scale_bounds = 'fixed', scale_bounds = 'fixed',
+                scale = [0.02797253, 0.00077693, 0.63756865], active_dims=ind[1:num_desc])
+        rbf *= SingleRBF(length_scale=1.0, index=num_desc, length_scale_bounds='fixed')
+        dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
+        covos = dot * rbf
+
+        rbfss = PartialARBF(order = 2, length_scale = [0.3, 0.6, 0.3],
+                length_scale_bounds = 'fixed',
+                scale=[2.76341524e-01, 0.01, 0.1], active_dims=ind[:NS-1])
+        rbfss *= SingleRBF(length_scale=1.0, index = NS-1, length_scale_bounds='fixed')
+        covss = rbfss
+        covss = SpinSymKernel(covss, ind[num_desc+1:num_desc+1+NS],
+                                     ind[num_desc+1+NS:num_desc+1+2*NS])
+
+        cov_kernel = covos + covss
+
+        rhok1 = FittedDensityNoise(decay_rate = 80.0, decay_rate_bounds='fixed')
+        rhok2 = FittedDensityNoise(decay_rate = 1400.0)
+        #wk = WhiteKernel(noise_level=4.0e-4, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=4.0e-4)
+        wk1 = WhiteKernel(noise_level=1e-5, noise_level_bounds='fixed')
+        wk2 = WhiteKernel(noise_level=0.0036)
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+
+        init_kernel = cov_kernel + noise_kernel
+        super(CorrGPR, self).__init__(num_desc,
+                       descriptor_getter = get_desc_tot8,
+                       xed_y_converter = (ced_to_y_lda, y_to_ced_lda),
                        init_kernel = init_kernel)
