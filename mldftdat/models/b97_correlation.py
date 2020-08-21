@@ -1,6 +1,6 @@
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.dft.numint3 import setup_uks_calc, setup_rks_calc
-from mdlftdat.dft.numint5 import _eval_x_0
+from mldftdat.dft.numint5 import _eval_x_0, setup_aux
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
@@ -8,6 +8,8 @@ from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
 import os
 import numpy as np
+
+LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 def get_sl_contribs(pbe_dir, restricted):
 
@@ -246,6 +248,11 @@ def get_mlx_contribs(pbe_dir, restricted, mlfunc):
     mol.ao_to_aux = ao_to_aux
     mol.auxmol = auxmol
 
+    if restricted:
+        rho_data_u, rho_data_d = rho_data, rho_data
+    else:
+        rho_data_u, rho_data_d = rho_data[0], rho_data[1]
+
     FUNCTIONAL = ',MGGA_C_SCAN'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
     cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
@@ -262,6 +269,7 @@ def get_mlx_contribs(pbe_dir, restricted, mlfunc):
         rhou = rho_data[0]
         rhod = rho_data[0]
         rhot = rho_data[0]
+        Ex = np.dot(exo * rhot, weights)
     else:
         exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
         exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
@@ -277,11 +285,13 @@ def get_mlx_contribs(pbe_dir, restricted, mlfunc):
     for rho, ex, c in zip([rhou, rhod, rhot], [exu, exd, exo], [cu, cd, co]):
         elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
         Fx = ex / elda
-        Etmp = np.zeros((5, Fx.shape[0]))
+        Etmp = np.zeros(5)
         x1 = 1 / (1 + Fx) - 0.5
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
+
+    print(Eterms.shape)
 
     # Eterms = Eu, Ed, Eo
     return Eterms
@@ -289,7 +299,7 @@ def get_mlx_contribs(pbe_dir, restricted, mlfunc):
 
 def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
 
-    X = np.zeros([0,8])
+    X = np.zeros([0,16])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
