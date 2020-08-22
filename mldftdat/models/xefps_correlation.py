@@ -1,5 +1,4 @@
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
-from mldftdat.dft.numint3 import setup_uks_calc, setup_rks_calc
 from mldftdat.dft.numint5 import _eval_x_0, setup_aux
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
@@ -36,7 +35,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
     mol.auxmol = auxmol
 
     if restricted:
-        rho_data_u, rho_data_d = rho_data, rho_data
+        rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
     else:
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
 
@@ -46,6 +45,10 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
             * (rho_data_u[0] + rho_data_d[0])
     co -= cu + cd
+    FUNCTIONAL = 'MGGA_X_SCAN,'
+    Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+             * (rho_data_u[0] + rho_data_d[0])
+    Exscan = np.dot(Exscan, weights)
 
     numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
     if restricted:
@@ -67,13 +70,13 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
         Ex = np.dot(exo, weights)
         exo /= (rhot + 1e-20)
 
-    Eterms = np.array([Ex])
+    Eterms = np.array([Ex, Exscan])
 
     for rho, ex, c in zip([rhou, rhod, rhot], [exu, exd, exo], [cu, cd, co]):
         elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = 1 / (1 + Fx) - 0.5
+        x1 = (1 - Fx**6) / (1 + Fx**6)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
@@ -85,7 +88,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
 
 def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
 
-    X = np.zeros([0,16])
+    X = np.zeros([0,17])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
@@ -115,7 +118,10 @@ def get_etot_contribs(dft_dir, ccsd_dir, restricted):
         ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
 
     E_pbe = dft_analyzer.e_tot
-    E_ccsd = ccsd_analyzer.e_tot + ccsd_analyzer.e_tri
+    if ccsd_analyzer.e_tri is None:
+        E_ccsd = ccsd_analyzer.e_tot
+    else:
+        E_ccsd = ccsd_analyzer.e_tot + ccsd_analyzer.e_tri
 
     return np.array([E_pbe, E_ccsd])
 
@@ -125,6 +131,7 @@ def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
     y = np.zeros([0, 2])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+        print(mol_id)
 
         if is_restricted:
             dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS,
@@ -163,7 +170,7 @@ def get_vv10_contribs(dft_dir, restricted, NLC_COEFS):
     numint = NumInt()
 
     grid.level = 2
-    grid.buil()
+    grid.build()
 
     vv10_contribs = []
 
@@ -215,7 +222,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
@@ -228,7 +235,6 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     formulas = {}
     ecounts = []
     for i, mol in enumerate(mols):
-        print(i)
         ecounts.append(mol.nelectron)
         if len(mol._atom) == 1:
             Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
@@ -247,31 +253,46 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
         E_x = mlx[:,0]
-        E_c = np.append(mlx[:,2:6] + mlx[:,7:11], mlx[:,12:], axis=1)
+        E_xscan = mlx[:,1]
+        #print(E_x)
+        #print(E_xscan)
+        #print(E_x - E_xscan)
+        #print(E_ccsd - E_dft)
+        #print(E_vv10)
+        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+        #print(E_c.shape)
 
-        diff = nlx + pw92 - pbexc
-        #E_dft - E_scan + E_x + E_c + E_vv10
-        #E_ccsd - E_scan
-        diff = E_ccsd - (E_dft + E_x + E_vv10)
+        diff = E_ccsd - (E_dft - E_xscan + E_x)
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
         # not an exact relationship, but should give a decent fit
         X = E_c.copy()
         y = diff.copy()
+        Ecc = E_ccsd.copy()
+        Edf = E_dft.copy()
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
                 weights.append(1.0)
                 formula = formulas[i]
                 for Z in list(formula.keys()):
-                    X[i,:] -= formula[Z] * E_c[Z_to_ind[Z],:]
+                    X[i,:] -= formula[Z] * X[Z_to_ind[Z],:]
                     y[i] -= formula[Z] * y[Z_to_ind[Z]]
-                print(mols[i], y[i])
+                    Ecc[i] -= formula[Z] * Ecc[Z_to_ind[Z]]
+                    Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
+                print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 18 else 0)
+                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(0.0)
 
         weights = np.array(weights)
+
+        print(np.mean(np.abs(Ecc-Edf)[weights > 0]))
+
+        X = X[weights > 0, :]
+        y = y[weights > 0]
+        weights = weights[weights > 0]
 
         noise = 1e-3
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
@@ -279,8 +300,33 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         coef = np.dot(A, B)
 
         score = r2_score(y, np.dot(X, coef))
+        score0 = r2_score(y, np.dot(X, 0 * coef))
+        print(score, score0)
+        print(np.dot(X, coef))
 
         coef_sets.append(coef)
         scores.append(score)
+        break
 
     return coef_sets, scores
+
+
+def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+    from pyscf import gto
+    import yaml
+
+    mol_dicts = []
+
+    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        if is_restricted:
+            pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
+        else:
+            pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
+
+        mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
+
+    with open(FNAME, 'w') as f:
+        yaml.dump(mol_dicts, f)
