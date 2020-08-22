@@ -554,3 +554,29 @@ class AddEDMGPR2(EDMGPR):
         y_pred, y_std = self.gp.predict(x, return_std=True)
         return (y_std > threshold).any()
 
+    def add_heg_limit(self, wt=1):
+        hegx = (0 * self.X[0])
+        hegx[0] = 1e8
+        hegy = 0
+        self.y = np.append([hegy], self.y)
+        self.X = np.append([hegx], self.X, axis=0)
+        self.gp.y_train_ = self.y
+        self.gp.X_train_ = self.X
+        K = self.gp.kernel_(self.gp.X_train_)
+        K[:,0] *= np.sqrt(wt)
+        K[0,:] *= np.sqrt(wt)
+        K[np.diag_indices_from(K)] += self.gp.alpha
+        # from sklearn gpr
+        from scipy.linalg import cholesky, cho_solve
+        try:
+            self.gp.L_ = cholesky(K, lower=True)  # Line 2
+            self.gp._K_inv = None
+        except np.linalg.LinAlgError as exc:
+            exc.args = ("The kernel, %s, is not returning a "
+                        "positive definite matrix. Try gradually "
+                        "increasing the 'alpha' parameter of your "
+                        "GaussianProcessRegressor estimator."
+                        % self.gp.kernel_,) + exc.args
+            raise
+        self.gp.alpha_ = cho_solve((self.gp.L_, True), self.gp.y_train_)  # Line 3
+
