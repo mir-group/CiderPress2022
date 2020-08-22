@@ -493,15 +493,15 @@ def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
             if i in formulas.keys():
                 weights.append(1.0)
                 formula = formulas[i]
-                #for Z in list(formula.keys()):
-                #    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
-                #    y[i] -= formula[Z] * y[Z_to_ind[Z]]
+                for Z in list(formula.keys()):
+                    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
+                    y[i] -= formula[Z] * y[Z_to_ind[Z]]
             else:
                 weights.append(1.0 if mols[i].nelectron < 11 else 0)
 
         weights = np.array(weights)
 
-        noise = 1e-5
+        noise = 1e-2
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
