@@ -9,8 +9,6 @@ from pyscf.dft.numint import NumInt
 import os
 import numpy as np
 
-LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
-
 def get_sl_contribs(pbe_dir, restricted):
 
     if restricted:
@@ -226,97 +224,6 @@ def get_b97_data_and_targets(pbe_dir, ccsd_dir, restricted,
 
     return sl_contribs, target
 
-
-def get_mlx_contribs(pbe_dir, restricted, mlfunc):
-
-    if restricted:
-        pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
-        rhot = pbe_analyzer.rho_data[0]
-    else:
-        pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
-        rhot = pbe_analyzer.rho_data[0][0] + pbe_analyzer.rho_data[1][0]
-
-    rho_data = pbe_analyzer.rho_data
-    weights = pbe_analyzer.grid.weights
-    grid = pbe_analyzer.grid
-    spin = pbe_analyzer.mol.spin
-    mol = pbe_analyzer.mol
-    rdm1 = pbe_analyzer.rdm1
-    E_pbe = pbe_analyzer.e_tot
-
-    auxmol, ao_to_aux = setup_aux(mol, 0)
-    mol.ao_to_aux = ao_to_aux
-    mol.auxmol = auxmol
-
-    if restricted:
-        rho_data_u, rho_data_d = rho_data, rho_data
-    else:
-        rho_data_u, rho_data_d = rho_data[0], rho_data[1]
-
-    FUNCTIONAL = ',MGGA_C_SCAN'
-    cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
-    cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
-    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
-            * (rho_data_u[0] + rho_data_d[0])
-    co -= cu + cd
-
-    numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
-    if restricted:
-        ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
-        exu = ex
-        exd = ex
-        exo = ex
-        rhou = rho_data[0]
-        rhod = rho_data[0]
-        rhot = rho_data[0]
-        Ex = np.dot(exo * rhot, weights)
-    else:
-        exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
-        exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
-        rhou = 2 * rho_data[0][0]
-        rhod = 2 * rho_data[1][0]
-        rhot = rho_data[0][0] + rho_data[1][0]
-        exo = (exu * rho_data[0][0] + exd * rho_data[1][0])
-        Ex = np.dot(exo, weights)
-        exo /= (rhot + 1e-20)
-
-    Eterms = np.array([Ex])
-
-    for rho, ex, c in zip([rhou, rhod, rhot], [exu, exd, exo], [cu, cd, co]):
-        elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
-        Fx = ex / elda
-        Etmp = np.zeros(5)
-        x1 = 1 / (1 + Fx) - 0.5
-        for i in range(5):
-            Etmp[i] = np.dot(c * x1**i, weights)
-        Eterms = np.append(Eterms, Etmp)
-
-    print(Eterms.shape)
-
-    # Eterms = Eu, Ed, Eo
-    return Eterms
-
-
-def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
-
-    X = np.zeros([0,16])
-
-    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
-
-        print(mol_id)
-
-        if is_restricted:
-            pbe_dir = get_save_dir(ROOT, 'RKS', 'cc-pcvtz',
-                mol_id, functional = 'SCAN')
-        else:
-            pbe_dir = get_save_dir(ROOT, 'UKS', 'cc-pcvtz',
-                mol_id, functional = 'SCAN')
-
-        sl_contribs = get_mlx_contribs(pbe_dir, is_restricted, MLFUNC)
-
-        X = np.vstack([X, sl_contribs])
-
-    np.save(FNAME, X)
 
 def store_sl_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
 
