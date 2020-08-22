@@ -288,11 +288,11 @@ def density_mapper2(x1, x2):
     dmatrix = np.zeros((2, 2, x1.shape[0]))
 
     #matrix[0] = np.arcsinh(20.4562557*(x1 + x2))
-    matrix[0] = np.log10(1e-4 + (x1 + x2))
+    matrix[0] = np.log10(1e-3 + (x1 + x2))
     matrix[1] = 0
 
-    dmatrix[0,0] = 1.0 / (1e-4 + x1 + x2)
-    dmatrix[0,1] = 1.0 / (1e-4 + x1 + x2)
+    dmatrix[0,0] = 1.0 / np.log(10.0) / (1e-3 + x1 + x2)
+    dmatrix[0,1] = 1.0 / np.log(10.0) / (1e-3 + x1 + x2)
     dmatrix[1,0] = 0
     dmatrix[1,1] = 0
 
@@ -459,17 +459,19 @@ class CorrGPFunctional5(GPFunctional):
             rhot = rho_data[0][0] + rho_data[1][0]
             print(np.max(rhot * F, axis=0), np.max(rhot.reshape(-1,1) * dF, axis=0))
 
-        FUNCTIONAL = ',MGGA_C_SCAN'
+        FUNCTIONAL = ',LDA_C_PW_MOD'
         rho_data_u, rho_data_d = rho_data
-        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
+        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u[0], rho_data_d[0]), spin = 1)[:2]
         co = eo * (rho_data_u[0] + rho_data_d[0])
         E = eo * (F)
         vo = list(vo)
-        for i in range(4):
+        for i in range(1):
             j = 2 if i == 1 else 1
             vo[i] *= (F).reshape(-1,1)
 
         dEddesc = co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
+        dEddesc[:,:2] = 0
+        dEddesc[:,2:] = 0
         dFddesc_rho = (dF[:,-1] * rdmat).T
         vo[0][:,0] += co * dFddesc_rho[:,0]
         vo[0][:,1] += co * dFddesc_rho[:,1]
