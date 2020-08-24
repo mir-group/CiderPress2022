@@ -446,7 +446,11 @@ class CorrGPFunctional5(GPFunctional):
         ]
 
     def get_F_and_derivative(self, X, rho_data, compare = None):
-        X = (X[0] + X[1]) / 2
+        rho_data_u, rho_data_d = rho_data
+        rhou, rhod = rho_data_u[0].reshape(-1,1), rho_data_d[0].reshape(-1,1)
+        rhot = rhou + rhod + 1e-20
+        Xi = X
+        X = (rhou * X[0] + rhod * X[1]) / rhot
         rmat, rdmat = density_mapper2(rho_data[0][0], rho_data[1][0])
         rmat, rdmat = rmat[:1], rdmat[0,:,:]
         mat, dmat = mapper.desc_and_ddesc(X.T)
@@ -456,11 +460,10 @@ class CorrGPFunctional5(GPFunctional):
             Xinit = compare
             test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
             print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
-            rhot = rho_data[0][0] + rho_data[1][0]
-            print(np.max(rhot * F, axis=0), np.max(rhot.reshape(-1,1) * dF, axis=0))
+            rhott = rho_data[0][0] + rho_data[1][0]
+            print(np.max(np.abs(rhott * F), axis=0), np.max(np.abs(rhott.reshape(-1,1) * dF), axis=0))
 
         FUNCTIONAL = ',LDA_C_PW_MOD'
-        rho_data_u, rho_data_d = rho_data
         eo, vo = eval_xc(FUNCTIONAL, (rho_data_u[0], rho_data_d[0]), spin = 1)[:2]
         co = eo * (rho_data_u[0] + rho_data_d[0])
         E = eo * (F)
@@ -471,12 +474,19 @@ class CorrGPFunctional5(GPFunctional):
 
         dEddesc = co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
         dEddesc[:,:2] = 0
-        dEddesc[:,2:] = 0
+        dEddesc_u = dEddesc * rhou / rhot
+        dEddesc_d = dEddesc * rhod / rhot
+        print(np.max(np.abs(dEddesc_u), axis=0), np.max(np.abs(dEddesc_d), axis=0))
+        dEdrhou = np.sum(dEddesc * (Xi[0] - Xi[1]) * rhod / (rhot + 1e-8)**2, axis=1)
+        dEdrhod = np.sum(dEddesc * (Xi[1] - Xi[0]) * rhou / (rhot + 1e-8)**2, axis=1)
         dFddesc_rho = (dF[:,-1] * rdmat).T
         vo[0][:,0] += co * dFddesc_rho[:,0]
         vo[0][:,1] += co * dFddesc_rho[:,1]
+        vo[0][:,0] += dEdrhou
+        vo[0][:,1] += dEdrhod
 
-        return E, vo, dEddesc
+        #return E, vo, dEddesc
+        return E, vo, (dEddesc_u, dEddesc_d)
 
 
 import mldftdat.models.map_v1 as mapper

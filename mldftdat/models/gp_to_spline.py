@@ -114,7 +114,7 @@ class EvaluatorCorr(Evaluator):
         F = self.predict_from_desc(desc[:,2:], vec_eval = vec_eval)
         if vec_eval:
             F = F[0]
-        F *= desc[:,1]
+        #F *= desc[:,1]
         return self.y_to_xed(F, rho_data_u, rho_data_d)
 
 
@@ -549,8 +549,8 @@ def get_sub_evaluator2(kernel, X, alpha, bounds, version = 'c'):
     scale = np.array(scale)
     dims = []
     for i in range(NFEAT):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density=3, bound=bounds[i]) )
-    dims.append(get_dim(d0, srbf.length_scale, density=3, bound = bounds[-1]))
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density=6, bound=bounds[i]) )
+    dims.append(get_dim(d0, srbf.length_scale, density=6, bound = bounds[-1]))
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(NFEAT + 1)]
     
@@ -580,8 +580,8 @@ def get_sub_evaluator2(kernel, X, alpha, bounds, version = 'c'):
     for i in range(len(funcps)):
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
     if version == 'c':
-        evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
-                              None, None, NFEAT)
+        evaluator = EvaluatorCorr(scale, ind_sets, spline_grids, coeff_sets,
+                                  None, None, NFEAT)
     else:
         evaluator = EvaluatorCorr(scale, ind_sets, spline_grids, coeff_sets,
                                   None, None, NFEAT)
