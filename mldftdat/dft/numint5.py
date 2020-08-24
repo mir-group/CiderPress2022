@@ -453,6 +453,8 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
     contracted_desc = [0,0]
 
     for spin in range(2):
+        pr2 = rho_data[spin] * np.linalg.norm(grid.coords, axis=1)**2
+        print('r2', spin, np.dot(pr2, grid.weights))
         desc[spin]  = np.zeros((N, len(mlfunc.desc_list)))
         ddesc[spin] = np.zeros((N, len(mlfunc.desc_list)))
         raw_desc[spin], ovlps[spin] = get_x_helper_full2(

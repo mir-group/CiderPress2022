@@ -13,7 +13,7 @@ LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 DEFAULT_FUNCTIONAL = 'SCAN'
 DEFAULT_BASIS = 'aug-cc-pvtz'
 
-def get_mlx_contribs(dft_dir, restricted, mlfunc):
+def get_mlx_contribs(dft_dir, restricted, mlfunc, get_sl = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -39,13 +39,24 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
     else:
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
 
-    FUNCTIONAL = ',MGGA_C_SCAN'
+    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
+    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
+    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
+    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
+    Du = 1 - 0.125 * xu**2 / (zu + CF + 1e-20)
+    Dd = 1 - 0.125 * xd**2 / (zd + CF + 1e-20)
+    print(np.mean(Du), np.mean(Dd))
+
+    FUNCTIONAL = ',LDA_C_PW_MOD'
     cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
     cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
     co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
             * (rho_data_u[0] + rho_data_d[0])
     co -= cu + cd
-    FUNCTIONAL = 'MGGA_X_SCAN,'
+    cu *= Du
+    cd *= Dd
+    FUNCTIONAL = DEFAULT_FUNCTIONAL
     Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
              * (rho_data_u[0] + rho_data_d[0])
     Exscan = np.dot(Exscan, weights)
@@ -76,7 +87,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
         elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**6) / (1 + Fx**6)
+        x1 = (1 - Fx**4) / (1 + Fx**4)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
@@ -222,7 +233,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'mlx4b.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
@@ -262,7 +273,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
         #print(E_c.shape)
 
-        diff = E_ccsd - (E_dft - E_xscan + E_x)
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -294,7 +305,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         y = y[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-3
+        noise = 1e-10
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
@@ -303,6 +314,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         score0 = r2_score(y, np.dot(X, 0 * coef))
         print(score, score0)
         print(np.dot(X, coef))
+        print(np.mean(np.abs(y - np.dot(X, coef))))
 
         coef_sets.append(coef)
         scores.append(score)

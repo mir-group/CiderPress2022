@@ -273,9 +273,15 @@ def get_desc_tot6(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     return X
 
 def get_desc_tot7(Xu, Xd, rho_data_u, rho_data_d, num = 1):
-    tmp = (Xu[:,1]**2 + Xd[:,1]**2) / 2
-    X = (Xu + Xd) / 2
+    rho_u = rho_data_u[:1].T
+    rho_uf = rho_u.flatten()
+    rho_d = rho_data_d[:1].T
+    rho_df = rho_d.flatten()
+    tmp_rho = rho_uf + rho_df
+    tmp = (Xu[:,1]**2 * rho_uf + Xd[:,1]**2 * rho_df) / (rho_uf + rho_df + 1e-20)
+    X = (Xu * rho_u + Xd * rho_d) / (rho_u + rho_d + 1e-20)
     X[:,1] = np.sqrt(tmp)
+    X[:,0] = tmp_rho
     X = get_big_desc(X, num, True)
     #zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-20)
     #zeta = zeta**2
@@ -467,7 +473,7 @@ class CorrGPR6(CorrGPR):
                 0.198, 0.192, 0.277, 0.141, 0.319, 0.115, 0.156, 0.306][:num_desc-1],
                 length_scale_bounds = 'fixed', scale_bounds = 'fixed',
                 scale = [0.02797253, 0.00077693, 0.63756865], active_dims=ind[2:num_desc+1])
-        rbf *= SingleRBF(length_scale=0.26, index=num_desc+1, length_scale_bounds='fixed')
+        rbf *= SingleRBF(length_scale=10000.00, index=num_desc+1, length_scale_bounds='fixed')
         dot = SingleDot(sigma_0=0.0, sigma_0_bounds='fixed', index = 1)
         covos = rbf
 
@@ -483,7 +489,7 @@ class CorrGPR6(CorrGPR):
 
         init_kernel = cov_kernel + noise_kernel
         super(CorrGPR, self).__init__(num_desc,
-                       descriptor_getter = get_desc_tot6,
+                       descriptor_getter = get_desc_tot7,
                        xed_y_converter = (ced_to_y_lda, y_to_ced_lda),
                        init_kernel = init_kernel)
 
