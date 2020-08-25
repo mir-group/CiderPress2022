@@ -87,7 +87,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
         elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**4) / (1 + Fx**4)
+        x1 = (1 - Fx**6) / (1 + Fx**6)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
@@ -144,32 +144,46 @@ def get_mn_contribs(dft_dir, restricted, mlfunc):
         rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
     else:
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
+    rho_data_t = rho_data_u + rho_data_d
 
-    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
-    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
+    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-10)
+    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-10)
+    xo = np.linalg.norm(rho_data_t[1:4], axis=0) / (rho_data_t[0]**(4.0/3) + 1e-10)
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
-    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
-    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
-    alpha_ss, alphas_os
-    Du = 1 - 0.125 * xu**2 / (zu + CF + 1e-20)
-    Dd = 1 - 0.125 * xd**2 / (zd + CF + 1e-20)
+    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-10) - CF
+    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-10) - CF
+    zo = rho_data_t[5] / (rho_data_t[0]**(5.0/3) + 1e-10) - CF / 2**(2.0/3)
+    zu *= 2
+    zd *= 2
+    #alpha_ss, alpha_os = 0.005151, 0.003050 * 2**(2.0/3)
+    alpha_ss, alpha_os = 0.00515088, 0.00304966
+    gamma_ss, gamma_os = 0.06, 0.0031
+    Du = 1 - 0.25 * xu**2 / (zu + 2 * CF + 1e-10)
+    Dd = 1 - 0.25 * xd**2 / (zd + 2 * CF + 1e-10)
+    #Du = rho_data_u[5] * rho_data_u[0] - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / 8
+    #Dd = rho_data_d[5] * rho_data_d[0] - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / 8
+    #Du /= rho_data_u[5] * rho_data_u[0] + 1e-20
+    #Dd /= rho_data_d[5] * rho_data_d[0] + 1e-20
+    print(np.std(zu - zd), np.std(xu - xd))
     print(np.mean(Du), np.mean(Dd))
     dvals = np.zeros((18, weights.shape[0]))
     start = 0
-    for x, z, alpha in [(xu, zu, alpha_ss), (xd, zd, alpha_ss),\
-                        (xu+xd, zu+zd, alpha_os)]:
-        gamma = gamma_func(x, z, alpha)
+    def gamma_func(x2, z, alpha):
+        return 1 + alpha * (x2 + z)
+    for x2, z, alpha in [(xu**2, zu, alpha_ss), (xd**2, zd, alpha_ss),\
+                        ((xu**2+xd**2), (zu+zd), alpha_os)]:
+        gamma = gamma_func(x2, z, alpha)
         dvals[start+0] = 1 / gamma - 1
-        dvals[start+1] = xu**2 / gamma**2
-        dvals[start+2] = zu / gamma**2
-        dvals[start+3] = xu**4 / gamma**3
-        dvals[start+4] = xu**2 * zu / gamma**3
-        dvals[start+5] = zu**2 / gamma**3
+        dvals[start+1] = x2 / gamma**2
+        dvals[start+2] = z / gamma**2
+        dvals[start+3] = x2**2 / gamma**3
+        dvals[start+4] = x2 * z / gamma**3
+        dvals[start+5] = z**2 / gamma**3
         start += 6
     cvals = np.zeros((15, weights.shape[0]))
     start = 0
-    for x, gamma in [(xu, gamma_ss), (xd, gamma_ss), (xu+xd, gamma_os)]:
-        u = gamma * x**2 / (1 + gamma * x**2)
+    for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss), ((xu**2+xd**2), gamma_os)]:
+        u = gamma * x2 / (1 + gamma * x2)
         for i in range(5):
             cvals[start+i] = u**i
         start += 5
@@ -182,6 +196,7 @@ def get_mn_contribs(dft_dir, restricted, mlfunc):
     co -= cu + cd
     cu *= Du
     cd *= Dd
+    ctst = eval_xc(',MGGA_C_M06_L', (rho_data_u, rho_data_d), spin = 1)[0] * rho_data_t[0]
     
     dvals[:6] *= cu
     dvals[6:12] *= cd
@@ -189,16 +204,31 @@ def get_mn_contribs(dft_dir, restricted, mlfunc):
     cvals[:5] *= cu
     cvals[5:10] *= cd
     cvals[10:] *= co
+    ccoef = [1.0, 5.396620e-1, -3.161217e+1, 5.149592e+1, -2.919613e+1,\
+             1.0, 1.776783e+2, -2.513252e+2, 7.635173e+1, -1.255699e+1]
+    dcoef = [4.650534e-1, 1.617589e-1, 1.833657e-1, 4.692100e-4, -4.990573e-3, 0,\
+             3.957626e-1, -5.614546e-1, 1.403963e-2, 9.831442e-4, -3.577176e-3, 0]
+    #coef = [5.349466e-01,  5.396620e-01, -3.161217e+01,  5.149592e+01, -2.919613e+01,
+    #6.042374e-01,  1.776783e+02, -2.513252e+02,  7.635173e+01, -1.255699e+01,
+    #4.650534e-01,  1.617589e-01,  1.833657e-01,  4.692100e-04, -4.990573e-03,  0.000000e+00,
+    #3.957626e-01, -5.614546e-01,  1.403963e-02,  9.831442e-04, -3.577176e-03,  0.000000e+00] 
+    #ccoef, dcoef = coef[:10], coef[10:]
+    ccoef = ccoef[:5] * 2 + ccoef[5:]
+    dcoef = dcoef[:6] * 2 + dcoef[6:]
+    Epw0 = np.dot(cu+cd+co, weights)
 
     dvals = np.dot(dvals, weights)
     cvals = np.dot(cvals, weights)
+    print(np.dot(dvals, dcoef) + np.dot(cvals, ccoef), np.dot(ctst, weights))
+    #print(np.dot(dvals[6:12], dcoef[6:12]) + np.dot(cvals[5:10], ccoef[5:10]), np.dot(ctst, weights))
 
     return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
-                           cvals[:5] + cvals[5:10], cvals[10:]], axis=0)
+                           cvals[:5] + cvals[5:10], cvals[10:],\
+                           [dft_analyzer.fx_total]], axis=0)
 
 def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
 
-    X = np.zeros([0,22])
+    X = np.zeros([0,23])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
@@ -211,7 +241,7 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_mlx_contribs(dft_dir, is_restricted, MLFUNC)
+        sl_contribs = get_mn_contribs(dft_dir, is_restricted, MLFUNC)
 
         X = np.vstack([X, sl_contribs])
 
@@ -228,7 +258,7 @@ def get_etot_contribs(dft_dir, ccsd_dir, restricted):
         ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
 
     E_pbe = dft_analyzer.e_tot
-    if ccsd_analyzer.e_tri is None:
+    if ccsd_analyzer.mol.nelectron < 3:
         E_ccsd = ccsd_analyzer.e_tot
     else:
         E_ccsd = ccsd_analyzer.e_tot + ccsd_analyzer.e_tri
@@ -332,7 +362,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx4b.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6b.npy'))
+    mnc = np.load(os.path.join(DATA_ROOT, 'mn.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
@@ -362,7 +393,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
-        E_x = mlx[:,0]
+        #E_x = mlx[:,0]
+        E_x = mnc[:,-1]
         E_xscan = mlx[:,1]
         #print(E_x)
         #print(E_xscan)
@@ -370,9 +402,11 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         #print(E_ccsd - E_dft)
         #print(E_vv10)
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+        E_c = np.append(E_c, mnc[:,:12], axis=1)
+        #E_c = mnc[:,:12]
         #print(E_c.shape)
 
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -402,9 +436,11 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         X = X[weights > 0, :]
         y = y[weights > 0]
+        Ecc = Ecc[weights > 0]
+        Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-10
+        noise = 1e-2
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
@@ -412,8 +448,9 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         score = r2_score(y, np.dot(X, coef))
         score0 = r2_score(y, np.dot(X, 0 * coef))
         print(score, score0)
-        print(np.dot(X, coef))
+        print(y - np.dot(X, coef))
         print(np.mean(np.abs(y - np.dot(X, coef))))
+        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
 
         coef_sets.append(coef)
         scores.append(score)
