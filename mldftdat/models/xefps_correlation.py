@@ -13,7 +13,7 @@ LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 DEFAULT_FUNCTIONAL = 'SCAN'
 DEFAULT_BASIS = 'aug-cc-pvtz'
 
-def get_mlx_contribs(dft_dir, restricted, mlfunc):
+def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -83,7 +83,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
 
     Eterms = np.array([Ex, Exscan])
 
-    for rho, ex, c in zip([rhou, rhod, rhot], [exu, exd, exo], [cu, cd, co]):
+    for rho, ex, c in zip([2 * rhou, 2 * rhod, rhot], [exu, exd, exo], [cu, cd, co]):
         elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
@@ -92,13 +92,25 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
 
+    if include_x:
+        for rho, ex in zip([2 * rhou, 2 * rhod], [exu, exd]):
+            elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
+            Fx = ex / elda
+            Etmp = np.zeros(5)
+            x1 = (1 - Fx**6) / (1 + Fx**6)
+            for i in range(5):
+                Etmp[i] = np.dot(elda * rho[0] * x1**i, weights)
+            Eterms = np.append(Eterms, Etmp)
+
     print(Eterms.shape)
 
     # Eterms = Eu, Ed, Eo
     return Eterms
 
-def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
+def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
+                               MLFUNC, include_x = False):
 
+    SIZE = 27 if include_x else 17
     X = np.zeros([0,17])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -112,14 +124,15 @@ def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC)
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_mlx_contribs(dft_dir, is_restricted, MLFUNC)
+        sl_contribs = get_mlx_contribs(dft_dir, is_restricted, MLFUNC,
+                                       include_x = include_x)
 
         X = np.vstack([X, sl_contribs])
 
     np.save(FNAME, X)
 
 
-def get_mn_contribs(dft_dir, restricted, mlfunc):
+def get_mn_contribs(dft_dir, restricted, include_x = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -156,6 +169,7 @@ def get_mn_contribs(dft_dir, restricted, mlfunc):
     zu *= 2
     zd *= 2
     #alpha_ss, alpha_os = 0.005151, 0.003050 * 2**(2.0/3)
+    alpha_x = 0.001867
     alpha_ss, alpha_os = 0.00515088, 0.00304966
     gamma_ss, gamma_os = 0.06, 0.0031
     Du = 1 - 0.25 * xu**2 / (zu + 2 * CF + 1e-10)
@@ -222,11 +236,27 @@ def get_mn_contribs(dft_dir, restricted, mlfunc):
     print(np.dot(dvals, dcoef) + np.dot(cvals, ccoef), np.dot(ctst, weights))
     #print(np.dot(dvals[6:12], dcoef[6:12]) + np.dot(cvals[5:10], ccoef[5:10]), np.dot(ctst, weights))
 
-    return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
-                           cvals[:5] + cvals[5:10], cvals[10:],\
-                           [dft_analyzer.fx_total]], axis=0)
+    if include_x:
+        xvals = np.zeros((12,weights.shape[0]))
+        start = 0
+        for x2, z, alpha in [(xu**2, zu, alpha_x), (xd**2, zd, alpha_x)]:
+            gamma = gamma_func(x2, z, alpha)
+            xvals[start+0] = 1 / gamma - 1
+            xvals[start+1] = x2 / gamma**2
+            xvals[start+2] = z / gamma**2
+            xvals[start+3] = x2**2 / gamma**3
+            xvals[start+4] = x2 * z / gamma**3
+            xvals[start+5] = z**2 / gamma**3
+            xvals[start:start+6] *= LDA_FACTOR
+            # TODO NOT DONE
+            start += 6
+    else:
+        return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
+                               cvals[:5] + cvals[5:10], cvals[10:],\
+                               [dft_analyzer.fx_total]], axis=0)
 
-def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
+def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC,
+                              include_x = False):
 
     X = np.zeros([0,23])
 
@@ -241,7 +271,8 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC):
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_mn_contribs(dft_dir, is_restricted, MLFUNC)
+        sl_contribs = get_mn_contribs(dft_dir, is_restricted, MLFUNC,
+                                      include_x = include_x)
 
         X = np.vstack([X, sl_contribs])
 
