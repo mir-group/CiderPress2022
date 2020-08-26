@@ -83,23 +83,23 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
 
     Eterms = np.array([Ex, Exscan])
 
-    for rho, ex, c in zip([2 * rhou, 2 * rhod, rhot], [exu, exd, exo], [cu, cd, co]):
-        elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
+    for rho, ex, c in zip([rhou, rhod, rhot], [exu, exd, exo], [cu, cd, co]):
+        elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**6) / (1 + Fx**6)
+        x1 = (1 - Fx**8) / (1 + Fx**8)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
 
     if include_x:
-        for rho, ex in zip([2 * rhou, 2 * rhod], [exu, exd]):
-            elda = LDA_FACTOR * rho[0]**(1.0/3) - 1e-20
+        for rho, ex in zip([rhou, rhod], [exu, exd]):
+            elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
-            x1 = (1 - Fx**6) / (1 + Fx**6)
+            x1 = (1 - Fx**8) / (1 + Fx**8)
             for i in range(5):
-                Etmp[i] = np.dot(elda * rho[0] * x1**i, weights)
+                Etmp[i] = np.dot(elda * rho / 2 * x1**i, weights)
             Eterms = np.append(Eterms, Etmp)
 
     print(Eterms.shape)
@@ -111,7 +111,7 @@ def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                                MLFUNC, include_x = False):
 
     SIZE = 27 if include_x else 17
-    X = np.zeros([0,17])
+    X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
@@ -124,8 +124,8 @@ def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_mlx_contribs(dft_dir, is_restricted, MLFUNC,
-                                       include_x = include_x)
+        sl_contribs = get_mlx_contribs(dft_dir, is_restricted,
+                                       MLFUNC, include_x = include_x)
 
         X = np.vstack([X, sl_contribs])
 
@@ -239,7 +239,7 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
     if include_x:
         xvals = np.zeros((12,weights.shape[0]))
         start = 0
-        for x2, z, alpha in [(xu**2, zu, alpha_x), (xd**2, zd, alpha_x)]:
+        for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x), (rho_data_d[0], xd**2, zd, alpha_x)]:
             gamma = gamma_func(x2, z, alpha)
             xvals[start+0] = 1 / gamma - 1
             xvals[start+1] = x2 / gamma**2
@@ -247,18 +247,23 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
             xvals[start+3] = x2**2 / gamma**3
             xvals[start+4] = x2 * z / gamma**3
             xvals[start+5] = z**2 / gamma**3
-            xvals[start:start+6] *= LDA_FACTOR
-            # TODO NOT DONE
+            xvals[start:start+6] *= LDA_FACTOR * 2**(1.0/3) * rho**(4.0/3)
             start += 6
+        xvals = np.dot(xvals, weights)
+        return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
+                               cvals[:5] + cvals[5:10], cvals[10:],\
+                               xvals[:6] + xvals[6:],\
+                               [dft_analyzer.fx_total]], axis=0)
     else:
         return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
                                cvals[:5] + cvals[5:10], cvals[10:],\
                                [dft_analyzer.fx_total]], axis=0)
 
-def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC,
+def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                               include_x = False):
 
-    X = np.zeros([0,23])
+    SIZE = 29 if include_x else 23
+    X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
@@ -271,7 +276,7 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, MLFUNC,
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_mn_contribs(dft_dir, is_restricted, MLFUNC,
+        sl_contribs = get_mn_contribs(dft_dir, is_restricted,
                                       include_x = include_x)
 
         X = np.vstack([X, sl_contribs])
@@ -393,8 +398,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6b.npy'))
-    mnc = np.load(os.path.join(DATA_ROOT, 'mn.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6c.npy'))
+    mnc = np.load(os.path.join(DATA_ROOT, 'mnc.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
@@ -424,8 +429,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
-        #E_x = mlx[:,0]
-        E_x = mnc[:,-1]
+        E_x = mlx[:,0]
+        #E_x = mnc[:,-1]
         E_xscan = mlx[:,1]
         #print(E_x)
         #print(E_xscan)
@@ -433,11 +438,15 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         #print(E_ccsd - E_dft)
         #print(E_vv10)
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+        E_c = np.append(E_c, mlx[:,18:22] + mlx[:,23:27], axis=1)
         E_c = np.append(E_c, mnc[:,:12], axis=1)
+        E_c = np.append(E_c, mnc[:,-7:-1], axis=1)
+        #E_c = E_c[:,-18:]
         #E_c = mnc[:,:12]
-        #print(E_c.shape)
+        print("SHAPE", E_c.shape)
 
         diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -458,8 +467,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
                 print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                weights.append(0.0)
+                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 18 else 0)
+                #weights.append(0.0)
 
         weights = np.array(weights)
 
@@ -471,7 +480,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-2
+        noise = 1e-3
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
@@ -480,12 +489,12 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         score0 = r2_score(y, np.dot(X, 0 * coef))
         print(score, score0)
         print(y - np.dot(X, coef))
-        print(np.mean(np.abs(y - np.dot(X, coef))))
+        print('SCAN', np.mean(np.abs(Ecc-Edf)[weights > 0]), np.mean((Ecc-Edf)[weights > 0]))
+        print('ML', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
         print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
 
         coef_sets.append(coef)
         scores.append(score)
-        break
 
     return coef_sets, scores
 
