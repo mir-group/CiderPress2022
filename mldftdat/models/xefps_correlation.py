@@ -87,7 +87,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**8) / (1 + Fx**8)
+        x1 = (1 - Fx**6) / (1 + Fx**6)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
@@ -97,7 +97,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
-            x1 = (1 - Fx**8) / (1 + Fx**8)
+            x1 = (1 - Fx**6) / (1 + Fx**6)
             for i in range(5):
                 Etmp[i] = np.dot(elda * rho / 2 * x1**i, weights)
             Eterms = np.append(Eterms, Etmp)
