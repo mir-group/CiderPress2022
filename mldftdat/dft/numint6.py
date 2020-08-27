@@ -312,14 +312,16 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
         exc += 2**(1.0/3) * LDA_FACTOR * F[spin] * rho43
-        dEddesc[spin] = LDA_FACTOR * rho43 * dF[spin]
-        Pc, dPc = get_corrx_xef_func(F[spin])
+        dEddesc[spin] = 2**(1.0/3) * LDA_FACTOR * rho43 * dF[spin]
+        Pc, dPc = self.corr_model.get_xeff_and_deriv(F[spin], use_cos = False)
         exc += 2**(1.0/3) * LDA_FACTOR * rho43 * Pc
-        dEddesc[spin] += LDA_FACTOR * rho43 * dPc * dF[spin]
+        dEddesc[spin] += 2**(1.0/3) * LDA_FACTOR * rho43 * dPc * dF[spin]
 
-    Qcuu, dQcuu = get_corrc_xef_func_ss(F[0])
-    Qcdd, dQcdd = get_corrc_xef_func_ss(F[1])
-    Qcud, dQcud = get_corrc_xef_func_os((F[0] * rhou + F[1] * rhod) / (rhot + 1e-10))
+    Qcuu, dQcuu = self.corr_model.get_xeff_and_deriv_ss(F[0])
+    Qcdd, dQcdd = self.corr_model.get_xeff_and_deriv_ss(F[1])
+    Qcud, dQcud = self.corr_model.get_xeff_and_deriv(
+            (F[0] * rhou + F[1] * rhod) / (rhot + 1e-10),
+            use_cos = True)
     exc += ldac_uu * Qcuu + ldac_ud * Qcud + ldac_dd * Qcdd
     dEddesc[0] += ldac_uu * dQuu * dF[0]
     dEddesc[0] += ldac_ud * dQud * rhou / (rhot + 1e-10) * dF[0]
@@ -350,10 +352,11 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     print('v_nonlocal', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    g2u = np.einsum('ri,ri->i', rho_data[0][1:4])
-    g2d = np.einsum('ri,ri->i', rho_data[1][1:4])
+    g2u = np.einsum('ir,ir->i', rho_data[0][1:4], rho_data[0][1:4])
+    g2d = np.einsum('ir,ir->i', rho_data[1][1:4], rho_data[1][1:4])
     en, dcu, dcd, dco, dnu, dnd, dg2u, dg2d, dtu, dtd = \
-        corr_model.get_en_and_deriv(cu, cd, co, rhou + 1e-10, rhod + 1e-10,
+        self.corr_model.get_en_and_deriv_corr(cu, cd,
+            co, rhou + 1e-10, rhod + 1e-10,
             g2u, g2d, rho_data[0][5] + 1e-10, rho_data[1][5] + 1e-10)
     exc += en
 
@@ -367,6 +370,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
         vtot[3] = np.zeros((vtot[0].shape[0],2))
     vtot[0][:,0] += v_lda_uu * dcu + v_lda_ud[:,0] * dco
     vtot[0][:,1] += v_lda_dd * dcd + v_lda_ud[:,1] * dco
+    vtot[0][:,0] += 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) * F[0]
+    vtot[0][:,1] += 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) * F[1]
     vtot[0][:,0] += ldac_ud * dQud * (F[0] - F[1]) * rhod / (rhot + 1e-10)**2
     vtot[0][:,1] += ldac_ud * dQud * (F[1] - F[0]) * rhou / (rhot + 1e-10)**2
     vtot[0] += v_nst[0]
@@ -376,6 +381,19 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     vtot[3] += v_nst[3]
     vtot[3][:,0] += dtu
     vtot[3][:,1] += dtd
+
+    for spin in range(2):
+        fsl, dfsl_n, dfsl_g2, dfsl_t = \
+            self.corr_model.get_f_and_deriv_ex(rho_data[spin][0] + 1e-10,
+                np.einsum('ir,ir->i', rho_data[spin][1:4], rho_data[spin][1:4]),
+                rho_data[spin][5] + 1e-10)
+        exc += 2**(1.0/3) * LDA_FACTOR * fsl * rho_data[spin][0]**(4.0/3)
+        vtot[0][:,spin] += 2**(1.0/3) * LDA_FACTOR * dfsl_n * rho_data[spin][0]**(4.0/3)
+        vtot[0][:,spin] += 2**(1.0/3) * 4/3 * LDA_FACTOR * fsl * rho_data[spin][0]**(1.0/3)
+        vtot[1][:,2 if spin == 1 else 0] += \
+            2**(1.0/3) * LDA_FACTOR * dfsl_g2 * rho_data[spin][0]**(4.0/3)
+        vtot[3][:,spin] += 2**(1.0/3) * LDA_FACTOR * dfsl_t * rho_data[spin][0]**(4.0/3)
+
     return exc / (rhot + 1e-10), (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
 
 
