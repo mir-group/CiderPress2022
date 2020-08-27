@@ -195,12 +195,12 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_uks = nr_uks
 
-    def __init__(self, mlfunc_x, alpha,
+    def __init__(self, mlfunc_x, cx, css, cos,
                  dss, dos, vv10_coeff = None):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
         from mldftdat.models import map_c1
-        self.corr_model = map_c1.VSXCContribs(alpha, dss, dos)
+        self.corr_model = map_c1.VSXCContribs(cx, css, cos, dss, dos)
 
         if vv10_coeff is None:
             self.vv10 = False
