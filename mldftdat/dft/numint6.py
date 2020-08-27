@@ -196,11 +196,11 @@ class NLNumInt(pyscf_numint.NumInt):
     nr_uks = nr_uks
 
     def __init__(self, mlfunc_x, cx, css, cos,
-                 dss, dos, vv10_coeff = None):
+                 dx, dss, dos, vv10_coeff = None):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
         from mldftdat.models import map_c1
-        self.corr_model = map_c1.VSXCContribs(cx, css, cos, dss, dos)
+        self.corr_model = map_c1.VSXCContribs(cx, css, cos, dx, dss, dos)
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -397,7 +397,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     return exc / (rhot + 1e-10), (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
 
 
-def setup_aux(mol, beta):
+def setup_aux(mol):
     #auxbasis = df.aug_etb(mol, beta = beta)
     nao = mol.nao_nr()
     auxmol = df.make_auxmol(mol, 'weigend')
@@ -417,19 +417,34 @@ def setup_aux(mol, beta):
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
     return auxmol, ao_to_aux
 
+DEFAULT_CSS = [9.45005252e-03,  2.99898283e-02, -5.77803659e-02,  4.71687530e-02]
+DEFAULT_COS = [6.56853990e-02,  1.37109979e-01,  3.86516565e-02, -3.87351635e-02]
+DEFAULT_CX = [2.59109018e-01,  9.17724172e-02,  4.68728794e-01, -1.08767355e-01]
+DEFAULT_DSS = [-2.60863426e-03, -4.96379923e-02, -7.05006634e-02,\
+               1.93345307e-03, 4.74310694e-03,  8.91634839e-03]
+DEFAULT_DOS = [6.41488932e-02, -2.36550649e-02, 1.00285533e-01,\
+               3.89088798e-04, -1.63303498e-03,  2.70268729e-04]
+DEFAULT_DX = [5.30877430e-02,  2.36683945e-03, -1.15681238e-02,\
+              5.09357773e-05, -2.22092336e-04,  3.42532905e-05]
 
-def setup_rks_calc(mol, mlfunc_x, mlfunc_c, vv10_coeff = None,
-                   beta = 1.6, ss_terms = None, os_terms = None):
+def setup_rks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
+                   cos=DEFAULT_COS, dx=DEFAULT_DX,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
+                   vv10_coeff = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc_x, mlfunc_c, vv10_coeff,
-                           beta, ss_terms, os_terms)
+    rks._numint = NLNumInt(mlfunc_x, cx, css,
+                           cos, dx, dss, dos,
+                           vv10_coeff)
     return rks
 
-def setup_uks_calc(mol, mlfunc_x, mlfunc_c, vv10_coeff = None,
-                   beta = 1.6, ss_terms = None, os_terms = None):
+def setup_uks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
+                   cos=DEFAULT_COS, dx=DEFAULT_DX,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
+                   vv10_coeff = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc_x, mlfunc_c, vv10_coeff,
-                           beta, ss_terms, os_terms)
+    uks._numint = NLNumInt(mlfunc_x, cx, css,
+                           cos, dx, dss, dos,
+                           vv10_coeff)
     return uks
