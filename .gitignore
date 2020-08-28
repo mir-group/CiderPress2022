@@ -1,2 +1,7 @@
 *.out
 *.err
+*.npy
+*.npz
+*.txt
+*.joblib
+*.hdf5
