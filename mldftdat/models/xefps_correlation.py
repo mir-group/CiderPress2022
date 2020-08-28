@@ -5,6 +5,7 @@ from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
+from mldftdat.models.map_c2 import VSXCContribs
 import os
 import numpy as np
 
@@ -212,14 +213,23 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
         start += 5
 
     FUNCTIONAL = ',LDA_C_PW_MOD'
-    cu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[0] * rho_data_u[0]
-    cd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[0] * rho_data_d[0]
-    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
-            * (rho_data_u[0] + rho_data_d[0])
+    cu, vu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[:2]
+    cd, vd = eval_xc(FUNCTIONAL, (rho_data_d, 0 * rho_data_d), spin = 1)[:2]
+    co, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
+    cu *= rho_data_u[0]
+    cd *= rho_data_d[0]
+    co *= (rho_data_u[0] + rho_data_d[0])
+    vuu = vu[0][:,0]
+    vdd = vd[0][:,0]
+    vou = vo[0][:,0] - vuu
+    vod = vo[0][:,1] - vdd
     co -= cu + cd
+    cutmp = cu.copy()
+    cdtmp = cd.copy()
     cu *= Du
     cd *= Dd
-    ctst = eval_xc(',MGGA_C_M06_L', (rho_data_u, rho_data_d), spin = 1)[0] * rho_data_t[0]
+    ctst, vtst = eval_xc(',MGGA_C_M06_L', (rho_data_u, rho_data_d), spin = 1)[:2] 
+    ctst *= rho_data_t[0]
     
     dvals[:6] *= cu
     dvals[6:12] *= cd
@@ -245,10 +255,24 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
     print(np.dot(dvals, dcoef) + np.dot(cvals, ccoef), np.dot(ctst, weights))
     #print(np.dot(dvals[6:12], dcoef[6:12]) + np.dot(cvals[5:10], ccoef[5:10]), np.dot(ctst, weights))
 
+    g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+    corr_model = VSXCContribs(None, None, None, None, dcoef[:6], dcoef[6:])
+    tot, uderiv, dderiv = corr_model.corr_mn(cutmp, cdtmp, co, vuu, vdd, vou, vod,
+                                             rho_data_u[0], rho_data_d[0],
+                                             g2u, g2d, rho_data_u[5], rho_data_d[5])
+    print('TEST VSXC CONTRIBS')
+    print(np.dot(tot, weights), np.dot(ctst, weights))
+    print(np.dot(uderiv[0], rho_data_u[0] * weights),
+        np.dot(vtst[0][:,0], rho_data_u[0] * weights))
+    print(np.dot(dderiv[0], rho_data_d[0] * weights),
+        np.dot(vtst[0][:,1], rho_data_d[0] * weights))
+
     if include_x:
         xvals = np.zeros((12,weights.shape[0]))
         start = 0
-        for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x), (rho_data_d[0], xd**2, zd, alpha_x)]:
+        for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x),\
+                                  (rho_data_d[0], xd**2, zd, alpha_x)]:
             gamma = gamma_func(x2, z, alpha)
             xvals[start+0] = 1 / gamma - 1
             xvals[start+1] = x2 / gamma**2
