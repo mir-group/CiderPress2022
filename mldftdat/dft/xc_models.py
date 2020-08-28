@@ -473,7 +473,7 @@ class CorrGPFunctional5(GPFunctional):
             vo[i] *= (F).reshape(-1,1)
 
         dEddesc = co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
-        dEddesc[:,:2] = 0
+        #dEddesc[:,:2] = 0
         dEddesc_u = dEddesc * rhou / rhot
         dEddesc_d = dEddesc * rhod / rhot
         print(np.max(np.abs(dEddesc_u), axis=0), np.max(np.abs(dEddesc_d), axis=0))

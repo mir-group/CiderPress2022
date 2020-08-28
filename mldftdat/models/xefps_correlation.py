@@ -13,7 +13,8 @@ LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 DEFAULT_FUNCTIONAL = 'SCAN'
 DEFAULT_BASIS = 'aug-cc-pvtz'
 
-def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
+def get_mlx_contribs(dft_dir, restricted, mlfunc,
+                     include_x = False, scanx = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -63,7 +64,10 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
 
     numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
     if restricted:
-        ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
+        if scanx:
+            ex = eval_xc(',MGGA_C_SCAN', rho_data)[0]
+        else:
+            ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
         exu = ex
         exd = ex
         exo = ex
@@ -72,8 +76,12 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
         rhot = rho_data[0]
         Ex = np.dot(exo * rhot, weights)
     else:
-        exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
-        exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
+        if scanx:
+            exu = eval_xc(',MGGA_C_SCAN', (rho_data[0], 0 * rho_data[0]), spin = 1)[0]
+            exd = eval_xc(',MGGA_C_SCAN', (rho_data[1], 0 * rho_data[1]), spin = 1)[0]
+        else:
+            exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
+            exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
         rhou = 2 * rho_data[0][0]
         rhod = 2 * rho_data[1][0]
         rhot = rho_data[0][0] + rho_data[1][0]
@@ -87,7 +95,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**8) / (1 + Fx**8)
+        x1 = (1 - Fx**6) / (1 + Fx**6)
         for i in range(5):
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
@@ -97,7 +105,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
-            x1 = (1 - Fx**8) / (1 + Fx**8)
+            x1 = (1 - Fx**6) / (1 + Fx**6)
             for i in range(5):
                 Etmp[i] = np.dot(elda * rho / 2 * x1**i, weights)
             Eterms = np.append(Eterms, Etmp)
@@ -108,7 +116,7 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc, include_x = False):
     return Eterms
 
 def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
-                               MLFUNC, include_x = False):
+                               MLFUNC, include_x = False, scanx = False):
 
     SIZE = 27 if include_x else 17
     X = np.zeros([0,SIZE])
@@ -125,7 +133,8 @@ def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
         sl_contribs = get_mlx_contribs(dft_dir, is_restricted,
-                                       MLFUNC, include_x = include_x)
+                                       MLFUNC, include_x = include_x,
+                                       scanx = scanx)
 
         X = np.vstack([X, sl_contribs])
 
@@ -445,8 +454,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         #E_c = mnc[:,:12]
         print("SHAPE", E_c.shape)
 
-        diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10

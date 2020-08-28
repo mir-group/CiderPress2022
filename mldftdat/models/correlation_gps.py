@@ -295,6 +295,26 @@ def get_desc_tot7(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     X[:,1] = co / ldac
     return X
 
+def get_desc_tot8(Xu, Xd, rho_data_u, rho_data_d, num = 1):
+    rho, s, alpha, _, _ = get_dft_input(rho_data_u + rho_data_d)
+    X = (Xu + Xd) / 2
+    X[:,0] = rho
+    X[:,1] = s
+    X[:,2] = alpha
+    X = get_big_desc(X, num, False)
+    zeta = (Xu[:,0] - Xd[:,0]) / (Xu[:,0] + Xd[:,0] + 1e-10)
+    zeta = zeta**2
+    rhot = rho
+    X = np.hstack([rhot.reshape(-1,1), X, zeta.reshape(-1,1)])
+    #X = np.hstack([rhot.reshape(-1,1), X])
+    ldac = eval_xc(',LDA_C_PW_MOD', (rho_data_u, rho_data_d), spin = 1)[0] * rhot - 1e-10
+    FUNCTIONAL = ',MGGA_C_SCAN'
+    co = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+            * (rho_data_u[0] + rho_data_d[0])
+    X[:,1] = co / ldac
+    return X
+
+
 def get_desc_tot4(Xu, Xd, rho_data_u, rho_data_d, num = 1):
     NS = 4
     descu = get_big_desc(Xu, NS, True)
