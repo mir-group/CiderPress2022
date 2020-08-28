@@ -226,40 +226,44 @@ class NLNumInt(pyscf_numint.NumInt):
             mol.auxmol, mol.ao_to_aux = setup_aux(mol)
 
         N = grid.weights.shape[0]
-        print('XCCODE', xc_code)
-        has_base_xc = (xc_code is not None) and (xc_code != '')
-        if has_base_xc:
-            exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
-                                       deriv, omega, verbose)
+        print('XCCODE', xc_code, spin)
+        #has_base_xc = (xc_code is not None) and (xc_code != '')
+        #if has_base_xc:
+        #    exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
+        #                               deriv, omega, verbose)
 
         if spin == 0:
+            print('NO SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
                                       (rdm1, rdm1))
+            vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
+                   vxc[2][:,0], vxc[3][:,0], vxc[4][:,:,0], vxc[5][0,:,:]]
         else:
+            print('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                         (rho_data[0], rho_data[1]),
                                         grid, (2 * rdm1[0], 2 * rdm1[1]))
-        if has_base_xc:
-            exc += exc0
-            if vxc0[0] is not None:
-                vxc[0][:] += vxc0[0]
-            if vxc0[1] is not None:
-                vxc[1][:] += vxc0[1]
-            if vxc0[2] is not None:
-                vxc[2][:] += vxc0[2]
-            if vxc0[3] is not None:
-                vxc[3][:] += vxc0[3]
+        #if has_base_xc:
+        #    exc += exc0
+        #    if vxc0[0] is not None:
+        #        vxc[0][:] += vxc0[0]
+        #    if vxc0[1] is not None:
+        #        vxc[1][:] += vxc0[1]
+        #    if vxc0[2] is not None:
+        #        vxc[2][:] += vxc0[2]
+        #    if vxc0[3] is not None:
+        #        vxc[3][:] += vxc0[3]
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
+def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
-    if spin == 0:
-        spin = 1
-    else:
-        spin = 2
+    #if spin == 0:
+    #    spin = 1
+    #else:
+    #    spin = 2
 
     chkpt = time.monotonic()
 
@@ -279,10 +283,9 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     dF = [0, 0]
     dEddesc = [0, 0]
 
-
     rhou = rho_data[0][0]
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-    tu = rho_data[1][5]
+    tu = rho_data[0][5]
     rhod = rho_data[1][0]
     g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
     td = rho_data[1][5]
@@ -304,7 +307,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     v_lda_ud[:,1] -= v_lda_dd
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)), np.zeros((N,2))]
-    vtot[0] += v_lda_ud
 
     exc = 0
 
@@ -325,12 +327,15 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
-        dEddesc[spin] = 2**(1.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
-        Pc, dPc = mlfunc.corr_model.get_xeff_and_deriv(F[spin], use_cos = False)
-        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * (F[spin] + Pc)
-        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin] + Pc)
-        dEddesc[spin] += 2**(1.0/3) * LDA_FACTOR * (rho43 * dPc).reshape(-1,1) * dF[spin]
+        dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
+        #Pc, dPc = mlfunc.corr_model.get_xeff_and_deriv(F[spin], use_cos = False)
+        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * (F[spin])
+        #exc += 2**(1.0/3) * LDA_FACTOR * rho43 * (Pc)
+        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
+        #vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (Pc)
+        #dEddesc[spin] += 2**(1.0/3) * LDA_FACTOR * (rho43 * dPc).reshape(-1,1) * dF[spin]
 
+    """
     Qcuu, dQcuu, dnu, dg2u, dtu = mlfunc.corr_model.get_xeff_and_deriv_ss(
             F[0], rhou + 1e-10, g2u, tu + 1e-10)
     Qcdd, dQcdd, dnd, dg2d, dtd = mlfunc.corr_model.get_xeff_and_deriv_ss(
@@ -338,20 +343,22 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     Qcud, dQcud = mlfunc.corr_model.get_xeff_and_deriv(
             (F[0] * rhou + F[1] * rhod) / (rhot + 1e-10),
             use_cos = True)
-    exc += ldac_uu * Qcuu + ldac_ud * Qcud + ldac_dd * Qcdd
-    dEddesc[0] += ldac_uu * dQuu * dF[0]
-    dEddesc[0] += ldac_ud * dQud * rhou / (rhot + 1e-10) * dF[0]
-    dEddesc[1] += ldac_dd * dQdd * dF[1]
-    dEddesc[1] += ldac_ud * dQud * rhod / (rhot + 1e-10) * dF[1]
+    """
+    """
+    TODO UNCOMMENT
+    exc += cu * Qcuu + co * Qcud + cd * Qcdd
+    dEddesc[0] += (cu * dQcuu * dF[0].T).T
+    dEddesc[0] += (co * dQcud * rhou / (rhot + 1e-10) * dF[0].T).T
+    dEddesc[1] += (cd * dQcdd * dF[1].T).T
+    dEddesc[1] += (co * dQcud * rhod / (rhot + 1e-10) * dF[1].T).T
 
-    vtot[0][:,0] += ldac_uu * dnu + v_lda_uu * Qcuu + v_lda_ud[:,0] * Qcud
-    vtot[0][:,1] += ldac_dd * dnd + v_lda_dd * Qcdd + v_lda_ud[:,1] * Qcud
-    vtot[1][:,0] += ldac_uu * dg2u
-    vtot[1][:,1] += ldac_dd * dg2d
-    vtot[3][:,0] += ldac_uu * dtu
-    vtot[3][:,1] += ldac_dd * dtd
-
-    # TODO: deriv wrt rhou, rhod above
+    vtot[0][:,0] += cu * dnu + v_lda_uu * Qcuu + v_lda_ud[:,0] * Qcud
+    vtot[0][:,1] += cd * dnd + v_lda_dd * Qcdd + v_lda_ud[:,1] * Qcud
+    vtot[1][:,0] += cu * dg2u
+    vtot[1][:,1] += cd * dg2d
+    vtot[3][:,0] += cu * dtu
+    vtot[3][:,1] += cd * dtd
+    """
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -376,32 +383,27 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
     print('v_nonlocal', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    en, dcu, dcd, dco, dnu, dnd, dg2u, dg2d, dtu, dtd = \
-        mlfunc.corr_model.get_en_and_deriv_corr(cu, cd,
-            co, rhou + 1e-10, rhod + 1e-10,
-            g2u, g2d, tu + 1e-10, td + 1e-10)
-    exc += en
+    #en, dcu, dcd, dco, dnu, dnd, dg2u, dg2d, dtu, dtd = \
+    #    mlfunc.corr_model.get_en_and_deriv_corr(cu, cd,
+    #        co, rhou + 1e-10, rhod + 1e-10,
+    #        g2u, g2d, tu + 1e-10, td + 1e-10)
+    #exc += en
 
-    # TODO v_nst[1] should have 3 dimensions on axis 0 not 2
-    vtot = list(vref)
-    if vtot[1] is None:
-        vtot[1] = np.zeros((vtot[0].shape[0],3))
-    if vtot[2] is None:
-        vtot[2] = np.zeros((vtot[0].shape[0],2))
-    if vtot[3] is None:
-        vtot[3] = np.zeros((vtot[0].shape[0],2))
-    vtot[0][:,0] += v_lda_uu * dcu + v_lda_ud[:,0] * dco
-    vtot[0][:,1] += v_lda_dd * dcd + v_lda_ud[:,1] * dco
-    vtot[0][:,0] += ldac_ud * dQud * (F[0] - F[1]) * rhod / (rhot + 1e-10)**2
-    vtot[0][:,1] += ldac_ud * dQud * (F[1] - F[0]) * rhou / (rhot + 1e-10)**2
+    # TODO UNCOMMENT
+    #vtot[0][:,0] += v_lda_uu * dcu + v_lda_ud[:,0] * dco
+    #vtot[0][:,1] += v_lda_dd * dcd + v_lda_ud[:,1] * dco
+    #vtot[0][:,0] += co * dQcud * (F[0] - F[1]) * rhod / (rhot + 1e-10)**2
+    #vtot[0][:,1] += co * dQcud * (F[1] - F[0]) * rhou / (rhot + 1e-10)**2
     vtot[0] += v_nst[0]
-    vtot[1][:,0] += 2 * v_nst[1][:,0] + dg2u
-    vtot[1][:,2] += 2 * v_nst[1][:,1] + dg2d
+    vtot[1][:,0] += 2 * v_nst[1][:,0]# + dg2u
+    vtot[1][:,2] += 2 * v_nst[1][:,1]# + dg2d
     vtot[2] += v_nst[2]
     vtot[3] += v_nst[3]
-    vtot[3][:,0] += dtu
-    vtot[3][:,1] += dtd
+    #vtot[3][:,0] += dtu
+    #vtot[3][:,1] += dtd
 
+    """
+    TODO UNCOMMENT
     for spin in range(2):
         fsl, dfsl_n, dfsl_g2, dfsl_t = \
             mlfunc.corr_model.get_f_and_deriv_ex(ntup[spin] + 1e-10,
@@ -412,8 +414,9 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1, spin = 0):
         vtot[1][:,2 if spin == 1 else 0] += \
             2**(1.0/3) * LDA_FACTOR * dfsl_g2 * ntup[spin]**(4.0/3)
         vtot[3][:,spin] += 2**(1.0/3) * LDA_FACTOR * dfsl_t * ntup[spin]**(4.0/3)
+    """
 
-    return exc / (rhot + 1e-10), (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
+    return exc / (rhot + 1e-20), (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
 
 
 def setup_aux(mol):
