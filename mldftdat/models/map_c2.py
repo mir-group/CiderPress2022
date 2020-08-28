@@ -1,7 +1,7 @@
 # Autocode from mathematica for VSXC-type contribs
 
-alpha_x = 0.001867
-alpha_ss, alpha_os = 0.00515088, 0.00304966
+alphax = 0.001867
+alphass, alphaos = 0.00515088, 0.00304966
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
 class VSXCContribs():
@@ -14,7 +14,7 @@ class VSXCContribs():
         self.dss = dss
         self.dos = dos
 
-    def gammafunc(x2, z, alpha):
+    def gammafunc(self, x2, z, alpha):
         y = 1 + alpha * (x2 + z)
         dydx2 = alpha
         dydz = alpha
@@ -37,15 +37,15 @@ class VSXCContribs():
             d += c[i] * (i+1) * fterm**i
         return y, d * dterm
 
-    def get_x2(n, g2):
+    def get_x2(self, n, g2):
         return g2/n**2.6666666666666665, (-8*g2)/(3.*n**3.6666666666666665), n**(-2.6666666666666665)
 
-    def get_z(n, t):
+    def get_z(self, n, t):
         return -2*CF + (2*t)/n**1.6666666666666667,\
                (-10*t)/(3.*n**2.6666666666666665),\
                2/n**1.6666666666666667
 
-    def getD(n, g2, t):
+    def getD(self, n, g2, t):
         y = 1 - g2/(8.*n*t)
         dydn = g2/(8.*n**2*t)
         dydg2 = -1/(8.*n*t)
