@@ -8,13 +8,27 @@ CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
 class VSXCContribs():
 
-    def __init__(self, cx, css, cos, dx, dss, dos):
+    def __init__(self, cx, css, cos, dx, dss, dos,
+                 bx=None, bss=None, bos=None):
         self.cx = cx
         self.css = css
         self.cos = cos
         self.dx = dx
         self.dss = dss
         self.dos = dos
+        if bx is None:
+            self.bx = [0] * 4
+        else:
+            self.bx = bx
+        if bss is None:
+            self.bss = [0] * 4
+        else:
+            self.bss = bss
+        if bos is None:
+            self.bos = [0] * 4
+        else:
+            self.bos = bos
+        #print(len(self.dss), len(self.dos))
 
     def gammafunc(self, x2, z, alpha):
         y = 1 + alpha * (x2 + z)
@@ -23,6 +37,7 @@ class VSXCContribs():
         return y, dydx2, dydz
 
     def corrfunc(self, x2, z, gamma, d):
+        #print(d)
         d0, d1, d2, d3, d4, d5 = d
         y = (-(d0*(-1 + gamma)*gamma**2) + gamma**3 + d1*gamma*x2 + d3*x2**2 + d2*gamma*z + d4*x2*z + d5*z**2)/gamma**3
         dydx2 = (d1*gamma + 2*d3*x2 + d4*z)/gamma**3
@@ -39,6 +54,14 @@ class VSXCContribs():
             y += c[i] * fterm**(i+1)
             d += c[i] * (i+1) * fterm**i
         return y, d * dterm
+
+    def grad_terms(self, x2, gamma, c):
+        u = gamma * x2 / (1 + gamma * x2)
+        du = gamma / (1 + gamma * x2)**2
+        for i in range(4):
+            y += c[i] * u**(i+1)
+            dy += c[i] * (i+1) * u**i
+        return y, dy
 
     def get_x2(self, n, g2):
         return g2/n**2.6666666666666665, (-8*g2)/(3.*n**3.6666666666666665), n**(-2.6666666666666665)
