@@ -1,5 +1,7 @@
 # Autocode from mathematica for VSXC-type contribs
+import numpy as np
 
+LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 alphax = 0.001867
 alphass, alphaos = 0.00515088, 0.00304966
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
@@ -21,6 +23,7 @@ class VSXCContribs():
         return y, dydx2, dydz
 
     def corrfunc(self, x2, z, gamma, d):
+        d0, d1, d2, d3, d4, d5 = d
         y = (-(d0*(-1 + gamma)*gamma**2) + gamma**3 + d1*gamma*x2 + d3*x2**2 + d2*gamma*z + d4*x2*z + d5*z**2)/gamma**3
         dydx2 = (d1*gamma + 2*d3*x2 + d4*z)/gamma**3
         dydz = (d2*gamma + d4*x2 + 2*d5*z)/gamma**3
@@ -54,7 +57,7 @@ class VSXCContribs():
 
     def single_corr(self, x2, z, alpha, d):
         gamma = self.gammafunc(x2, z, alpha)
-        corrfunc = self.corrfunc(x2, z, gamma, d)
+        corrfunc = self.corrfunc(x2, z, gamma[0], d)
         return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
                             corrfunc[2] + corrfunc[3] * gamma[2]
 
@@ -87,7 +90,7 @@ class VSXCContribs():
         uterms[1] += vuu * yu * Du[0]
         dterms[1] += vdd * yd * Dd[0]
         uterms[1] += vou * yo + co * derivo * dftdnu
-        oterms[1] += vod * yo + co * derivo * dftdnd
+        dterms[1] += vod * yo + co * derivo * dftdnd
         uterms[-1] += co * derivo * dftdfu
         dterms[-1] += co * derivo * dftdfd
 
@@ -108,6 +111,9 @@ class VSXCContribs():
         # z, dzdn, dzdt
         zu = self.get_z(nu, tu)
         zd = self.get_z(nd, td)
+
+        Du = self.getD(nu, g2u, tu)
+        Dd = self.getD(nd, g2d, td)
 
         cfuu = self.single_corr(x2u[0], zu[0], alphass, self.dss)
         cfdd = self.single_corr(x2d[0], zd[0], alphass, self.dss)
@@ -134,18 +140,18 @@ class VSXCContribs():
         tot = cu * cfuu[0] + cd * cfdd[0] + co * cfud[0]
 
         cfuu_tmp = cfuu[0]
-        cfuu = (Du[0] * tmp for tmp in cfuu)
+        cfuu = [Du[0] * tmp for tmp in cfuu]
         cfuu[1] += cfuu_tmp * Du[1]
         cfuu[2] += cfuu_tmp * Du[2]
-        dfuu[3] += cfuu_tmp * Du[3]
+        cfuu[3] += cfuu_tmp * Du[3]
 
         cfdd_tmp = cfdd[0]
-        cfdd = (Dd[0] * tmp for tmp in cfdd)
+        cfdd = [Dd[0] * tmp for tmp in cfdd]
         cfdd[1] += cfdd_tmp * Dd[1]
         cfdd[2] += cfdd_tmp * Dd[2]
         cfdd[3] += cfdd_tmp * Dd[3]
 
-        uderiv = [cu * cfuu[i] + co * cfuu0[i] for i in range(1,4)]
+        uderiv = [cu * cfuu[i] + co * cfud0[i] for i in range(1,4)]
         dderiv = [cd * cfdd[i] + co * cfud1[i] for i in range(1,4)]
         uderiv[0] += cfuu[0] * vuu + cfud[0] * vou
         dderiv[0] += cfdd[0] * vdd + cfud[0] * vod
