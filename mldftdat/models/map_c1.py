@@ -1,20 +1,22 @@
 # Autocode from mathematica for VSXC-type contribs
+import numpy as np
 
-alpha_x = 0.001867
-alpha_ss, alpha_os = 0.00515088, 0.00304966
+alphax = 0.001867
+alphass, alphaos = 0.00515088, 0.00304966
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
 class VSXCContribs():
 
-    def __init__(self, cx, css, cos, dss, dos):
+    def __init__(self, cx, css, cos, dx, dss, dos):
         self.cx = cx
         self.css = css
         self.cos = cos
+        self.dx = dx
         self.dss = dss
         self.dos = dos
 
     def get_xeff_and_deriv(self, f, use_cos = False):
-        if self.use_cos:
+        if use_cos:
             d1, d2, d3, d4 = self.cos
         else:
             d1, d2, d3, d4 = self.cx
@@ -45,7 +47,7 @@ class VSXCContribs():
 
         return f, dn, dg2, dt
 
-    def get_en_and_deriv_corr(cu, cd, co, nu, nd, g2u, g2d, tu, td):
+    def get_en_and_deriv_corr(self, cu, cd, co, nu, nd, g2u, g2d, tu, td):
 
         d0ss, d1ss, d2ss, d3ss, d4ss, d5ss = self.dss 
         d0os, d1os, d2os, d3os, d4os, d5os = self.dos
