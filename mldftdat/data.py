@@ -1211,8 +1211,8 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
                     mf = setup_rks_calc(mol, FUNCTIONAL)
-                    #mf.xc = None
-                    mf.xc = ',MGGA_C_SCAN'
+                    mf.xc = None
+                    #mf.xc = ',MGGA_C_SCAN'
                 else:
                     from mldftdat.dft.numint6 import setup_uks_calc
                     mf = run_scf(mol, 'UKS', functional = 'PBE')
@@ -1220,8 +1220,8 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     #dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
                     mf = setup_uks_calc(mol, FUNCTIONAL)
-                    #mf.xc = None
-                    mf.xc = ',MGGA_C_SCAN'
+                    mf.xc = None
+                    #mf.xc = ',MGGA_C_SCAN'
                 mf.kernel(dm0 = None)
                 e_tot = mf.e_tot
                 calc = mf
