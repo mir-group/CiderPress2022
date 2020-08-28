@@ -64,7 +64,9 @@ class VSXCContribs():
         return y, dy
 
     def get_x2(self, n, g2):
-        return g2/n**2.6666666666666665, (-8*g2)/(3.*n**3.6666666666666665), n**(-2.6666666666666665)
+        return g2/n**2.6666666666666665,\
+               (-8*g2)/(3.*n**3.6666666666666665),\
+               n**(-2.6666666666666665)
 
     def get_z(self, n, t):
         return -2*CF + (2*t)/n**1.6666666666666667,\
@@ -83,6 +85,34 @@ class VSXCContribs():
         corrfunc = self.corrfunc(x2, z, gamma[0], d)
         return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
                             corrfunc[2] + corrfunc[3] * gamma[2]
+
+    def corr_mnexp(self, cu, cd, co, vuu, vdd, vou, vod, nu, nd, g2u, g2d, tu, tds):
+
+        Du = self.getD(nu, g2u, tu)
+        Dd = self.getD(nd, g2d, td)
+
+        x2u = self.get_x2(nu, g2u)
+        x2d = self.get_x2(nd, g2d)
+
+        yu, derivu = self.grad_terms(x2u, 0.06, self.bss)
+        yd, derivd = self.grad_terms(x2d, 0.06, self.bss)
+        yo, derivo = self.grad_terms(x2u+x2d, 0.0031, self.bos)
+
+        cyu = cu * yu
+        cyd = cd * yd
+
+        uterms = [cyu * Du[i] for i in range(4)]
+        dterms = [cyd * Dd[i] for i in range(4)]
+        uterms[1] += vuu * yu * Du[0] + cu * Du[0] * derivu * x2u[1]
+        dterms[1] += vdd * yd * Dd[0] + cd * Dd[0] * derivd * x2d[1]
+        uterms[1] += vou * yo + co * derivo * x2u[1]
+        dterms[1] += vod * yo + co * derivo * x2d[1]
+        uterms[2] += cu * Du[0] * derivu * x2u[2]
+        dterms[2] += cd * Dd[0] * derivd * x2d[2]
+        uterms[2] += co * derivo * x2u[2]
+        dterms[2] += co * derivo * x2d[2]
+
+        return uterms[0] + dterms[0] + co * yo, uterms[1:], dterms[1:]
 
     def corr_fock(self, cu, cd, co, vuu, vdd, vou, vod,
                   nu, nd, g2u, g2d, tu, td, fu, fd):
