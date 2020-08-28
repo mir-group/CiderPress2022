@@ -5,3 +5,5 @@
 *.txt
 *.joblib
 *.hdf5
+*.pth
+*.so
