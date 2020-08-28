@@ -86,7 +86,7 @@ class VSXCContribs():
         return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
                             corrfunc[2] + corrfunc[3] * gamma[2]
 
-    def corr_mnexp(self, cu, cd, co, vuu, vdd, vou, vod, nu, nd, g2u, g2d, tu, tds):
+    def corr_mnexp(self, cu, cd, co, vuu, vdd, vou, vod, nu, nd, g2u, g2d, tu, td):
 
         Du = self.getD(nu, g2u, tu)
         Dd = self.getD(nd, g2d, td)
