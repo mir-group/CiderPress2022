@@ -169,33 +169,27 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
     rho_data_t = rho_data_u + rho_data_d
 
-    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-10)
-    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-10)
-    xo = np.linalg.norm(rho_data_t[1:4], axis=0) / (rho_data_t[0]**(4.0/3) + 1e-10)
+    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-15)
+    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-15)
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
-    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-10) - CF
-    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-10) - CF
-    zo = rho_data_t[5] / (rho_data_t[0]**(5.0/3) + 1e-10) - CF / 2**(2.0/3)
+    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-15) - CF
+    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-15) - CF
     zu *= 2
     zd *= 2
+    Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
+    Dd = 1 - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / (8 * rho_data_d[0] * rho_data_d[5] + 1e-20)
     #alpha_ss, alpha_os = 0.005151, 0.003050 * 2**(2.0/3)
     alpha_x = 0.001867
     alpha_ss, alpha_os = 0.00515088, 0.00304966
     gamma_ss, gamma_os = 0.06, 0.0031
-    Du = 1 - 0.25 * xu**2 / (zu + 2 * CF + 1e-10)
-    Dd = 1 - 0.25 * xd**2 / (zd + 2 * CF + 1e-10)
-    #Du = rho_data_u[5] * rho_data_u[0] - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / 8
-    #Dd = rho_data_d[5] * rho_data_d[0] - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / 8
-    #Du /= rho_data_u[5] * rho_data_u[0] + 1e-20
-    #Dd /= rho_data_d[5] * rho_data_d[0] + 1e-20
-    print(np.std(zu - zd), np.std(xu - xd))
-    print(np.mean(Du), np.mean(Dd))
+    #Du = 1 - 0.25 * xu**2 / (zu + 2 * CF + 1e-10)
+    #Dd = 1 - 0.25 * xd**2 / (zd + 2 * CF + 1e-10)
     dvals = np.zeros((18, weights.shape[0]))
     start = 0
     def gamma_func(x2, z, alpha):
         return 1 + alpha * (x2 + z)
     for x2, z, alpha in [(xu**2, zu, alpha_ss), (xd**2, zd, alpha_ss),\
-                        ((xu**2+xd**2), (zu+zd), alpha_os)]:
+                        (xu**2+xd**2, zu+zd, alpha_os)]:
         gamma = gamma_func(x2, z, alpha)
         dvals[start+0] = 1 / gamma - 1
         dvals[start+1] = x2 / gamma**2
@@ -206,7 +200,7 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
         start += 6
     cvals = np.zeros((15, weights.shape[0]))
     start = 0
-    for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss), ((xu**2+xd**2), gamma_os)]:
+    for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss), (xu**2+xd**2, gamma_os)]:
         u = gamma * x2 / (1 + gamma * x2)
         for i in range(5):
             cvals[start+i] = u**i
@@ -257,16 +251,27 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
 
     g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
     g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
-    corr_model = VSXCContribs(None, None, None, None, dcoef[:6], dcoef[6:])
+    corr_model = VSXCContribs(None, None, None, None, dcoef[:6], dcoef[12:],
+            None, ccoef[1:5], ccoef[-4:])
     tot, uderiv, dderiv = corr_model.corr_mn(cutmp, cdtmp, co, vuu, vdd, vou, vod,
-                                             rho_data_u[0], rho_data_d[0],
-                                             g2u, g2d, rho_data_u[5], rho_data_d[5])
+                                             rho_data_u[0] + 1e-20, rho_data_d[0] + 1e-20,
+                                             g2u, g2d, rho_data_u[5] + 1e-20, rho_data_d[5] + 1e-20)
+    totb, uderivb, dderivb = corr_model.corr_mnexp(cutmp, cdtmp, co, vuu, vdd, vou, vod,
+                                             rho_data_u[0] + 1e-20, rho_data_d[0] + 1e-20,
+                                             g2u, g2d, rho_data_u[5] + 1e-20, rho_data_d[5] + 1e-20)
     print('TEST VSXC CONTRIBS')
-    print(np.dot(tot, weights), np.dot(ctst, weights))
-    print(np.dot(uderiv[0], rho_data_u[0] * weights),
-        np.dot(vtst[0][:,0], rho_data_u[0] * weights))
-    print(np.dot(dderiv[0], rho_data_d[0] * weights),
-        np.dot(vtst[0][:,1], rho_data_d[0] * weights))
+    nu = rho_data_u[0]
+    nd = rho_data_d[0]
+    print(np.mean(zu*nu), np.mean(zd*nd), np.mean(xu**2*nu), np.mean(xd**2*nd), np.mean(Du*nu), np.mean(Dd*nd))
+    print(np.dot(tot + totb, weights), np.dot(ctst, weights))
+    for i in range(3):
+        j = 2 if i == 1 else 1
+        k = 3 if i == 2 else i
+        print(i)
+        print(np.dot(uderiv[i] + uderivb[i], rho_data_u[0] * weights),
+            np.dot(vtst[k][:,0], rho_data_u[0] * weights))
+        print(np.dot(dderiv[i] + dderivb[i], rho_data_d[0] * weights),
+            np.dot(vtst[k][:,j], rho_data_d[0] * weights))
 
     if include_x:
         xvals = np.zeros((12,weights.shape[0]))
@@ -513,7 +518,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-3
+        noise = 1e-2
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
