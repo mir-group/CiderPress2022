@@ -39,7 +39,7 @@ class VSXCContribs():
     def corrfunc(self, x2, z, gamma, d):
         #print(d)
         d0, d1, d2, d3, d4, d5 = d
-        y = (-(d0*(-1 + gamma)*gamma**2) + gamma**3 + d1*gamma*x2 + d3*x2**2 + d2*gamma*z + d4*x2*z + d5*z**2)/gamma**3
+        y = 1 + d0*(-1 + 1/gamma) + (d1*x2 + d2*z)/gamma**2 + (d3*x2**2 + d4*x2*z + d5*z**2)/gamma**3
         dydx2 = (d1*gamma + 2*d3*x2 + d4*z)/gamma**3
         dydz = (d2*gamma + d4*x2 + 2*d5*z)/gamma**3
         dydgamma = -((d0*gamma**2 + 3*d3*x2**2 + 2*gamma*(d1*x2 + d2*z) + 3*z*(d4*x2 + d5*z))/gamma**4)
@@ -56,12 +56,14 @@ class VSXCContribs():
         return y, d * dterm
 
     def grad_terms(self, x2, gamma, c):
+        y = 0
+        dy = 0
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
         for i in range(4):
             y += c[i] * u**(i+1)
             dy += c[i] * (i+1) * u**i
-        return y, dy
+        return y, dy * du
 
     def get_x2(self, n, g2):
         return g2/n**2.6666666666666665,\
@@ -94,9 +96,9 @@ class VSXCContribs():
         x2u = self.get_x2(nu, g2u)
         x2d = self.get_x2(nd, g2d)
 
-        yu, derivu = self.grad_terms(x2u, 0.06, self.bss)
-        yd, derivd = self.grad_terms(x2d, 0.06, self.bss)
-        yo, derivo = self.grad_terms(x2u+x2d, 0.0031, self.bos)
+        yu, derivu = self.grad_terms(x2u[0], 0.06, self.bss)
+        yd, derivd = self.grad_terms(x2d[0], 0.06, self.bss)
+        yo, derivo = self.grad_terms(x2u[0]+x2d[0], 0.0031, self.bos)
 
         cyu = cu * yu
         cyd = cd * yd
@@ -172,10 +174,13 @@ class VSXCContribs():
         cfdd = self.single_corr(x2d[0], zd[0], alphass, self.dss)
         cfud = self.single_corr(x2u[0]+x2d[0], zu[0]+zd[0], alphaos, self.dos)
 
-        cfuu = (cfuu[0],
-                cfuu[1] * x2u[1] + cfuu[2] * zu[1],
-                cfuu[1] * x2u[2],
-                cfuu[2] * zu[2])
+        print(np.mean(zu[0]*nu), np.mean(zd[0]*nd), np.mean(x2u[0]*nu),
+              np.mean(x2d[0]*nd), np.mean(Du[0]*nu), np.mean(Dd[0]*nd))
+
+        cfuu = (cfuu[0], # corr enhancement factor
+                cfuu[1] * x2u[1] + cfuu[2] * zu[1], # deriv wrt nu
+                cfuu[1] * x2u[2], # deriv wrt sigma_u
+                cfuu[2] * zu[2]) # deriv wrt tau_u
         cfdd = (cfdd[0],
                 cfdd[1] * x2d[1] + cfdd[2] * zd[1],
                 cfdd[1] * x2d[2],
@@ -190,7 +195,7 @@ class VSXCContribs():
                  cfud[1] * x2d[2],
                  cfud[2] * zd[2])
 
-        tot = cu * cfuu[0] + cd * cfdd[0] + co * cfud[0]
+        tot = cu * Du[0] * cfuu[0] + cd * Dd[0] * cfdd[0] + co * cfud[0]
 
         cfuu_tmp = cfuu[0]
         cfuu = [Du[0] * tmp for tmp in cfuu]
@@ -220,15 +225,15 @@ class VSXCContribs():
 
         cf = self.single_corr(x2[0], z[0], alphax, self.dx)
 
-        cf = (cf[0],
+        cf = (cf[0] - 1,
               cf[1] * x2[1] + cf[2] * z[1],
               cf[1] * x2[2],
               cf[2] * z[2])
 
-        cf = [2**(1.0/3) * LDA_FACTOR * n**(4.0/3) * c for c in cf]
-        cf[1] += 2**(1.0/3) * (4.0/3) * LDA_FACTOR * n**(1.0/3)
+        ecf = [2**(1.0/3) * LDA_FACTOR * n**(4.0/3) * c for c in cf]
+        ecf[1] += 2**(1.0/3) * (4.0/3) * LDA_FACTOR * n**(1.0/3) * cf[0]
 
-        return cf
+        return ecf
 
 
 

@@ -283,12 +283,12 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     dF = [0, 0]
     dEddesc = [0, 0]
 
-    rhou = rho_data[0][0] + 1e-10
+    rhou = rho_data[0][0] + 1e-20
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-    tu = rho_data[0][5] + 1e-10
-    rhod = rho_data[1][0] + 1e-10
+    tu = rho_data[0][5] + 1e-20
+    rhod = rho_data[1][0] + 1e-20
     g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-    td = rho_data[1][5] + 1e-10
+    td = rho_data[1][5] + 1e-20
     ntup = (rhou, rhod)
     gtup = (g2u, g2d)
     ttup = (tu, td)
@@ -334,7 +334,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         exc += ex_fock
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
         vtot[0][:,spin] += ex_fock_rho_deriv
-        #dEddesc[spin] += ex_fock_f_deriv.reshape(-1,1) * dF[spin]
+        dEddesc[spin] += 2 * ex_fock_f_deriv.reshape(-1,1) * dF[spin]
         cf = mlfunc.corr_model.ex_mn(ntup[spin], gtup[spin], ttup[spin])
         exc += cf[0]
         vtot[0][:,spin] += cf[1]
@@ -354,8 +354,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     vtot[0][:,1] += corr_fock_dderiv[0]
     vtot[1][:,2] += corr_fock_dderiv[1]
     vtot[3][:,1] += corr_fock_dderiv[2]
-    #dEddesc[0] += corr_fock_uderiv[-1].reshape(-1,1) * dF[0]
-    #dEddesc[1] += corr_fock_dderiv[-1].reshape(-1,1) * dF[1]
+    dEddesc[0] += 2 * corr_fock_uderiv[-1].reshape(-1,1) * dF[0]
+    dEddesc[1] += 2 * corr_fock_dderiv[-1].reshape(-1,1) * dF[1]
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -385,6 +385,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
                                 v_lda_ud[:,0], v_lda_ud[:,1],
                                 rhou, rhod, g2u, g2d, tu, td)
 
+    
     exc += corr_mn
     vtot[0][:,0] += corr_mn_uderiv[0]
     vtot[1][:,0] += corr_mn_uderiv[1]
