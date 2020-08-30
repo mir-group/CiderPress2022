@@ -293,6 +293,10 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     gtup = (g2u, g2d)
     ttup = (tu, td)
     rhot = rhou + rhod
+    g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
+
+    sf, dsfdnu, dsfdnd, dsfdg2, dsfdt = \
+        mlfunc.corr_model.spinpol_factor(rhou, rhod, g2u + 2*g2o + g2d, tu + td)
 
     co, v_lda_ud = eval_xc(',LDA_C_PW_MOD', (rhou, rhod), spin = 1)[:2]
     cu, v_lda_uu = eval_xc(',LDA_C_PW_MOD', (rhou, 0 * rhod), spin = 1)[:2]
@@ -327,19 +331,31 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
-        dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
+
         ex_fock, ex_fock_rho_deriv, ex_fock_f_deriv = \
             mlfunc.corr_model.ex_fock(ntup[spin], F[spin])
-        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * (F[spin])
-        exc += ex_fock
-        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
-        vtot[0][:,spin] += ex_fock_rho_deriv
-        dEddesc[spin] += 2 * ex_fock_f_deriv.reshape(-1,1) * dF[spin]
         cf = mlfunc.corr_model.ex_mn(ntup[spin], gtup[spin], ttup[spin])
-        exc += cf[0]
-        vtot[0][:,spin] += cf[1]
-        vtot[1][:,2*spin] += cf[2]
-        vtot[3][:,spin] += cf[3]
+        ex_term = ex_fock + cf[0]
+
+        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
+        exc += sf * ex_term
+
+        dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
+        dEddesc[spin] += 2 * sf * ex_fock_f_deriv.reshape(-1,1) * dF[spin]
+        
+        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
+        vtot[0][:,spin] += sf * ex_fock_rho_deriv
+        vtot[0][:,spin] += sf * cf[1]
+        vtot[1][:,2*spin] += sf * cf[2]
+        vtot[3][:,spin] += sf * cf[3]
+
+        vtot[0][:,0] += dsfdnu * ex_term
+        vtot[0][:,1] += dsfdnd * ex_term
+        vtot[1][:,0] += dsfdg2 * ex_term
+        vtot[1][:,1] += 2 * dsfdg2 * ex_term
+        vtot[1][:,2] += dsfdg2 * ex_term
+        vtot[3][:,0] += dsfdt * ex_term
+        vtot[3][:,1] += dsfdt * ex_term
 
     corr_fock, corr_fock_uderiv, corr_fock_dderiv = \
         mlfunc.corr_model.corr_fock(cu, cd, co, v_lda_uu, v_lda_dd,
@@ -384,7 +400,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         mlfunc.corr_model.corr_mn(cu, cd, co, v_lda_uu, v_lda_dd,
                                 v_lda_ud[:,0], v_lda_ud[:,1],
                                 rhou, rhod, g2u, g2d, tu, td)
-
     
     exc += corr_mn
     vtot[0][:,0] += corr_mn_uderiv[0]
