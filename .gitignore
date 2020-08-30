@@ -1,0 +1,9 @@
+*.out
+*.err
+*.npy
+*.npz
+*.txt
+*.joblib
+*.hdf5
+*.pth
+*.so

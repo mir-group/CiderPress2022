@@ -2,6 +2,9 @@ import numpy as np
 from mldftdat.pyscf_utils import *
 from mldftdat.workflow_utils import safe_mem_cap_mb
 from pyscf.dft.numint import eval_ao, make_mask
+from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
+                             contract_exchange_descriptors,\
+                             contract21_deriv, contract21
 
 def dtauw(rho_data):
     return - get_gradient_magnitude(rho_data)**2 / (8 * rho_data[0,:]**2 + 1e-16),\
@@ -215,14 +218,14 @@ def v_basis_transform(rho_data, v_npalpha):
             wrt density
         1 - Functional derivative wrt the square of the reduced
             gradient p
-        2 - Functional derivative wrt normalized laplacian
+        2 - ZERO (Functional derivative wrt normalized laplacian)
         3 - Functional derivative wrt the isoorbital indicator
             alpha
     Returns a 3xN array:
         0 - Full functional derivative of the exchange energy
             wrt the density, accounting for dp/dn and dalpha/dn
         1 - Derivative wrt sigma, the contracted gradient |nabla n|^2
-        2 - Derivative wrt the laplacian fo the density
+        2 - ZERO (Derivative wrt the laplacian fo the density)
         3 - Derivative wrt tau, the kinetic energy density
     """
     v_nst = np.zeros(v_npalpha.shape)
@@ -370,11 +373,12 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
     # (ngrid * (2l+1), naux)
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
+    dgda[:,rho<1e-8] = 0
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    dadn = 1 * a / (3 * (lc[0] / 2 + 1e-6))
-    dadp = np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (lc[0] / 2 + 1e-6)**(2.0/3)
+    dadn = mul * a / (3 * (mul * rho / 2 + 1e-6))
+    dadp = np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
     v_npa = np.zeros((4, N))
     deda = np.einsum('mi,mi->i', dedb, dgda)
@@ -382,6 +386,163 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
     v_npa[1] = deda * dadp
     v_npa[3] = deda * dadalpha
     return v_npa, dedaux
+
+def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
+                          g, gr2, ovlp, l = 0, mul = 1.0):
+    # g should have shape (2l+1, N)
+    N = grid.weights.shape[0]
+    lc = get_dft_input2(rho_data)[:3]
+    if l == 0:
+        dedb = dedg.reshape(1, -1)
+    elif l == 1:
+        #dedb = 2 * elda * g * dfdg
+        dedb = dedg * g / (np.linalg.norm(g, axis=0) + 1e-10)
+    elif l == 2:
+        dedb = 2 * dedg * g / np.sqrt(5)
+    elif l == -2:
+        dedb = dedg
+        l = 2
+    elif l == -1:
+        dedb = dedg
+        l = 1
+    else:
+        raise ValueError('angular momentum code l=%d unknown' % l)
+
+    rho, s, alpha = lc
+    a = np.pi * (mul * rho / 2 + 1e-6)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale += fac * s**2
+    scale += 3.0 / 5 * fac * (alpha - 1)
+    a = a * scale
+    a[rho<1e-8] = 1e16
+
+    # (ngrid * (2l+1), naux)
+    dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
+    dgda = l / (2 * a) * g - gr2
+    dgda[:,rho<1e-8] = 0
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    dadn = mul * a / (3 * (mul * rho / 2 + 1e-6))
+    dadp = np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
+    dadalpha = 0.6 * np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
+    # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
+    v_npa = np.zeros((4, N))
+    deda = np.einsum('mi,mi->i', dedb, dgda)
+    v_npa[0] = deda * dadn
+    v_npa[1] = deda * dadp
+    v_npa[3] = deda * dadalpha
+    return v_npa, dedaux
+
+def functional_derivative_loop(mol, mlfunc, dEddesc, contracted_desc,
+                               raw_desc, raw_desc_r2,
+                               rho_data, density, ovlps, grid):
+
+    N = grid.weights.shape[0]
+    naux = mol.auxmol.nao_nr()
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    n43 = rho_data[0]**(4.0/3)
+    svec = rho_data[1:4] / (sprefac * n43 + 1e-20)
+    v_npa = np.zeros((4, N))
+    v_aniso = np.zeros((3, N))
+    v_aux = np.zeros(naux)
+
+    for i, d in enumerate(mlfunc.desc_list):
+        if d.code == 0:
+            continue
+        elif d.code == 1:
+            v_npa[1] += dEddesc[:,i]
+        elif d.code == 2:
+            v_npa[3] += dEddesc[:,i]
+        else:
+            if d.code in [4, 15, 16]:
+                g = contracted_desc[d.code]
+                if d.code == 4:
+                    ovlp = ovlps[0]
+                    gr2 = raw_desc_r2[12:13]
+                elif d.code == 15:
+                    ovlp = ovlps[3]
+                    gr2 = raw_desc_r2[21:22]
+                else:
+                    ovlp = ovlps[4]
+                    gr2 = raw_desc_r2[22:23]
+                l = 0
+            elif d.code == 5:
+                g = raw_desc[13:16]
+                gr2 = raw_desc_r2[13:16]
+                ovlp = ovlps[1]
+                l = 1
+            elif d.code == 8:
+                g = raw_desc[16:21]
+                gr2 = raw_desc_r2[16:21]
+                ovlp = ovlps[2]
+                l = 2
+            elif d.code == 6:
+                g = raw_desc[13:16]
+                gr2 = raw_desc_r2[13:16]
+                ovlp = ovlps[1]
+                dfmul = svec
+                v_aniso += dEddesc[:,i] * g
+                l = -1
+            elif d.code == 12:
+                l = -2
+                g = raw_desc[16:21]
+                gr2 = raw_desc_r2[16:21]
+                ovlp = ovlps[2]
+                dfmul = contract21_deriv(svec)
+                ddesc_dsvec = contract21(g, svec)
+                v_aniso += dEddesc[:,i] * 2 * ddesc_dsvec
+            elif d.code == 13:
+                g2 = raw_desc[16:21]
+                g2r2 = raw_desc_r2[16:21]
+                ovlp2 = ovlps[2]
+                g1 = raw_desc[13:16]
+                g1r2 = raw_desc_r2[13:16]
+                ovlp1 = ovlps[1]
+                dfmul = contract21_deriv(svec, g1)
+                ddesc_dsvec = contract21(g2, g1)
+                ddesc_dg1 = contract21(g2, svec)
+                v_aniso += dEddesc[:,i] * ddesc_dsvec
+                vtmp1, dedaux1 = v_nonlocal_general(rho_data, grid,
+                                         dEddesc[:,i] * ddesc_dg1,
+                                         density, mol.auxmol, g1,
+                                         g1r2, ovlp1, l = -1,
+                                         mul = d.mul)
+                vtmp2, dedaux2 = v_nonlocal_general(rho_data, grid,
+                                         dEddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g2,
+                                         g2r2, ovlp2, l = -2,
+                                         mul = d.mul)
+                vtmp = vtmp1 + vtmp2
+                dedaux = dedaux1 + dedaux2
+            else:
+                raise NotImplementedError('Cannot take derivative for code %d' % d.code)
+
+            if d.code in [6, 12]:
+                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
+                                         dEddesc[:,i] * dfmul,
+                                         density, mol.auxmol, g,
+                                         gr2, ovlp, l = l,
+                                         mul = d.mul)
+            elif d.code == 13:
+                pass
+            else:
+                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
+                                         dEddesc[:,i],
+                                         density, mol.auxmol, g,
+                                         gr2, ovlp, l = l,
+                                         mul = d.mul)
+            v_npa += vtmp
+            v_aux += dedaux
+
+    vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
+    v_nst = v_basis_transform(rho_data, v_npa)
+    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
+    v_grad = v_aniso / (sprefac * n43 + 1e-20)
+
+    return v_nst, v_grad, vmol
+
 
 def get_density_in_basis(ao_to_aux, rdm1):
     return np.einsum('npq,pq->n', ao_to_aux, rdm1)

@@ -8,6 +8,7 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
 from pyscf.dft.numint import eval_ao, eval_rho
@@ -229,6 +230,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
         start = time.monotonic()
         analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        analyzer.get_ao_rho_data()
         if type(analyzer.calc) == scf.hf.RHF:
             restricted = True
         else:
@@ -321,6 +323,99 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     np.savetxt(wt_file, all_weights)
     np.savetxt(cut_file, np.array(cutoffs))
 
+def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, BASIS,
+                    Analyzer, spherical_atom = False, locx = False, lam = 0.5,
+                    version = 'a'):
+
+    import time
+    from pyscf import scf
+    all_descriptor_data_u = None
+    all_descriptor_data_d = None
+    all_rho_data_u = None
+    all_rho_data_d = None
+    all_values = []
+    all_weights = []
+    cutoffs = []
+
+    for MOL_ID in MOL_IDS:
+        print('Working on {}'.format(MOL_ID))
+        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID)
+        start = time.monotonic()
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        analyzer.get_ao_rho_data()
+        if type(analyzer.calc) == scf.hf.RHF or CALC_TYPE == 'CCSD':
+            restricted = True
+        else:
+            restricted = False
+        end = time.monotonic()
+        print('analyzer load time', end - start)
+        if spherical_atom:
+            start = time.monotonic()
+            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
+            end = time.monotonic()
+            print('index scanning time', end - start)
+        start = time.monotonic()
+        if restricted:
+            descriptor_data = get_exchange_descriptors2(analyzer,
+                restricted = True, version=version)
+            descriptor_data_u = descriptor_data
+            descriptor_data_d = descriptor_data
+        else:
+            descriptor_data_u, descriptor_data_d = \
+                              get_exchange_descriptors2(analyzer,
+                                    restricted = False, version=version)
+        end = time.monotonic()
+        print('get descriptor time', end - start)
+        
+        values = analyzer.get_corr_energy_density()
+
+        rho_data = analyzer.rho_data
+        if not restricted:
+            rho_data_u, rho_data_d = 2 * rho_data[0], 2 * rho_data[1]
+        else:
+            rho_data_u, rho_data_d = rho_data, rho_data
+        if spherical_atom:
+            values = values[indexes]
+            descriptor_data_u = descriptor_data_u[:,indexes]
+            descriptor_data_d = descriptor_data_d[:,indexes]
+            rho_data_u = rho_data_u[:,indexes]
+            rho_data_d = rho_data_d[:,indexes]
+
+        if all_descriptor_data_u is None:
+            all_descriptor_data_u = descriptor_data_u
+            all_descriptor_data_d = descriptor_data_d
+        else:
+            all_descriptor_data_u = np.append(all_descriptor_data_u, descriptor_data_u,
+                                              axis = 1)
+            all_descriptor_data_d = np.append(all_descriptor_data_d, descriptor_data_d,
+                                              axis = 1)
+        if all_rho_data_u is None:
+            all_rho_data_u = rho_data_u
+            all_rho_data_d = rho_data_d
+        else:
+            all_rho_data_u = np.append(all_rho_data_u, rho_data_u, axis=1)
+            all_rho_data_d= np.append(all_rho_data_d, rho_data_d, axis=1)
+        all_values = np.append(all_values, values)
+        all_weights = np.append(all_weights, analyzer.grid.weights)
+        if not restricted:
+            # two copies for unrestricted case
+            all_weights = np.append(all_weights, analyzer.grid.weights)
+        cutoffs.append(all_values.shape[0])
+
+    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    rho_file = os.path.join(save_dir, 'rho.npy')
+    desc_file = os.path.join(save_dir, 'desc.npy')
+    val_file = os.path.join(save_dir, 'val.npy')
+    wt_file = os.path.join(save_dir, 'wt.npy')
+    cut_file = os.path.join(save_dir, 'cut.npy')
+    np.save(rho_file, np.stack([all_rho_data_u, all_rho_data_d], axis=0))
+    np.save(desc_file, np.stack([all_descriptor_data_u, all_descriptor_data_d], axis=0))
+    np.save(val_file, all_values)
+    np.save(wt_file, all_weights)
+    np.save(cut_file, np.array(cutoffs))
+
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
 
@@ -352,27 +447,41 @@ def get_gp_x_descriptors(X, num=1, selection=None):
     else:
         return X[:,selection]
 
-def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False):
-    X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
+def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False,
+                     binary = False):
+    if binary:
+        X = np.load(os.path.join(dirname, 'desc.npy')).transpose()
+    else:
+        X = np.loadtxt(os.path.join(dirname, 'desc.npz')).transpose()
     if count is not None:
         X = X[:count]
     else:
         count = X.shape[0]
     if val_dirname is None:
         val_dirname = dirname
-    y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
-    rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
-    if load_wt:
-        wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
-        return X, y, rho_data, wt
+    if binary:
+        y = np.load(os.path.join(val_dirname, 'val.npy'))[:count]
+        rho_data = np.load(os.path.join(dirname, 'rho.npy'))[:,:count]
+        if load_wt:
+            wt = np.load(os.path.join(dirname, 'wt.npy'))[:count]
+            return X, y, rho_data, wt
+    else:
+        y = np.loadtxt(os.path.join(val_dirname, 'val.npz'))[:count]
+        rho_data = np.loadtxt(os.path.join(dirname, 'rho.npz'))[:,:count]
+        if load_wt:
+            wt = np.loadtxt(os.path.join(dirname, 'wt.npz'))[:count]
+            return X, y, rho_data, wt
     return X, y, rho_data
 
 def filter_descriptors(X, y, rho_data, tol=1e-3, wt = None):
-    condition = rho_data[0] > tol
-    X = X[condition,:]
-    y = y[condition]
-    rho = rho_data[0,condition]
-    rho_data = rho_data[:,condition]
+    if rho_data.ndim == 3:
+        condition = np.sum(rho_data[:,0,:], axis=0) > tol
+    else:
+        condition = rho_data[0] > tol
+    X = X[...,condition,:]
+    y = y[...,condition]
+    rho = rho_data[...,0,condition]
+    rho_data = rho_data[...,:,condition]
     if wt is not None:
         wt = wt[condition]
         return X, y, rho, rho_data, wt
@@ -458,6 +567,7 @@ def predict_exchange(analyzer, model=None, num=1,
     """
     from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
+    from mldftdat.models.integral_gps import AddEDMGPR, AddEDMGPR2
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -490,6 +600,12 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+    elif hasattr(model, 'coeff_sets'):
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        neps = model.predict(xdesc.transpose(), rho_data, vec_eval = True)
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     elif isinstance(model, MLFunctional):
         N = analyzer.grid.weights.shape[0]
         desc  = np.zeros((N, len(model.desc_list)))
@@ -500,6 +616,19 @@ def predict_exchange(analyzer, model=None, num=1,
         xef = model.get_F(desc)
         eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
         neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
+    elif isinstance(model, AddEDMGPR) or isinstance(model, AddEDMGPR2):
+        from pyscf import lib
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        gridsize = xdesc.shape[1]
+        neps, std = np.zeros(gridsize), np.zeros(gridsize)
+        blksize = 20000
+        for p0, p1 in lib.prange(0, gridsize, blksize):
+            neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1],
+                                                    rho_data[:,p0:p1], return_std = True)
+        print('integrated uncertainty', np.dot(np.abs(std), np.abs(weights)))
+        eps = neps / rho
+        if return_desc:
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     else:# type(model) == integral_gps.NoisyEDMGPR:
         xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
@@ -571,6 +700,57 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
     fx_total = np.dot(neps, weights)
     return fx_total
 
+def predict_correlation(analyzer, model=None, num=1,
+                        restricted = True, version = 'a'):
+    """
+    model:  If None, return ccsd correlation energy (density)
+            If str, evaluate the correlation energy of that functional.
+            Otherwise, assume sklearn model and run predict function.
+    """
+    from mldftdat.models.nn import Predictor
+    from mldftdat.dft.xc_models import MLFunctional
+    from mldftdat.models.correlation_gps import CorrGPR
+    rho_data = analyzer.rho_data
+    tau_data = analyzer.tau_data
+    coords = analyzer.grid.coords
+    weights = analyzer.grid.weights
+    if restricted:
+        rho = rho_data[0,:]
+    else:
+        rho = rho_data[0,0,:] + rho_data[1,0,:]
+
+    if model is None:
+        neps = analyzer.get_corr_energy_density()
+    elif type(model) == str:
+        eps = eval_xc(',' + model, rho_data, spin = 0 if restricted else 1)[0]
+        neps = eps * rho
+    elif isinstance(model, CorrGPR):
+        from pyscf import lib
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        if restricted:
+            gridsize = xdesc.shape[1]
+        else:
+            gridsize = xdesc[0].shape[1]
+        neps = np.zeros(gridsize)
+        blksize = 20000
+        for p0, p1 in lib.prange(0, gridsize, blksize):
+            if restricted:
+                neps[p0:p1] = model.predict(xdesc.T[p0:p1],
+                                             rho_data[:,p0:p1] / 2)
+            else:
+                neps[p0:p1] = model.predict(np.stack((xdesc[0].T[p0:p1],\
+                                            xdesc[1].T[p0:p1])),
+                                            rho_data[:,:,p0:p1])
+    else:
+        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        if restricted:
+            neps = model.predict(xdesc.T, rho_data / 2)
+        else:
+            neps = model.predict(np.stack((xdesc[0].T, xdesc[1].T)), rho_data)
+    eps = neps / (rho + 1e-20)
+    fx_total = np.dot(neps, weights)
+    return eps, neps, fx_total
+
 def error_table(dirs, Analyzer, mlmodel, num = 1):
     models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
     errlst = [[] for _ in models]
@@ -601,6 +781,59 @@ def error_table(dirs, Analyzer, mlmodel, num = 1):
             tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
             rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
             rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            errlst[i].append(fx_total_pred - fx_total_true)
+        print(errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst),\
+           (columns, rows, errtbl)
+
+def error_table_unrestricted(dirs, Analyzer, mlmodel, num = 1):
+    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+    errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        analyzer.get_ao_rho_data()
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-3
+        fx_total_true = predict_total_exchange_unrestricted(analyzer)
+        fxlst_true.append(fx_total_true)
+        count += 1
+        for i, model in enumerate(models):
+            fx_total_pred = predict_total_exchange_unrestricted(analyzer, model = model, num = num)
+            print(fx_total_pred - fx_total_true)
+
+            #ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            #tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+            #rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
+            #rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
 
             fxlst_pred[i].append(fx_total_pred)
             errlst[i].append(fx_total_pred - fx_total_true)
@@ -805,6 +1038,100 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
            (columns, rows, errtbl)
 
+def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    models = ['LDA_C_PW_MOD', 'GGA_C_PBE', 'MGGA_C_SCAN', mlmodel]
+    errlst = [[] for _ in models]
+    ae_errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    ae_fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    ae_fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        analyzer.get_ao_rho_data()
+        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
+        formula = Counter(atoms)
+        element_analyzers = {}
+        for Z in list(formula.keys()):
+            symbol = chemical_symbols[Z]
+            spin = int(ground_state_magnetic_moments[Z])
+            letter = '' if spin == 0 else 'U'
+            path = '{}/{}CCSD/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+                        dbpath, letter, Z, symbol, spin)
+            if letter == '':
+                element_analyzers[Z] = CCSDAnalyzer.load(path)
+            else:
+                element_analyzers[Z] = UCCSDAnalyzer.load(path)
+            element_analyzers[Z].get_ao_rho_data()
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-5
+        fx_total_ref_true = 0
+        for Z in list(formula.keys()):
+            restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
+            _, _, fx_total_ref_tmp = predict_correlation(
+                                        element_analyzers[Z], version=version,
+                                        restricted = restricted)
+            fx_total_ref_true += formula[Z] * fx_total_ref_tmp
+        eps_true, neps_true, fx_total_true = predict_correlation(
+                                                analyzer, version = version)
+        fxlst_true.append(fx_total_true)
+        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            fx_total_ref = 0
+            for Z in list(formula.keys()):
+                restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
+                _, _, fx_total_tmp = predict_correlation(
+                                        element_analyzers[Z],
+                                        model = model, num = num, version = version,
+                                        restricted = restricted)
+                fx_total_ref += formula[Z] * fx_total_tmp
+            eps_pred, neps_pred, fx_total_pred = \
+                predict_correlation(analyzer, model = model, num = num, version = version)
+            print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
+                                                 - (fx_total_ref - fx_total_ref_true))
+
+            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
+            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
+
+            fxlst_pred[i].append(fx_total_pred)
+            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
+            errlst[i].append(fx_total_pred - fx_total_true)
+            ae_errlst[i].append(fx_total_pred - fx_total_true \
+                                - (fx_total_ref - fx_total_ref_true))
+        print(errlst[-1][-1], ae_errlst[-1][-1])
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+    ae_errlst = np.array(ae_errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    rows = models[:NMODEL-1] + ['ML']
+    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
+           (columns, rows, errtbl)
+
 def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                  FUNCTIONAL = None, mol = None,
                                  use_db = True,
@@ -831,6 +1158,9 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
         Analyzer = lowmem_analyzers.RHFAnalyzer
     elif CALC_TYPE in ['UKS', 'UHF']:
         Analyzer = lowmem_analyzers.UHFAnalyzer
+
+    print(type(FUNCTIONAL))
+    print(isinstance(FUNCTIONAL, MLFunctional))
 
     def run_calc(mol, path, calc_type, Analyzer, save):
         if os.path.isfile(path) and use_db:
@@ -875,18 +1205,37 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint4 import setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
+                    from mldftdat.dft.numint6 import setup_rks_calc
+                    mf = run_scf(mol, 'RKS', functional = 'PBE')
                     dm0 = mf.make_rdm1()
-                    mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    #dm0 = None
+                    #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_rks_calc(mol, FUNCTIONAL)
+                    mf.xc = None
+                    #mf.xc = ',MGGA_C_SCAN'
+                else:
+                    from mldftdat.dft.numint6 import setup_uks_calc
+                    mf = run_scf(mol, 'UKS', functional = 'PBE')
+                    dm0 = mf.make_rdm1()
+                    #dm0 = None
+                    #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    mf = setup_uks_calc(mol, FUNCTIONAL)
+                    mf.xc = None
+                    #mf.xc = ',MGGA_C_SCAN'
+                mf.kernel(dm0 = None)
+                e_tot = mf.e_tot
+                calc = mf
+            else:
+                assert isinstance(FUNCTIONAL, tuple) and isinstance(FUNCTIONAL[0], MLFunctional)
+                if 'RKS' in path:
+                    from mldftdat.dft.numint5 import setup_rks_calc
+                    mf = setup_rks_calc(mol, FUNCTIONAL[0], FUNCTIONAL[1])
                     mf.xc = None
                 else:
-                    from mldftdat.dft.numint4 import setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
-                    dm0 = mf.make_rdm1()
-                    mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
+                    from mldftdat.dft.numint5 import setup_uks_calc
+                    mf = setup_uks_calc(mol, FUNCTIONAL[0], FUNCTIONAL[1])
                     mf.xc = None
-                mf.kernel(dm0 = dm0)
+                mf.kernel(dm0 = None)
                 e_tot = mf.e_tot
                 calc = mf
 
@@ -952,3 +1301,60 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     return mol, atomization_energy, mol_energy, atomic_energies, mol_calc, atomic_calcs
     
+
+def get_accdb_formula_entry(entry_names, fname):
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            lines[i] = line.split(',')
+        formulas = {}
+        for line in lines:
+            counts = line[1:-1:2]
+            structs = line[2:-1:2]
+            energy = float(line[-1])
+            counts = [int(c) for c in counts]
+            formulas[line[0]] = {'structs': structs, 'counts': counts, 'energy': energy}
+    if type(entry_names) == str:
+        return formulas[entry_names]
+    res = {}
+    for name in entry_names:
+        res[name] = formulas[name]
+    return res
+
+def get_run_total_energy(dirname):
+    with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    return data['e_tot']
+
+def get_accdb_data(formula, FUNCTIONAL, BASIS):
+
+    pred_energy = 0
+    for sname, count in zip(formula[structs], formula[counts]):
+        struct, mol_id, spin, charge = read_accdb_struct(sname)
+        if spin == 0:
+            CALC_TYPE = 'RKS'
+        else:
+            CALC_TYPE = 'UKS'
+        dname = get_save_dir(ROOT, CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
+        pred_energy += count * get_run_total_energy(dname)
+
+    return pred_energy, formula['energy']
+
+def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
+    single = False
+    if not isinstance(data_point_names, list):
+        data_point_names = [data_point_names]
+        single = True
+    result = {}
+    for data_point_name in data_point_names:
+        db_name, ref_name = data_point_name.split('_', 1)
+        dataset_eval_name = os.path.join(db_name, 'DatasetEval.csv')
+        formula = get_accdb_formula_entry(ref_name, dataset_eval_name)
+        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
+        result[data_point_name] = {
+            'pred' : pred_energy,
+            'true' : energy
+        }
+    if single:
+        return result[data_point_names[0]]
+    return result

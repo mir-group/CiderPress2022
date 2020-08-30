@@ -501,7 +501,7 @@ def get_corr_energy_density(mol, tau, vele_mat_ov, orbvals_occ,
                             orbvals_vir, direct = True):
     """
     Get the coupled-cluster correlation energy density for a system
-    and basis set(mol), for a given molecular structu with basis set (mol).
+    and basis set (mol).
     Args:
         tau (nocc1,nocc2,nvir1,nvir2)
         vele_mat_ov(gridsize,nocc2,nvir2)
@@ -520,6 +520,13 @@ def get_corr_energy_density(mol, tau, vele_mat_ov, orbvals_occ,
     #e += 2 * numpy.einsum('ijab,iabj', tau, eris_ovvo)
     #e -=     numpy.einsum('jiab,iabj', tau, eris_ovvo)
 
+def get_corr_density(tau, mo_to_aux_ov, direct = True):
+    if direct:
+        vele_tmp = np.einsum('ijab,pjb->pia', tau, mo_to_aux_ov)
+    else:
+        vele_tmp = np.einsum('jiab,pjb->pia', tau, mo_to_aux_ov)
+    vele = np.einsum('pjb,qjb->pq', vele_tmp, mo_to_aux_ov)
+    return vele
 
 
 # The following functions are helpers that check whether vele_mat

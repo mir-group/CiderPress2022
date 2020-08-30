@@ -74,6 +74,85 @@ class SCFCalc(FiretaskBase):
 
 
 @explicit_serialize
+class MLSCFCalc(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'calc_type',\
+                       'mlfunc_name', 'mlfunc_file', 'mlfunc_settings_file']
+    optional_params = ['spin', 'charge', 'max_conv_tol',\
+                       'mlfunc_c_file']
+
+    DEFAULT_MAX_CONV_TOL = 1e-7
+
+    def run_task(self, fw_spec):
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = self['calc_type']
+
+        import joblib
+        if self.get('mlfunc_c_file') is None:
+            from mldftdat.dft import numint4 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+        else:
+            from mldftdat.dft import numint5 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+            mlfunc_c = joblib.load(self['mlfunc_c_file'])
+        import yaml
+
+        #if not hasattr(mlfunc, 'y_to_f_mul'):
+        #    mlfunc.y_to_f_mul = None
+        with open(self['mlfunc_settings_file'], 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
+            if settings is None:
+                settings = {}
+        if self.get('mlfunc_c_file') is None:
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+        else:
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
+
+        start_time = time.monotonic()
+        calc.kernel()
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            calc.conv_tol *= 10
+
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
 class LoadCalcFromDB(FiretaskBase):
 
     required_params = ['directory']
