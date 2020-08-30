@@ -1,5 +1,6 @@
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.dft.numint3 import setup_uks_calc, setup_rks_calc
+from mldftdat.dft.numint5 import _eval_x_0, setup_aux
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
@@ -485,22 +486,22 @@ def solve_b97_from_stored_ae(DATA_ROOT, v2 = False):
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
         # not an exact relationship, but should give a decent fit
         X = sl.copy()
-        y = E_ccsd - E_pbe - diff - E_vv10
-        #y = E_ccsd - E_pbe - diff
+        #y = E_ccsd - E_pbe - diff - E_vv10
+        y = E_ccsd - E_pbe - diff
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
                 weights.append(1.0)
                 formula = formulas[i]
-                #for Z in list(formula.keys()):
-                #    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
-                #    y[i] -= formula[Z] * y[Z_to_ind[Z]]
+                for Z in list(formula.keys()):
+                    X[i,:] -= formula[Z] * sl[Z_to_ind[Z],:]
+                    y[i] -= formula[Z] * y[Z_to_ind[Z]]
             else:
                 weights.append(1.0 if mols[i].nelectron < 11 else 0)
 
         weights = np.array(weights)
 
-        noise = 1e-5
+        noise = 1e-2
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)

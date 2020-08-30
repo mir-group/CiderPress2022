@@ -243,10 +243,170 @@ def get_rho_and_edmgga_descriptors12(X, rho_data, num=1):
     X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
     return X
 
+def get_big_desc2(X, num):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+
+    gammax = 0.004 * (2**(1.0/3) * sprefac)**2
+    gamma1 = 0.004
+    gamma2 = 0.004
+
+    s = X[:,1]
+    p, alpha = X[:,1]**2, X[:,2]
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+    desc = np.zeros((X.shape[0], 12))
+    refs = gammax / (1 + gammax * s**2)
+    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    ref0a = 0.5 / (1 + X[:,4] * scale**3 / 2)
+    ref0b = 0.125 / (1 + X[:,15] * scale**3 / 8)
+    ref0c = 2 / (1 + X[:,16] * scale**3 / 0.5)
+    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+    ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6) 
+
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
+
+    desc[:,0] = X[:,0]
+    #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
+    #desc[:,1] = np.arcsinh(0.5 * sp)
+    #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
+    desc[:,1] = s**2 * refs
+    desc[:,2] = 2 / (1 + alpha**2) - 1.0
+    #desc[:,2] = np.arcsinh(alpha - 1)
+    desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
+    #desc[:,3] = X[:,4] - 2.0 / scale**3
+    desc[:,4] = X[:,5]**2 * scale**6 * ref1
+    desc[:,5] = X[:,8] * scale**6 * ref2
+    desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
+    desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
+    desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
+    desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
+    #desc[:,9] = X[:,16] - 0.5 / scale**3
+    desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+    desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    return desc[:,:num+1]
+
+def get_big_desc3(X, num):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+
+    gammax = 0.682
+    gamma1 = 0.01552
+    gamma2 = 0.01617
+    gamma0a = 0.64772
+    gamma0b = 0.44065
+    gamma0c = 0.6144
+
+    s = X[:,1]
+    p, alpha = X[:,1]**2, X[:,2]
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+    desc = np.zeros((X.shape[0], 12))
+    refs = gammax / (1 + gammax * s**2)
+    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    ref0a = gamma0a / (1 + X[:,4] * scale**3 * gamma0a)
+    ref0b = gamma0b / (1 + X[:,15] * scale**3 * gamma0b)
+    ref0c = gamma0c / (1 + X[:,16] * scale**3 * gamma0c)
+    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+    ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
+
+    desc[:,0] = X[:,0]
+    #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
+    #desc[:,1] = np.arcsinh(0.5 * sp)
+    #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
+    desc[:,1] = s**2 * refs
+    desc[:,2] = 2 / (1 + alpha**2) - 1.0
+    #desc[:,2] = np.arcsinh(alpha - 1)
+    desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
+    #desc[:,3] = X[:,4] - 2.0 / scale**3
+    desc[:,4] = X[:,5]**2 * scale**6 * ref1
+    desc[:,5] = X[:,8] * scale**6 * ref2
+    desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
+    desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
+    desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
+    desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
+    #desc[:,9] = X[:,16] - 0.5 / scale**3
+    desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+    desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    return desc[:,:num+1]
+
+
+def get_big_desc4(X, num):
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+
+    gammax = 0.682
+    gamma1 = 0.01552
+    gamma2 = 0.01617
+    gamma0a = 0.64772
+    gamma0b = 0.44065
+    gamma0c = 0.6144
+
+    s = X[:,1]
+    p, alpha = X[:,1]**2, X[:,2]
+
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+
+    desc = np.zeros((X.shape[0], 12))
+    refs = gammax / (1 + gammax * s**2)
+    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
+    ref0a = gamma0a / (1 + X[:,4] * scale**3 * gamma0a)
+    ref0b = gamma0b / (1 + X[:,15] * scale**3 * gamma0b)
+    ref0c = gamma0c / (1 + X[:,16] * scale**3 * gamma0c)
+    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
+    ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+    hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
+    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
+
+    desc[:,0] = X[:,0]
+    #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
+    #desc[:,1] = np.arcsinh(0.5 * sp)
+    #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
+    desc[:,1] = np.arcsinh(s**2)
+    desc[:,2] = 2 / (1 + alpha**2) - 1.0
+    #desc[:,2] = np.arcsinh(alpha - 1)
+    desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
+    #desc[:,3] = X[:,4] - 2.0 / scale**3
+    desc[:,4] = X[:,5]**2 * scale**6 * ref1
+    desc[:,5] = X[:,8] * scale**6 * ref2
+    desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
+    desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
+    desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
+    desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
+    #desc[:,9] = X[:,16] - 0.5 / scale**3
+    desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+    desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    return desc[:,:num+1]
+
+def get_rho_and_edmgga_descriptors13(X, rho_data, num=1):
+    X = get_big_desc2(X, num)
+    #X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
+def get_rho_and_edmgga_descriptors14(X, rho_data, num=1):
+    X = get_big_desc3(X, num)
+    #X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
+
+
+def get_rho_and_edmgga_descriptors15(X, rho_data, num=1):
+    X = get_big_desc4(X, num)
+    #X = np.append(rho_data[0].reshape(-1,1), X, axis=1)
+    return X
 
 class NoisyEDMGPR(EDMGPR):
 
-    def __init__(self, num_desc, use_algpr = False):
+    def __init__(self, num_desc, use_algpr = False, norm_feat = False):
         const = ConstantKernel(0.2)
         #rbf = PartialRBF([1.0] * (num_desc + 1),
         #rbf = PartialRBF([0.299, 0.224, 0.177, 0.257, 0.624][:num_desc+1],
@@ -257,7 +417,16 @@ class NoisyEDMGPR(EDMGPR):
         #rbf = PartialRBF([0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc],
         #                 length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         #rbf = PartialRBF([0.3, 0.321, 0.468, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0][:num_desc+1],
-        rbf = PartialRBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+        if not norm_feat:
+            rbf = PartialRBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        else:
+            #const = ConstantKernel(1.0)
+            const = ConstantKernel(12.1696)
+            #rbf = PartialRBF(([0.232, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 1.0, 1.0, 1.0, 1.0])[:num_desc],
+            #rbf = PartialRBF(([0.6, 1.02, 0.279, 0.337, 0.526, 0.34, 0.333, 0.235, 0.237, 1.0, 1.0, 1.0, 1.0])[:num_desc],
+            rbf = PartialRBF([0.2961, 0.9890, 0.3719, 0.4484, 0.4733, 0.6631, 0.5936, 0.6224, 0.2370,\
+                         0.5662][:num_desc],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
@@ -268,7 +437,8 @@ class NoisyEDMGPR(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_rho_and_edmgga_descriptors,
+                       descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
+                               else get_rho_and_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
@@ -315,3 +485,98 @@ class SmoothEDMGPR(EDMGPR):
         threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
+
+
+class AddEDMGPR(EDMGPR):
+
+    def __init__(self, num_desc, use_algpr = False, norm_feat = False):
+        const = ConstantKernel(0.2)
+        order = 3
+        if not norm_feat:
+            rbf = PartialARBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        else:
+            const = ConstantKernel(0.527**2)
+            rbf = PartialARBF(order = order, length_scale = [0.232, 0.436, 0.222, 0.1797, 0.193, 0.232,\
+                         0.1976, 0.312, 0.1716, 0.1886][:num_desc],
+                         scale = [2e-5, 0.536 * 0.527**2, 0.0428 * 0.527**2, 0.05 * 0.527**2],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        cov_kernel = rbf
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(EDMGPR, self).__init__(num_desc,
+                       descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
+                               else get_rho_and_edmgga_descriptors,
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred, y_std = self.gp.predict(x, return_std=True)
+        return (y_std > threshold).any()
+
+
+class AddEDMGPR2(EDMGPR):
+
+    def __init__(self, num_desc, use_algpr = False, norm_feat = False):
+        const = ConstantKernel(0.2)
+        order = 2
+        if not norm_feat:
+            rbf = PartialARBF([0.3, 0.4, 0.6696, 0.6829, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0][:num_desc],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
+        else:
+            const = ConstantKernel(0.527**2)
+            rbf = PartialARBF(order = order, length_scale = [0.573, 0.175, 0.15,\
+                         0.158, 0.249, 0.235, 0.344, 0.124, 0.185, 0.3][:num_desc-1],
+                         scale = [0.296135,  0.0289514, 0.1114619],
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
+        rhok1 = FittedDensityNoise(decay_rate = 2.0)
+        rhok2 = FittedDensityNoise(decay_rate = 600.0)
+        wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
+        wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
+        cov_kernel = rbf * SingleRBF(length_scale=0.198, index = 1)
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        init_kernel = cov_kernel + noise_kernel
+        super(EDMGPR, self).__init__(num_desc,
+                       descriptor_getter = get_rho_and_edmgga_descriptors15 if norm_feat\
+                               else get_rho_and_edmgga_descriptors,
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       init_kernel = init_kernel, use_algpr = use_algpr)
+
+    def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
+        threshold = max(low_noise_bound, np.sqrt(self.gp.kernel_.k2(x))) * threshold_factor
+        y_pred, y_std = self.gp.predict(x, return_std=True)
+        return (y_std > threshold).any()
+
+    def add_heg_limit(self, wt=1):
+        hegx = (0 * self.X[0])
+        hegx[0] = 1e8
+        hegy = 0
+        self.y = np.append([hegy], self.y)
+        self.X = np.append([hegx], self.X, axis=0)
+        self.gp.y_train_ = self.y
+        self.gp.X_train_ = self.X
+        K = self.gp.kernel_(self.gp.X_train_)
+        K[:,0] *= np.sqrt(wt)
+        K[0,:] *= np.sqrt(wt)
+        K[np.diag_indices_from(K)] += self.gp.alpha
+        # from sklearn gpr
+        from scipy.linalg import cholesky, cho_solve
+        try:
+            self.gp.L_ = cholesky(K, lower=True)  # Line 2
+            self.gp._K_inv = None
+        except np.linalg.LinAlgError as exc:
+            exc.args = ("The kernel, %s, is not returning a "
+                        "positive definite matrix. Try gradually "
+                        "increasing the 'alpha' parameter of your "
+                        "GaussianProcessRegressor estimator."
+                        % self.gp.kernel_,) + exc.args
+            raise
+        self.gp.alpha_ = cho_solve((self.gp.L_, True), self.gp.y_train_)  # Line 3
+

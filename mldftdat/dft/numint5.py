@@ -4,7 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 import numpy as np
-from mldftdat.density import get_x_helper_full, LDA_FACTOR,\
+from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21
 import scipy.linalg
@@ -195,29 +195,13 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_uks = nr_uks
 
-    def __init__(self, mlfunc, mlc = False, vv10_coeff = None,
+    def __init__(self, mlfunc_x, mlfunc_c, vv10_coeff = None,
                  beta = 1.6, ss_terms = None, os_terms = None):
         super(NLNumInt, self).__init__()
-        self.mlc = mlc
         self.beta = beta
-        self.mlfunc = mlfunc
+        self.mlfunc_x = mlfunc_x
+        self.mlfunc_c = mlfunc_c
 
-        if self.mlc:
-            if ss_terms is None:
-                #ss_terms = np.array([1.32490525, -1.347437,  0.13400938, -0.98195679])
-                ss_terms = np.array([1.26505033, -1.53922695,  0.2656504,  -1.03855256])
-                self.ss_terms = [(ss_terms[0],1,0), (ss_terms[1],0,2),\
-                             (ss_terms[2],3,2), (ss_terms[3],4,2)]
-            else:
-                self.ss_terms = ss_terms
-            if os_terms is None:
-                #os_terms = np.array([-1.13281486, -0.17118078, 0.240715, -3.4220355])
-                os_terms = np.array([-1.31971314, -0.32444113,  0.40935749, -3.47602979])
-                self.os_terms = [(os_terms[0],1,0), (os_terms[1],0,1),\
-                                 (os_terms[2],3,2), (os_terms[3],0,3)]
-            else:
-                self.os_terms = os_terms
-            
         if vv10_coeff is None:
             self.vv10 = False
         else:
@@ -244,24 +228,33 @@ class NLNumInt(pyscf_numint.NumInt):
         N = grid.weights.shape[0]
         print('XCCODE', xc_code)
         has_base_xc = (xc_code is not None) and (xc_code != '')
-        if self.mlc:
-            exc0, vxc0, _, _ = eval_custom_corr(xc_code, rho_data, spin,
-                                                relativity, deriv,
-                                                omega, verbose,
-                                                ss_terms = self.ss_terms,
-                                                os_terms = self.os_terms)
-        elif has_base_xc:
+        if has_base_xc:
             exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
                                        deriv, omega, verbose)
 
         if spin == 0:
-            exc, vxc, _, _ = _eval_xc_0(self.mlfunc, mol, rho_data, grid, rdm1)
+            ex, vx, _, _ = _eval_x_0(self.mlfunc_x, mol, rho_data, grid, rdm1)
+            ec, vc, _, _ = _eval_c_0(self.mlfunc_c, mol,
+                                     (rho_data, rho_data), grid,
+                                     (rdm1, rdm1))
+            exc = ex + ec
+            # Convert spin-polarized correlation to restricted spin
+            vxc = [vx[0] + vc[0][:,0],\
+                   vx[1] + 0.5 * vc[1][:,0] + 0.25 * vc[1][:,1],\
+                   vx[2] + vc[2][:,0],\
+                   vx[3] + vc[3][:,0],\
+                   vx[4] + vc[4][:,:,0],\
+                   vx[5] + vc[5][0,:,:]
+            ]
         else:
-            uterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])
-            dterms = _eval_xc_0(self.mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])
+            uterms = _eval_x_0(self.mlfunc_x, mol, 2 * rho_data[0], grid, 2 * rdm1[0])
+            dterms = _eval_x_0(self.mlfunc_x, mol, 2 * rho_data[1], grid, 2 * rdm1[1])
+            ec, vc, _, _ = _eval_c_0(self.mlfunc_c, mol, (2 * rho_data[0], 2 * rho_data[1]),
+                                     grid, (2 * rdm1[0], 2 * rdm1[1]))
             exc  = uterms[0] * rho_data[0][0,:]
             exc += dterms[0] * rho_data[1][0,:]
-            exc /= (rho_data[0][0,:] + rho_data[1][0,:])
+            exc /= (rho_data[0][0,:] + rho_data[1][0,:] + 1e-20)
+            exc += ec
             vrho = np.zeros((N, 2))
             vsigma = np.zeros((N, 3))
             vlapl = np.zeros((N, 2))
@@ -269,26 +262,27 @@ class NLNumInt(pyscf_numint.NumInt):
             vgrad = np.zeros((3, N, 2))
             vmol = np.zeros((2, mol.nao_nr(), mol.nao_nr()))
 
-            vrho[:,0] = uterms[1][0]
-            vrho[:,1] = dterms[1][0]
+            vrho[:,0] = uterms[1][0] + vc[0][:,0]
+            vrho[:,1] = dterms[1][0] + vc[0][:,1]
 
-            vsigma[:,0] = 2 * uterms[1][1]
-            vsigma[:,2] = 2 * dterms[1][1]
+            vsigma[:,0] = 2 * uterms[1][1] + vc[1][:,0]
+            vsigma[:,1] = vc[1][:,1]
+            vsigma[:,2] = 2 * dterms[1][1] + vc[1][:,2]
 
-            vlapl[:,0] = uterms[1][2]
-            vlapl[:,1] = dterms[1][2]
+            vlapl[:,0] = uterms[1][2] + vc[2][:,0]
+            vlapl[:,1] = dterms[1][2] + vc[2][:,1]
 
-            vtau[:,0] = uterms[1][3]
-            vtau[:,1] = dterms[1][3]
+            vtau[:,0] = uterms[1][3] + vc[3][:,0]
+            vtau[:,1] = dterms[1][3] + vc[3][:,1]
 
-            vgrad[:,:,0] = uterms[1][4]
-            vgrad[:,:,1] = dterms[1][4]
+            vgrad[:,:,0] = uterms[1][4] + vc[4][:,:,0]
+            vgrad[:,:,1] = dterms[1][4] + vc[4][:,:,1]
 
-            vmol[0,:,:] = uterms[1][5]
-            vmol[1,:,:] = dterms[1][5]
+            vmol[0,:,:] = uterms[1][5] + vc[5][0,:,:]
+            vmol[1,:,:] = dterms[1][5] + vc[5][1,:,:]
 
             vxc = (vrho, vsigma, vlapl, vtau, vgrad, vmol)
-        if has_base_xc or self.mlc:
+        if has_base_xc:
             exc += exc0
             if vxc0[0] is not None:
                 vxc[0][:] += vxc0[0]
@@ -301,7 +295,7 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
+def _eval_x_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
     chkpt = time.monotonic()
@@ -329,13 +323,9 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     chkpt = time.monotonic()
 
     if mlfunc.y_to_f_mul is None:
-        #F = mlfunc.get_F(desc)
-        # shape (N, ndesc)
-        #dF = mlfunc.get_derivative(desc)
         F, dF = mlfunc.get_F_and_derivative(desc)
     else:
         F = mlfunc.get_F(desc, s = contracted_desc[1])
-        dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
@@ -443,10 +433,101 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     return exc, (v_nst[0], v_nst[1], v_nst[2], v_nst[3], v_grad, vmol), None, None
 
 
+def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
+    import time
+
+    chkpt = time.monotonic()
+
+    density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]),\
+               np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[1]))
+    auxmol = mol.auxmol
+    naux = auxmol.nao_nr()
+    ao_to_aux = mol.ao_to_aux
+    N = grid.weights.shape[0]
+
+    desc = [0,0]
+    ddesc = [0,0]
+    raw_desc = [0,0]
+    raw_desc_r2 = [0,0]
+    ovlps = [0,0]
+    contracted_desc = [0,0]
+
+    for spin in range(2):
+        pr2 = rho_data[spin] * np.linalg.norm(grid.coords, axis=1)**2
+        print('r2', spin, np.dot(pr2, grid.weights))
+        desc[spin]  = np.zeros((N, len(mlfunc.desc_list)))
+        ddesc[spin] = np.zeros((N, len(mlfunc.desc_list)))
+        raw_desc[spin], ovlps[spin] = get_x_helper_full2(
+                                                auxmol, rho_data[spin], grid,
+                                                density[spin], ao_to_aux,
+                                                return_ovlp = True)
+        raw_desc_r2[spin] = get_x_helper_full2(auxmol, rho_data[spin], grid,
+                                               density[spin], ao_to_aux,
+                                               integral_name = 'int1e_r2_origj')
+        contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
+        for i, d in enumerate(mlfunc.desc_list):
+            desc[spin][:,i], ddesc[spin][:,i] = \
+                d.transform_descriptor(contracted_desc[spin], deriv = 1)
+
+    print('desc setup', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
+
+    # get correlation energy density, vref, and derivative
+    # of ec wrt GP descriptors
+    # vref is the functional derivate of the energy density
+    # wrt the inputs to pyscf eval_xc function. I.e. it should
+    # apply to the reference functional.
+    ec, vref, dec = mlfunc.get_F_and_derivative(desc,
+                        (rho_data[0]/2, rho_data[1]/2), compare=contracted_desc)
+    if type(dec) == tuple:
+        dEddesc = (dec[0] * ddesc[0], dec[1] * ddesc[1])
+    else:
+        dEddesc = (dec * ddesc[0] * 0.5, dec * ddesc[1] * 0.5)
+
+    print('run GP', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
+
+    v_nst = [None, None]
+    v_grad = [None, None]
+    vmol = [None, None]
+
+    for spin in range(2):
+        v_nst[spin], v_grad[spin], vmol[spin] = \
+            functional_derivative_loop(
+                mol, mlfunc, dEddesc[spin],
+                contracted_desc[spin],
+                raw_desc[spin], raw_desc_r2[spin],
+                rho_data[spin], density[spin],
+                ovlps[spin], grid)
+
+    v_nst = np.stack(v_nst, axis=-1)
+    v_grad = np.stack(v_grad, axis=-1)
+    vmol = np.stack(vmol, axis=0)
+
+    print('v_nonlocal', time.monotonic() - chkpt)
+    chkpt = time.monotonic()
+
+    # TODO v_nst[1] should have 3 dimensions on axis 0 not 2
+    vtot = list(vref)
+    if vtot[1] is None:
+        vtot[1] = np.zeros((vtot[0].shape[0],3))
+    if vtot[2] is None:
+        vtot[2] = np.zeros((vtot[0].shape[0],2))
+    if vtot[3] is None:
+        vtot[3] = np.zeros((vtot[0].shape[0],2))
+    vtot[0] += v_nst[0]
+    vtot[1][:,0] += 2 * v_nst[1][:,0]
+    vtot[1][:,2] += 2 * v_nst[1][:,1]
+    vtot[2] += v_nst[2]
+    vtot[3] += v_nst[3]
+    return ec, (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
+
+
 def setup_aux(mol, beta):
-    auxbasis = df.aug_etb(mol, beta = beta)
+    #auxbasis = df.aug_etb(mol, beta = beta)
     nao = mol.nao_nr()
     auxmol = df.make_auxmol(mol, 'weigend')
+    #auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
@@ -463,18 +544,18 @@ def setup_aux(mol, beta):
     return auxmol, ao_to_aux
 
 
-def setup_rks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+def setup_rks_calc(mol, mlfunc_x, mlfunc_c, vv10_coeff = None,
                    beta = 1.6, ss_terms = None, os_terms = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+    rks._numint = NLNumInt(mlfunc_x, mlfunc_c, vv10_coeff,
                            beta, ss_terms, os_terms)
     return rks
 
-def setup_uks_calc(mol, mlfunc, mlc = False, vv10_coeff = None,
+def setup_uks_calc(mol, mlfunc_x, mlfunc_c, vv10_coeff = None,
                    beta = 1.6, ss_terms = None, os_terms = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc, mlc, vv10_coeff,
+    uks._numint = NLNumInt(mlfunc_x, mlfunc_c, vv10_coeff,
                            beta, ss_terms, os_terms)
     return uks

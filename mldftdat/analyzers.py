@@ -1,5 +1,5 @@
 from pyscf import scf, dft, gto, ao2mo, df, lib, fci, cc
-from pyscf.dft.numint import eval_ao, eval_rho
+from pyscf.dft.numint import eval_ao, eval_rho, eval_rho2
 from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from mldftdat.pyscf_utils import *
@@ -7,6 +7,7 @@ import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
 import psutil
+from pyscf.scf.hf import get_jk
 
 
 def recursive_remove_none(obj):
