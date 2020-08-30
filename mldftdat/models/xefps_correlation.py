@@ -15,7 +15,7 @@ DEFAULT_FUNCTIONAL = 'SCAN'
 DEFAULT_BASIS = 'aug-cc-pvtz'
 
 def get_mlx_contribs(dft_dir, restricted, mlfunc,
-                     include_x = False, scanx = False):
+                     include_x = False, scanx = False, use_sf = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -102,13 +102,25 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc,
         Eterms = np.append(Eterms, Etmp)
 
     if include_x:
+        if use_sf:
+            g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+            g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+            g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
+            sf, dsfdnu, dsfdnd, dsfdg2, dsfdt = \
+                corr_model.spinpol_factor(rho_data_u[0] + 1e-20, rho_data_d[0] + 1e-20,
+                                          g2u + 2 * g2o + g2d,
+                                          rho_data_u[5] + rho_data_d[5] + 1e-20)
         for rho, ex in zip([rhou, rhod], [exu, exd]):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
             x1 = (1 - Fx**6) / (1 + Fx**6)
-            for i in range(5):
-                Etmp[i] = np.dot(elda * rho / 2 * x1**i, weights)
+            if use_sf:
+                for i in range(5):
+                    Etmp[i] = np.dot(elda * sf * rho / 2 * x1**i, weights)
+            else:
+                for i in range(5):
+                    Etmp[i] = np.dot(elda * rho / 2 * x1**i, weights)
             Eterms = np.append(Eterms, Etmp)
 
     print(Eterms.shape)
@@ -117,7 +129,8 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc,
     return Eterms
 
 def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
-                               MLFUNC, include_x = False, scanx = False):
+                               MLFUNC, include_x = False, scanx = False,
+                               use_sf = False):
 
     SIZE = 27 if include_x else 17
     X = np.zeros([0,SIZE])
@@ -135,14 +148,14 @@ def store_mlx_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
 
         sl_contribs = get_mlx_contribs(dft_dir, is_restricted,
                                        MLFUNC, include_x = include_x,
-                                       scanx = scanx)
+                                       scanx = scanx, use_sf = use_sf)
 
         X = np.vstack([X, sl_contribs])
 
     np.save(FNAME, X)
 
 
-def get_mn_contribs(dft_dir, restricted, include_x = False):
+def get_mn_contribs(dft_dir, restricted, include_x = False, use_sf = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -251,6 +264,7 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
 
     g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
     g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
     corr_model = VSXCContribs(None, None, None, None, dcoef[:6], dcoef[12:],
             None, ccoef[1:5], ccoef[-4:])
     tot, uderiv, dderiv = corr_model.corr_mn(cutmp, cdtmp, co, vuu, vdd, vou, vod,
@@ -274,6 +288,11 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
             np.dot(vtst[k][:,j], rho_data_d[0] * weights))
 
     if include_x:
+        if use_sf:
+            sf, dsfdnu, dsfdnd, dsfdg2, dsfdt = \
+                corr_model.spinpol_factor(rho_data_u[0] + 1e-20, rho_data_d[0] + 1e-20,
+                                          g2u + 2 * g2o + g2d,
+                                          rho_data_u[5] + rho_data_d[5] + 1e-20)
         xvals = np.zeros((12,weights.shape[0]))
         start = 0
         for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x),\
@@ -286,6 +305,8 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
             xvals[start+4] = x2 * z / gamma**3
             xvals[start+5] = z**2 / gamma**3
             xvals[start:start+6] *= LDA_FACTOR * 2**(1.0/3) * rho**(4.0/3)
+            if use_sf:
+                xvals[start:start+6] *= sf
             start += 6
         xvals = np.dot(xvals, weights)
         return np.concatenate([dvals[:6] + dvals[6:12], dvals[12:],\
@@ -298,7 +319,7 @@ def get_mn_contribs(dft_dir, restricted, include_x = False):
                                [dft_analyzer.fx_total]], axis=0)
 
 def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
-                              include_x = False):
+                              include_x = False, use_sf = False):
 
     SIZE = 29 if include_x else 23
     X = np.zeros([0,SIZE])
@@ -315,7 +336,8 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
         sl_contribs = get_mn_contribs(dft_dir, is_restricted,
-                                      include_x = include_x)
+                                      include_x = include_x,
+                                      use_sf = use_sf)
 
         X = np.vstack([X, sl_contribs])
 
