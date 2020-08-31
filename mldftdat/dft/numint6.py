@@ -341,7 +341,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         exc += sf * ex_term
 
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
-        dEddesc[spin] += 2 * sf * ex_fock_f_deriv.reshape(-1,1) * dF[spin]
+        print(sf.shape, ex_fock_f_deriv.shape, dF[spin].shape)
+        dEddesc[spin] += (2 * sf * ex_fock_f_deriv).reshape(-1,1) * dF[spin]
         
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
         vtot[0][:,spin] += sf * ex_fock_rho_deriv
@@ -446,6 +447,16 @@ DEFAULT_DOS = [6.41488932e-02, -2.36550649e-02, 1.00285533e-01,\
                3.89088798e-04, -1.63303498e-03,  2.70268729e-04]
 DEFAULT_DX = [5.30877430e-02,  2.36683945e-03, -1.15681238e-02,\
               5.09357773e-05, -2.22092336e-04,  3.42532905e-05]
+
+DEFAULT_CSS = [ 0.02187944,  0.01287096, -0.00256003,  0.01049835]
+DEFAULT_COS = [ 0.01879645,  0.04486457,  0.01278055, -0.00097384]
+DEFAULT_CX = [ 0.28500519,  0.02187848,  0.33032759, -0.09582583]
+DEFAULT_DSS = [-0.00063843, -0.04293042, -0.01698217,  0.00111742,  0.00070242,
+          0.01425176]
+DEFAULT_DOS = [ 0.00740721, -0.02153661,  0.09771835,  0.0005327 , -0.00192225,
+          0.00074129]
+DEFAULT_DX = [ 8.58248658e-03,  3.78015689e-03, -1.44308858e-02, -1.62158915e-05,
+          8.79395582e-05, -2.62201704e-04]
 
 def setup_rks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
                    cos=DEFAULT_COS, dx=DEFAULT_DX,
