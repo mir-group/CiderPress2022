@@ -235,14 +235,14 @@ class VSXCContribs():
 
         return ecf
 
-    def spinpol_factor(nu, nd, g2, t):
+    def spinpol_factor(self, nu, nd, g2, t):
 
         D = self.getD(nu+nd, g2, t)
         zeta = (nu - nd) / (nu + nd)
         zf = zeta**12
         dzfdu = 12 * zeta**11 * 2 * nd / (nu + nd)**2
         dzfdd = -12 * zeta**11 * 2 * nu / (nu + nd)**2
-        return 1 + (D[0] - 1) * zf,\
+        return (D[0] - 1) * zf,\
                (D[0] - 1) * dzfdu + D[1] * zf,\
                (D[0] - 1) * dzfdd + D[1] * zf,\
                D[2] * zf,\

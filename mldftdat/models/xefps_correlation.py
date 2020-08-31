@@ -101,6 +101,8 @@ def get_mlx_contribs(dft_dir, restricted, mlfunc,
             Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
 
+    corr_model = VSXCContribs(None, None, None, None, None, None)
+
     if include_x:
         if use_sf:
             g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
@@ -458,8 +460,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6c.npy'))
-    mnc = np.load(os.path.join(DATA_ROOT, 'mnc.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6sf2.npy'))
+    mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
@@ -502,7 +504,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_c = np.append(E_c, mnc[:,:12], axis=1)
         E_c = np.append(E_c, mnc[:,-7:-1], axis=1)
         #E_c = E_c[:,-18:]
-        #E_c = mnc[:,:12]
+        #E_c = mnc[:,:22]
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
@@ -527,7 +529,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
                 print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 18 else 0)
+                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
 
         weights = np.array(weights)
@@ -540,7 +542,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-2
+        noise = 5e-3
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
