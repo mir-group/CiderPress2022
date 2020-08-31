@@ -184,11 +184,11 @@ def get_mn_contribs(dft_dir, restricted, include_x = False, use_sf = False):
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
     rho_data_t = rho_data_u + rho_data_d
 
-    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-15)
-    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-15)
+    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
+    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
-    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-15) - CF
-    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-15) - CF
+    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
+    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
     zu *= 2
     zd *= 2
     Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
@@ -340,6 +340,167 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
         sl_contribs = get_mn_contribs(dft_dir, is_restricted,
                                       include_x = include_x,
                                       use_sf = use_sf)
+
+        X = np.vstack([X, sl_contribs])
+
+    np.save(FNAME, X)
+
+
+def get_full_contribs(dft_dir, restricted, mlfunc):
+
+    if restricted:
+        dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0]
+    else:
+        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
+
+    rho_data = dft_analyzer.rho_data
+    weights = dft_analyzer.grid.weights
+    grid = dft_analyzer.grid
+    spin = dft_analyzer.mol.spin
+    mol = dft_analyzer.mol
+    rdm1 = dft_analyzer.rdm1
+    E_pbe = dft_analyzer.e_tot
+
+    auxmol, ao_to_aux = setup_aux(mol, 0)
+    mol.ao_to_aux = ao_to_aux
+    mol.auxmol = auxmol
+
+    if restricted:
+        rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
+    else:
+        rho_data_u, rho_data_d = rho_data[0], rho_data[1]
+
+    rhou = rho_data[0] + 1e-20
+    g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    tu = rho_data_u[5] + 1e-20
+    rhod = rho_data_u[0] + 1e-20
+    g2d = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    td = rho_data_u[5] + 1e-20
+    ntup = (rhou, rhod)
+    gtup = (g2u, g2d)
+    ttup = (tu, td)
+    rhot = rhou + rhod
+    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+
+    rho_data_u_0 = rho_data_u.copy()
+    rho_data_u_1 = rho_data_u.copy()
+    rho_data_u_0[4] = 0
+    rho_data_u_0[5] = g2u / (8 * rhou)
+    rho_data_u_1[4] = 0
+    rho_data_u_1[5] = CF * rhou**(5.0/3)
+
+    rho_data_d_0 = rho_data_u.copy()
+    rho_data_d_1 = rho_data_u.copy()
+    rho_data_d_0[4] = 0
+    rho_data_d_0[5] = g2d / (8 * rhod)
+    rho_data_d_1[4] = 0
+    rho_data_d_1[5] = CF * rhod**(5.0/3)
+
+    co0 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[0]
+    cu1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[0]
+    cd1 = eval_xc(',MGGA_C_REVSCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[0]
+    co1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[0]
+    co0 *= rhot
+    cu1 *= rhou
+    cd1 *= rhod
+    co1 = co1 * rhot - cu1 - cd1
+
+    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
+    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
+    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
+    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
+    zu *= 2
+    zd *= 2
+    Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
+    Dd = 1 - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / (8 * rho_data_d[0] * rho_data_d[5] + 1e-20)
+    Do = 1 - (g2u + 2 * g2o + g2d)/ (8 * (rhou + rhod) * (tu + td))
+    alpha_x = 0.001867
+    alpha_ss, alpha_os = 0.00515088, 0.00304966
+    dvals = np.zeros((24, weights.shape[0]))
+    start = 0
+
+    def gamma_func(x2, z, alpha):
+        return 1 + alpha * (x2 + z)
+    for x2, z, alpha in [(xu**2, zu, alpha_ss), (xd**2, zd, alpha_ss),\
+                        (xu**2+xd**2, zu+zd, alpha_os)]:
+        gamma = gamma_func(x2, z, alpha)
+        dvals[start+0] = 1 / gamma - 1
+        dvals[start+1] = x2 / gamma**2
+        dvals[start+2] = z / gamma**2
+        dvals[start+3] = x2**2 / gamma**3
+        dvals[start+4] = x2 * z / gamma**3
+        dvals[start+5] = z**2 / gamma**3
+        start += 6
+    dvals[:6] *= cu * Du
+    dvals[6:12] *= cd * Dd
+    dvals[12:18] *= co * Do
+    dvals[18:24] *= cx * (1 - Do)
+    dvals = np.dot(dvals, weights)
+    dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
+
+    numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
+    if restricted:
+        if scanx:
+            ex = eval_xc(',MGGA_C_SCAN', rho_data)[0]
+        else:
+            ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
+        exu = ex
+        exd = ex
+        exo = ex
+        rhou = rho_data[0]
+        rhod = rho_data[0]
+        rhot = rho_data[0]
+        Ex = np.dot(exo * rhot, weights)
+    else:
+        if scanx:
+            exu = eval_xc(',MGGA_C_SCAN', (rho_data[0], 0 * rho_data[0]), spin = 1)[0]
+            exd = eval_xc(',MGGA_C_SCAN', (rho_data[1], 0 * rho_data[1]), spin = 1)[0]
+        else:
+            exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
+            exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
+        rhou = 2 * rho_data[0][0]
+        rhod = 2 * rho_data[1][0]
+        rhot = rho_data[0][0] + rho_data[1][0]
+        exo = (exu * rho_data[0][0] + exd * rho_data[1][0])
+        Ex = np.dot(exo, weights)
+        exo /= (rhot + 1e-20)
+
+    Eterms = np.array([Ex, Exscan])
+
+    for rho, ex, c in zip([rhou, rhod, rhot, rhot], [exu, exd, exo, exo],
+                          [cu * Du, cd * Dd, co * Do, cx * (1 - Do)]):
+        elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
+        Fx = ex / elda
+        Etmp = np.zeros(5)
+        x1 = (1 - Fx**6) / (1 + Fx**6)
+        for i in range(5):
+            Etmp[i] = np.dot(c * x1**i, weights)
+        Eterms = np.append(Eterms, Etmp)
+
+    return np.concatenate([Eterms, dvals, [dft_analyzer.fx_total]], axis=0)
+
+def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
+                                IS_RESTRICTED_LIST, MLFUNC):
+
+    SIZE = 36
+    X = np.zeros([0,SIZE])
+
+    for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
+
+        print(mol_id)
+
+        if is_restricted:
+            dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS,
+                mol_id, functional = DEFAULT_FUNCTIONAL)
+        else:
+            dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
+                mol_id, functional = DEFAULT_FUNCTIONAL)
+
+        sl_contribs = get_full_contribs(dft_dir, is_restricted,
+                                       MLFUNC)
 
         X = np.vstack([X, sl_contribs])
 
