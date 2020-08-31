@@ -265,6 +265,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     #else:
     #    spin = 2
 
+    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+
     chkpt = time.monotonic()
 
     density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]),\
@@ -295,20 +297,38 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     rhot = rhou + rhod
     g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
 
+    rho_data_u_0 = rho_data[0].copy()
+    rho_data_u_1 = rho_data[0].copy()
+    rho_data_u_0[4] = 0
+    rho_data_u_0[5] = g2u / (8 * rhou)
+    rho_data_u_1[4] = 0
+    rho_data_u_1[5] = CF * rhou**(5.0/3)
+
+    rho_data_d_0 = rho_data[1].copy()
+    rho_data_d_1 = rho_data[1].copy()
+    rho_data_d_0[4] = 0
+    rho_data_d_0[5] = g2d / (8 * rhod)
+    rho_data_d_1[4] = 0
+    rho_data_d_1[5] = CF * rhod**(5.0/3)
+
+    co0, v_scan_ud_0 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_0, rho_data_d_0),
+                               spin = 1)[:2]
+    cu1, v_scan_uu_1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, 0*rho_data_d_1),
+                               spin = 1)[:2]
+    cd1, v_scan_dd_1 = eval_xc(',MGGA_C_REVSCAN', (0*rho_data_u_1, rho_data_d_1),
+                               spin = 1)[:2]
+    co1, v_scan_ud_1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, rho_data_d_1),
+                               spin = 1)[:2]
+    co0 *= rhot
+    cu1 *= rhou
+    cd1 *= rhod
+    co1 = co1 * rhot - cu1 - cd1
+    for i in range(2):
+        v_scan_ud_1[:,0] -= v_scan_uu_1[:,0]
+        v_scan_ud_1[:,1] -= v_scan_dd_1[:,1]
+
     sf, dsfdnu, dsfdnd, dsfdg2, dsfdt = \
         mlfunc.corr_model.spinpol_factor(rhou, rhod, g2u + 2*g2o + g2d, tu + td)
-
-    co, v_lda_ud = eval_xc(',LDA_C_PW_MOD', (rhou, rhod), spin = 1)[:2]
-    cu, v_lda_uu = eval_xc(',LDA_C_PW_MOD', (rhou, 0 * rhod), spin = 1)[:2]
-    cd, v_lda_dd = eval_xc(',LDA_C_PW_MOD', (0 * rhou, rhod), spin = 1)[:2]
-    cu *= rhou
-    cd *= rhod
-    co = co * rhot - cu - cd
-    v_lda_uu = v_lda_uu[0][:,0]
-    v_lda_dd = v_lda_dd[0][:,1]
-    v_lda_ud = v_lda_ud[0]
-    v_lda_ud[:,0] -= v_lda_uu
-    v_lda_ud[:,1] -= v_lda_dd
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)), np.zeros((N,2))]
 
@@ -332,19 +352,10 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
 
-        ex_fock, ex_fock_rho_deriv, ex_fock_f_deriv = \
-            mlfunc.corr_model.ex_fock(ntup[spin], F[spin])
-        cf = mlfunc.corr_model.ex_mn(ntup[spin], gtup[spin], ttup[spin])
-        ex_term = ex_fock + cf[0]
-
         exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
-        exc += sf * ex_term
-
+        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
-        print(sf.shape, ex_fock_f_deriv.shape, dF[spin].shape)
-        dEddesc[spin] += (2 * sf * ex_fock_f_deriv).reshape(-1,1) * dF[spin]
         
-        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
         vtot[0][:,spin] += sf * ex_fock_rho_deriv
         vtot[0][:,spin] += sf * cf[1]
         vtot[1][:,2*spin] += sf * cf[2]
@@ -358,19 +369,39 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         vtot[3][:,0] += dsfdt * ex_term
         vtot[3][:,1] += dsfdt * ex_term
 
-    corr_fock, corr_fock_uderiv, corr_fock_dderiv = \
-        mlfunc.corr_model.corr_fock(cu, cd, co, v_lda_uu, v_lda_dd,
-                                    v_lda_ud[:,0], v_lda_ud[:,1],
-                                    rhou, rhod, g2u, g2d, tu, td,
-                                    F[0], F[1])
+    corr_fock, fock_terms, corr_fock_uderiv,\
+        corr_fock_dderiv, corr_fock_dg2o = \
+            mlfunc.corr_model.corr_fock(cu1, cd1, co1, co0,
+                                        rhou, rhod, g2u, g2o, g2d, tu, td,
+                                        F[0], F[1])
 
-    exc += corr_fock
+    corr_mn, mn_terms, corr_mn_uderiv, corr_mn_dderiv, corr_mn_dg2o = \
+        mlfunc.corr_model.corr_mn(cu1, cd1, co1, co0,
+                                  rhou, rhod, g2u, g2o, g2d, tu, td)
+
+    for i in range(3):
+        corr_fock_uderiv[i] += corr_mn_uderiv[i]
+        corr_fock_dderiv[i] += corr_mn_dderiv[i]
+    corr_fock_dg2o += corr_mn_dg2o
+    for i in range(4):
+        fock_terms[i] += mn_terms[i]
+
+    exc += corr_fock + corr_mn
     vtot[0][:,0] += corr_fock_uderiv[0]
     vtot[1][:,0] += corr_fock_uderiv[1]
     vtot[3][:,0] += corr_fock_uderiv[2]
     vtot[0][:,1] += corr_fock_dderiv[0]
     vtot[1][:,2] += corr_fock_dderiv[1]
     vtot[3][:,1] += corr_fock_dderiv[2]
+    vtot[1][:,1] += corr_fock_dg2o
+    vtot[0][:,0] += v_scan_uu_1[0][:,0] * fock_terms[0]
+    vtot[1][:,0] += v_scan_uu_1[1][:,0] * fock_terms[0]
+    vtot[0][:,1] += v_scan_dd_1[0][:,1] * fock_terms[1]
+    vtot[1][:,1] += v_scan_dd_1[1][:,1] * fock_terms[1]
+    vtot[0] += v_scan_ud_1[0] * fock_terms[2][:,np.newaxis]
+    vtot[1] += v_scan_ud_1[1] * fock_terms[2][:,np.newaxis]
+    vtot[0] += v_scan_ud_0[0] * fock_terms[3][:,np.newaxis]
+    vtot[1] += v_scan_ud_0[1] * fock_terms[3][:,np.newaxis]
     dEddesc[0] += 2 * corr_fock_uderiv[-1].reshape(-1,1) * dF[0]
     dEddesc[1] += 2 * corr_fock_dderiv[-1].reshape(-1,1) * dF[1]
 
@@ -396,19 +427,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
     print('v_nonlocal', time.monotonic() - chkpt)
     chkpt = time.monotonic()
-
-    corr_mn, corr_mn_uderiv, corr_mn_dderiv = \
-        mlfunc.corr_model.corr_mn(cu, cd, co, v_lda_uu, v_lda_dd,
-                                v_lda_ud[:,0], v_lda_ud[:,1],
-                                rhou, rhod, g2u, g2d, tu, td)
-    
-    exc += corr_mn
-    vtot[0][:,0] += corr_mn_uderiv[0]
-    vtot[1][:,0] += corr_mn_uderiv[1]
-    vtot[3][:,0] += corr_mn_uderiv[2]
-    vtot[0][:,1] += corr_mn_dderiv[0]
-    vtot[1][:,2] += corr_mn_dderiv[1]
-    vtot[3][:,1] += corr_mn_dderiv[2]
 
     vtot[0] += v_nst[0]
     vtot[1][:,0] += 2 * v_nst[1][:,0]
