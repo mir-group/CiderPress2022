@@ -14,6 +14,8 @@ LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 DEFAULT_FUNCTIONAL = 'SCAN'
 DEFAULT_BASIS = 'aug-cc-pvtz'
 
+CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+
 def get_mlx_contribs(dft_dir, restricted, mlfunc,
                      include_x = False, scanx = False, use_sf = False):
 
@@ -346,7 +348,7 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     np.save(FNAME, X)
 
 
-def get_full_contribs(dft_dir, restricted, mlfunc):
+def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -372,17 +374,17 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
     else:
         rho_data_u, rho_data_d = rho_data[0], rho_data[1]
 
-    rhou = rho_data[0] + 1e-20
+    rhou = rho_data_u[0] + 1e-20
     g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
     tu = rho_data_u[5] + 1e-20
-    rhod = rho_data_u[0] + 1e-20
-    g2d = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
-    td = rho_data_u[5] + 1e-20
+    rhod = rho_data_d[0] + 1e-20
+    g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+    td = rho_data_d[5] + 1e-20
     ntup = (rhou, rhod)
     gtup = (g2u, g2d)
     ttup = (tu, td)
     rhot = rhou + rhod
-    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
 
     rho_data_u_0 = rho_data_u.copy()
     rho_data_u_1 = rho_data_u.copy()
@@ -391,8 +393,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
     rho_data_u_1[4] = 0
     rho_data_u_1[5] = CF * rhou**(5.0/3)
 
-    rho_data_d_0 = rho_data_u.copy()
-    rho_data_d_1 = rho_data_u.copy()
+    rho_data_d_0 = rho_data_d.copy()
+    rho_data_d_1 = rho_data_d.copy()
     rho_data_d_0[4] = 0
     rho_data_d_0[5] = g2d / (8 * rhod)
     rho_data_d_1[4] = 0
@@ -406,17 +408,22 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
     cu1 *= rhou
     cd1 *= rhod
     co1 = co1 * rhot - cu1 - cd1
+    cu = cu1
+    cd = cd1
+    co = co1
+    cx = co0
 
     xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
     xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
-    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
     zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
     zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
     zu *= 2
     zd *= 2
-    Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
-    Dd = 1 - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / (8 * rho_data_d[0] * rho_data_d[5] + 1e-20)
-    Do = 1 - (g2u + 2 * g2o + g2d)/ (8 * (rhou + rhod) * (tu + td))
+    #Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
+    #Dd = 1 - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / (8 * rho_data_d[0] * rho_data_d[5] + 1e-20)
+    Du = 1 - g2u / (8 * rhou * tu)
+    Dd = 1 - g2d / (8 * rhod * td)
+    Do = 1 - (g2u + 2 * g2o + g2d) / (8 * (rhou + rhod) * (tu + td))
     alpha_x = 0.001867
     alpha_ss, alpha_os = 0.00515088, 0.00304966
     dvals = np.zeros((24, weights.shape[0]))
@@ -436,15 +443,15 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
         start += 6
     dvals[:6] *= cu * Du
     dvals[6:12] *= cd * Dd
+    dvals[18:24] = dvals[12:18] * cx * (1 - Do)
     dvals[12:18] *= co * Do
-    dvals[18:24] *= cx * (1 - Do)
     dvals = np.dot(dvals, weights)
     dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
 
     numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
     if restricted:
-        if scanx:
-            ex = eval_xc(',MGGA_C_SCAN', rho_data)[0]
+        if exact:
+            ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
         else:
             ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
         exu = ex
@@ -455,9 +462,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
         rhot = rho_data[0]
         Ex = np.dot(exo * rhot, weights)
     else:
-        if scanx:
-            exu = eval_xc(',MGGA_C_SCAN', (rho_data[0], 0 * rho_data[0]), spin = 1)[0]
-            exd = eval_xc(',MGGA_C_SCAN', (rho_data[1], 0 * rho_data[1]), spin = 1)[0]
+        if exact:
+            exu = dft_analyzer.fx_energy_density_u / (rho_data[0][0] + 1e-20)
+            exd = dft_analyzer.fx_energy_density_d / (rho_data[1][0] + 1e-20)
         else:
             exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
             exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
@@ -467,6 +474,11 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
         exo = (exu * rho_data[0][0] + exd * rho_data[1][0])
         Ex = np.dot(exo, weights)
         exo /= (rhot + 1e-20)
+
+    FUNCTIONAL = DEFAULT_FUNCTIONAL
+    Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+             * (rho_data_u[0] + rho_data_d[0])
+    Exscan = np.dot(Exscan, weights)
 
     Eterms = np.array([Ex, Exscan])
 
@@ -485,7 +497,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc):
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC):
 
-    SIZE = 36
+    SIZE = 41
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -621,7 +633,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'mlx6sf2.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'scanlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -652,7 +664,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
-        E_x = mlx[:,0]
+        E_x = mlx[:,-1]
         #E_x = mnc[:,-1]
         E_xscan = mlx[:,1]
         #print(E_x)
@@ -661,15 +673,17 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         #print(E_ccsd - E_dft)
         #print(E_vv10)
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-        E_c = np.append(E_c, mlx[:,18:22] + mlx[:,23:27], axis=1)
-        E_c = np.append(E_c, mnc[:,:12], axis=1)
-        E_c = np.append(E_c, mnc[:,-7:-1], axis=1)
+        E_c = np.append(E_c, mlx[:,18:22], axis=1)
+        E_c = np.append(E_c, mlx[:,-19:-1], axis=1)
+        #E_c = np.append(E_c, mlx[:,18:22] + mlx[:,23:27], axis=1)
+        #E_c = np.append(E_c, mnc[:,:12], axis=1)
+        #E_c = np.append(E_c, mnc[:,-7:-1], axis=1)
         #E_c = E_c[:,-18:]
         #E_c = mnc[:,:22]
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,17])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -707,6 +721,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
+        #coef *= 0
 
         score = r2_score(y, np.dot(X, coef))
         score0 = r2_score(y, np.dot(X, 0 * coef))
@@ -718,6 +733,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         coef_sets.append(coef)
         scores.append(score)
+
+        break
 
     return coef_sets, scores
 
