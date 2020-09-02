@@ -426,9 +426,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     Do = 1 - (g2u + 2 * g2o + g2d) / (8 * (rhou + rhod) * (tu + td))
     #Du = np.sin(np.pi * 0.5 * Du)
     #Dd = np.sin(np.pi * 0.5 * Dd)
-    #Du = 0.5 * (1 - np.cos(np.pi * Du))
-    #Dd = 0.5 * (1 - np.cos(np.pi * Dd))
-    #Do = 0.5 * (1 - np.cos(np.pi * Do))
+    Du = 0.5 * (1 - np.cos(np.pi * Du))
+    Dd = 0.5 * (1 - np.cos(np.pi * Dd))
+    Do = 0.5 * (1 - np.cos(np.pi * Do))
 
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
     print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
@@ -460,6 +460,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     cvals = np.zeros((20, weights.shape[0]))
     start = 0
     gamma_ss, gamma_os = 0.06, 0.0031
+    """
     for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss),\
                       (xu**2+xd**2, gamma_os),\
                       (xu**2+xd**2, gamma_os)]:
@@ -467,8 +468,15 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         for i in range(5):
             cvals[start+i] = u**i
         start += 5
-    cvals[:5] *= cu * Du
-    cvals[5:10] *= cd * Dd
+    """
+    for D, gamma in [(Du, gamma_ss), (Dd, gamma_ss),\
+                     (Do, gamma_os),\
+                     ((1-Do), gamma_os)]:
+        for i in range(5):
+            cvals[start+i] = D**i * (1 - D)
+        start += 5
+    cvals[:5] *= cu
+    cvals[5:10] *= cd
     cvals[15:20] *= cx
     cvals[10:15] *= co
     cvals = np.dot(cvals, weights)
@@ -508,8 +516,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
 
     Eterms = np.array([Ex, Exscan])
 
-    for rho, ex, c in zip([rhou, rhod, rhot, rhot], [exu, exd, exo, exo],
-                          [cu * Du, cd * Dd, (co, Do), cx]):
+    for rho, ex, c in zip([rhou, rhod, rhot, rhot, rhot], [exu, exd, exo, exo, exo],
+                          [cu * Du, cd * Dd, co, cx, Do * co]):
         if isinstance(c, tuple):
             c, fac = c
         else:
@@ -517,7 +525,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(7)
-        x1 = (1 - Fx**8) / (1 + Fx**8)
+        x1 = (1 - Fx**10) / (1 + Fx**10)
         for i in range(7):
             if i == 0 and (fac is not None):
                 Etmp[i] = np.dot(c * fac, weights)
@@ -530,7 +538,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC):
 
-    SIZE = 64
+    SIZE = 71
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -666,7 +674,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'scanlike4.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'scanlike5.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -705,12 +713,19 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         #print(E_x - E_xscan)
         #print(E_ccsd - E_dft)
         #print(E_vv10)
+        # 0, 1 -- Ex pred and Exscan
+        # 2:37 -- fvals
+        # 37:55 -- dvals
+        # 55:70 -- cvals
+        # 70 -- Ex exact
         E_c = np.append(mlx[:,3:9] + mlx[:,10:16], mlx[:,17:23], axis=1)
-        E_c = np.append(E_c, mlx[:,23:30], axis=1)
-        E_c = np.append(E_c, mlx[:,30:48], axis=1)
-        E_c = np.append(E_c, mlx[:,49:53], axis=1)
-        E_c = np.append(E_c, mlx[:,54:58], axis=1)
-        E_c = np.append(E_c, mlx[:,58:63], axis=1)
+        E_c = np.append(E_c, mlx[:,24:30], axis=1)
+        E_c = np.append(E_c, mlx[:,37:43], axis=1)
+        E_c = np.append(E_c, mlx[:,43:49], axis=1)
+        E_c = np.append(E_c, mlx[:,49:55], axis=1)
+        #E_c = np.append(E_c, mlx[:,56:60], axis=1)
+        #E_c = np.append(E_c, mlx[:,61:65], axis=1)
+        #E_c = np.append(E_c, mlx[:,65:70], axis=1)
         #E_c = np.append(E_c, mlx[:,-19:-1], axis=1)
         #E_c = np.append(E_c, mlx[:,18:22] + mlx[:,23:27], axis=1)
         #E_c = np.append(E_c, mnc[:,:12], axis=1)
@@ -720,7 +735,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,48] + mlx[:,53])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,23] + mlx[:,16] - mlx[:,65])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -754,7 +769,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-2
+        noise = 4e-3
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
