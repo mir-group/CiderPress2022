@@ -426,9 +426,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     Do = 1 - (g2u + 2 * g2o + g2d) / (8 * (rhou + rhod) * (tu + td))
     #Du = np.sin(np.pi * 0.5 * Du)
     #Dd = np.sin(np.pi * 0.5 * Dd)
-    Du = 0.5 * (1 - np.cos(np.pi * Du))
-    Dd = 0.5 * (1 - np.cos(np.pi * Dd))
-    Do = 0.5 * (1 - np.cos(np.pi * Do))
+    #Du = 0.5 * (1 - np.cos(np.pi * Du))
+    #Dd = 0.5 * (1 - np.cos(np.pi * Dd))
+    #Do = 0.5 * (1 - np.cos(np.pi * Do))
 
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
     print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
@@ -453,14 +453,13 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         start += 6
     dvals[:6] *= cu * Du
     dvals[6:12] *= cd * Dd
-    dvals[18:24] *= cx
-    dvals[12:18] *= co
+    dvals[18:24] *= cx * (1 - Do)
+    dvals[12:18] *= co * Do
     dvals = np.dot(dvals, weights)
     dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
     cvals = np.zeros((20, weights.shape[0]))
     start = 0
     gamma_ss, gamma_os = 0.06, 0.0031
-    """
     for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss),\
                       (xu**2+xd**2, gamma_os),\
                       (xu**2+xd**2, gamma_os)]:
@@ -475,10 +474,11 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         for i in range(5):
             cvals[start+i] = D**i * (1 - D)
         start += 5
-    cvals[:5] *= cu
-    cvals[5:10] *= cd
-    cvals[15:20] *= cx
-    cvals[10:15] *= co
+    """
+    cvals[:5] *= cu * Du
+    cvals[5:10] *= cd * Dd
+    cvals[15:20] *= cx * (1 - Do)
+    cvals[10:15] *= co * Do
     cvals = np.dot(cvals, weights)
     cvals = np.append(cvals[:5] + cvals[5:10], cvals[10:])
 
@@ -514,10 +514,15 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
              * (rho_data_u[0] + rho_data_d[0])
     Exscan = np.dot(Exscan, weights)
 
+    print('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
+    if (np.abs(Ex - dft_analyzer.fx_total) > 1e-7):
+        print('LARGE ERROR')
+    #assert np.abs(Ex - dft_analyzer.fx_total) < 1e-4
+
     Eterms = np.array([Ex, Exscan])
 
     for rho, ex, c in zip([rhou, rhod, rhot, rhot, rhot], [exu, exd, exo, exo, exo],
-                          [cu * Du, cd * Dd, co, cx, Do * co]):
+                          [cu * Du, cd * Dd, co * Do, cx, cx * (1 - Do)]):
         if isinstance(c, tuple):
             c, fac = c
         else:
@@ -525,11 +530,13 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(7)
-        x1 = (1 - Fx**10) / (1 + Fx**10)
+        x1 = (1 - Fx**12) / (1 + Fx**12)
         for i in range(7):
             if i == 0 and (fac is not None):
                 Etmp[i] = np.dot(c * fac, weights)
             else:
+                #x1 = (1 - Fx**(2*i)) / (1 + Fx**(2*i))
+                #Etmp[i] = np.dot(c * x1**2, weights)
                 Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
 
@@ -674,12 +681,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'scanlike5.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'scanlike8.npy'))
+    mlx0 = np.load(os.path.join(DATA_ROOT, 'scanlike5.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
+    valset_bools = np.array([mol['valset'] for mol in mols])
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
@@ -718,11 +727,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 37:55 -- dvals
         # 55:70 -- cvals
         # 70 -- Ex exact
-        E_c = np.append(mlx[:,3:9] + mlx[:,10:16], mlx[:,17:23], axis=1)
-        E_c = np.append(E_c, mlx[:,24:30], axis=1)
-        E_c = np.append(E_c, mlx[:,37:43], axis=1)
-        E_c = np.append(E_c, mlx[:,43:49], axis=1)
-        E_c = np.append(E_c, mlx[:,49:55], axis=1)
+        E_c = np.append(mlx[:,3:7] + mlx[:,10:14], mlx0[:,17:21], axis=1)
+        #E_c = np.append(E_c, mlx0[:,24:28], axis=1)
+        E_c = np.append(E_c, mlx[:,24:28], axis=1)
+        E_c = np.append(E_c, mlx[:,17:21], axis=1)
+        E_c = np.append(E_c, mlx[:,30:31], axis=1)
+        E_c = np.append(E_c, mlx0[:,37:43], axis=1)
+        E_c = np.append(E_c, mlx0[:,43:49], axis=1)
+        E_c = np.append(E_c, mlx0[:,49:55], axis=1)
         #E_c = np.append(E_c, mlx[:,56:60], axis=1)
         #E_c = np.append(E_c, mlx[:,61:65], axis=1)
         #E_c = np.append(E_c, mlx[:,65:70], axis=1)
@@ -735,7 +747,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,23] + mlx[:,16] - mlx[:,65])
+        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,55] + mlx[:,60] + mlx[:,65])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -762,6 +775,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         weights = np.array(weights)
 
         print(np.mean(np.abs(Ecc-Edf)[weights > 0]))
+        print(np.mean(np.abs(diff)[weights > 0]))
 
         X = X[weights > 0, :]
         y = y[weights > 0]
@@ -769,7 +783,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 4e-3
+        noise = 1e-3
         A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
         B = np.dot(X.T, weights * y)
         coef = np.dot(A, B)
@@ -791,7 +805,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     return coef_sets, scores
 
 
-def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None):
     from pyscf import gto
     import yaml
 
@@ -807,6 +821,8 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
             pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
 
         mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
+        if VAL_SET is not None:
+            mol_dicts[-1].update({'valset': mol_id in VAL_SET})
 
     with open(FNAME, 'w') as f:
         yaml.dump(mol_dicts, f)
