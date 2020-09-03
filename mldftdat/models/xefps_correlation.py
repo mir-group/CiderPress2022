@@ -412,9 +412,13 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     cd = cd1
     co = co1
     cx = co0
+    A = 2.74
+    B = 132
+    sprefac = 2 * (3 * np.pi**2)**(1.0/3)
 
     xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
     xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
+    s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
     zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
     zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
     zu *= 2
@@ -426,23 +430,37 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     Do = 1 - (g2u + 2 * g2o + g2d) / (8 * (rhou + rhod) * (tu + td))
     #Du = np.sin(np.pi * 0.5 * Du)
     #Dd = np.sin(np.pi * 0.5 * Dd)
-    #Du = 0.5 * (1 - np.cos(np.pi * Du))
-    #Dd = 0.5 * (1 - np.cos(np.pi * Dd))
-    #Do = 0.5 * (1 - np.cos(np.pi * Do))
+    Du = 0.5 * (1 - np.cos(np.pi * Du))
+    Dd = 0.5 * (1 - np.cos(np.pi * Dd))
+    Do = 0.5 * (1 - np.cos(np.pi * Do))
+
+    phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
+    chi_inf = 0.128026
+    chi = 0.72161
+    b1c = 0.0285764
+    gamma_eps = 0.031091
+
+    part1 = b1c * np.log(1 + (1-np.e)/np.e / (1 + 4 * chi_inf * s2)**(0.25))
+    part2 = gamma_eps * phi**3 * np.log((1 - 1 / (1 + 4 * chi * s2)**(0.25)) + 1e-30)
+    epslim = part1 * (1-Do) + part2 * Do
+    exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
+    exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
+    exlda /= (rhot)
+    amix = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
 
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
     print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
 
     alpha_x = 0.001867
     alpha_ss, alpha_os = 0.00515088, 0.00304966
-    dvals = np.zeros((24, weights.shape[0]))
+    dvals = np.zeros((30, weights.shape[0]))
     start = 0
 
     def gamma_func(x2, z, alpha):
         return 1 + alpha * (x2 + z)
     for x2, z, alpha in [(xu**2, zu, alpha_ss), (xd**2, zd, alpha_ss),\
                         (xu**2+xd**2, zu+zd, alpha_os),\
-                        (xu**2+xd**2, zu+zd, alpha_x)]:
+                        (xu**2+xd**2, zu+zd, alpha_os)]:
         gamma = gamma_func(x2, z, alpha)
         dvals[start+0] = 1 / gamma - 1
         dvals[start+1] = x2 / gamma**2
@@ -453,8 +471,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         start += 6
     dvals[:6] *= cu * Du
     dvals[6:12] *= cd * Dd
-    dvals[18:24] *= cx * (1 - Do)
-    dvals[12:18] *= co * Do
+    dvals[12:18] *= co
+    dvals[18:24] *= cx
+    dvals[24:30] *= (cx - co) * (1 - Do)
     dvals = np.dot(dvals, weights)
     dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
     cvals = np.zeros((20, weights.shape[0]))
@@ -522,30 +541,56 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
     Eterms = np.array([Ex, Exscan])
 
     for rho, ex, c in zip([rhou, rhod, rhot, rhot, rhot], [exu, exd, exo, exo, exo],
-                          [cu * Du, cd * Dd, co * Do, cx, cx * (1 - Do)]):
+                          [cu * Du, cd * Dd, co, cx, (cx - co) * (1 - Do)]):
         if isinstance(c, tuple):
             c, fac = c
         else:
             fac = None
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
-        Etmp = np.zeros(7)
+        Etmp = np.zeros(5)
         x1 = (1 - Fx**12) / (1 + Fx**12)
-        for i in range(7):
+        for i in range(5):
             if i == 0 and (fac is not None):
                 Etmp[i] = np.dot(c * fac, weights)
             else:
-                #x1 = (1 - Fx**(2*i)) / (1 + Fx**(2*i))
-                #Etmp[i] = np.dot(c * x1**2, weights)
                 Etmp[i] = np.dot(c * x1**i, weights)
         Eterms = np.append(Eterms, Etmp)
 
-    return np.concatenate([Eterms, dvals, cvals, [dft_analyzer.fx_total]], axis=0)
+    Fterms = np.array([])
+
+    for rho, ex in zip([rhou, rhod], [exu, exd]):
+            elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
+            Fx = ex / elda
+            Etmp = np.zeros(5)
+            x1 = (1 - Fx**6) / (1 + Fx**6)
+            for i in range(5):
+                Etmp[i] = np.dot(elda * amix * rho / 2 * x1**i, weights)
+            Fterms = np.append(Fterms, Etmp)
+
+    xvals = np.zeros((12,weights.shape[0]))
+    start = 0
+    for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x),\
+                              (rho_data_d[0], xd**2, zd, alpha_x)]:
+        gamma = gamma_func(x2, z, alpha)
+        xvals[start+0] = 1 / gamma - 1
+        xvals[start+1] = x2 / gamma**2
+        xvals[start+2] = z / gamma**2
+        xvals[start+3] = x2**2 / gamma**3
+        xvals[start+4] = x2 * z / gamma**3
+        xvals[start+5] = z**2 / gamma**3
+        xvals[start:start+6] *= LDA_FACTOR * 2**(1.0/3) * amix * rho**(4.0/3)
+        start += 6
+    xvals = np.dot(xvals, weights)
+
+    #                      25      10      24     12
+    return np.concatenate([Eterms, Fterms, dvals, xvals,
+                          [dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC):
 
-    SIZE = 71
+    SIZE = 25+10+24+12
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
