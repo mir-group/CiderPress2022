@@ -688,7 +688,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
-    valset_bools = np.array([mol['valset'] for mol in mols])
+    valset_bools_init = np.array([mol['valset'] for mol in mols])
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
@@ -769,7 +769,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
                 print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 18 else 0)
                 #weights.append(0.0)
 
         weights = np.array(weights)
@@ -777,6 +777,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         print(np.mean(np.abs(Ecc-Edf)[weights > 0]))
         print(np.mean(np.abs(diff)[weights > 0]))
 
+        valset_bools = valset_bools_init[weights > 0]
         X = X[weights > 0, :]
         y = y[weights > 0]
         Ecc = Ecc[weights > 0]
@@ -784,18 +785,27 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         weights = weights[weights > 0]
 
         noise = 1e-3
-        A = np.linalg.inv(np.dot(X.T * weights, X) + noise * np.identity(X.shape[1]))
-        B = np.dot(X.T, weights * y)
+        trset_bools = np.logical_not(valset_bools)
+        Xtr = X[trset_bools]
+        Xts = X[valset_bools]
+        ytr = y[trset_bools]
+        yts = y[valset_bools]
+        wtr = weights[trset_bools]
+        A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + noise * np.identity(Xtr.shape[1]))
+        B = np.dot(Xtr.T, wtr * ytr)
         coef = np.dot(A, B)
         #coef *= 0
 
-        score = r2_score(y, np.dot(X, coef))
-        score0 = r2_score(y, np.dot(X, 0 * coef))
+        score = r2_score(yts, np.dot(Xts, coef))
+        score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(score, score0)
-        print(y - np.dot(X, coef))
-        print('SCAN', np.mean(np.abs(Ecc-Edf)[weights > 0]), np.mean((Ecc-Edf)[weights > 0]))
-        print('ML', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
-        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
+        #print(y - np.dot(X, coef))
+        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
+        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
+        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
+        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)))
+        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)[weights > 0]))
+        print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
 
         coef_sets.append(coef)
         scores.append(score)
