@@ -731,8 +731,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
-    mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike2.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlike2.npy'))
+    mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -778,16 +778,16 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 37:61 -- dvals
         # 61:73 -- xvals
         # 73 -- Ex exact
-        E_c = np.append(mlx[:,4:7] + mlx[:,9:12], mlx[:,14:17], axis=1)
+        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
         #E_c = np.zeros((mlx.shape[0],0))
-        E_c = np.append(E_c, mlx[:,19:22], axis=1)
+        E_c = np.append(E_c, mlx[:,18:22], axis=1)
         E_c = np.append(E_c, mlx[:,22:27], axis=1)
-        E_c = np.append(E_c, mlx0[:,29:32] + mlx0[:,34:37], axis=1)
-        E_c = np.append(E_c, mlx[:,40:43], axis=1)
-        E_c = np.append(E_c, mlx[:,46:49], axis=1)
-        E_c = np.append(E_c, mlx[:,52:55], axis=1)
+        E_c = np.append(E_c, mlx0[:,28:32] + mlx0[:,33:37], axis=1)
+        E_c = np.append(E_c, mlx[:,37:43], axis=1)
+        E_c = np.append(E_c, mlx[:,43:49], axis=1)
+        E_c = np.append(E_c, mlx[:,49:55], axis=1)
         E_c = np.append(E_c, mlx[:,55:61], axis=1)
-        E_c = np.append(E_c, mlx[:,64:67] + mlx[:,70:73], axis=1)
+        E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
@@ -814,8 +814,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
                 print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                #weights.append(0.0)
+                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(0.0)
 
         weights = np.array(weights)
 
@@ -830,7 +830,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 1e-3
+        noise = 5e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
