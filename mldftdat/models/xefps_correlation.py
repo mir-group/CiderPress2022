@@ -554,7 +554,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**12) / (1 + Fx**12)
+        x1 = (1 - Fx**8) / (1 + Fx**8)
         for i in range(5):
             if i == 0 and (fac is not None):
                 Etmp[i] = np.dot(c * fac, weights)
@@ -568,7 +568,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
-            x1 = (1 - Fx**6) / (1 + Fx**6)
+            x1 = (1 - Fx**10) / (1 + Fx**10)
             for i in range(5):
                 Etmp[i] = np.dot(elda * amix * rho / 2 * x1**i, weights)
             Fterms = np.append(Fterms, Etmp)
@@ -732,7 +732,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
     mlx = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
-    mlx0 = np.load(os.path.join(DATA_ROOT, 'scanlike5.npy'))
+    mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike2.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -778,15 +778,16 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 37:61 -- dvals
         # 61:73 -- xvals
         # 73 -- Ex exact
-        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,14:17], axis=1)
+        E_c = np.append(mlx[:,4:7] + mlx[:,9:12], mlx[:,14:17], axis=1)
+        #E_c = np.zeros((mlx.shape[0],0))
         E_c = np.append(E_c, mlx[:,19:22], axis=1)
         E_c = np.append(E_c, mlx[:,22:27], axis=1)
-        E_c = np.append(E_c, mlx[:,29:32] + mlx[:,34:37], axis=1)
-        E_c = np.append(E_c, mlx[:,38:43], axis=1)
-        E_c = np.append(E_c, mlx[:,45:49], axis=1)
-        E_c = np.append(E_c, mlx[:,51:55], axis=1)
+        E_c = np.append(E_c, mlx0[:,29:32] + mlx0[:,34:37], axis=1)
+        E_c = np.append(E_c, mlx[:,40:43], axis=1)
+        E_c = np.append(E_c, mlx[:,46:49], axis=1)
+        E_c = np.append(E_c, mlx[:,52:55], axis=1)
         E_c = np.append(E_c, mlx[:,55:61], axis=1)
-        E_c = np.append(E_c, mlx[:,63:67] + mlx[:,69:73], axis=1)
+        E_c = np.append(E_c, mlx[:,64:67] + mlx[:,70:73], axis=1)
         print("SHAPE", E_c.shape)
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
@@ -818,7 +819,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         weights = np.array(weights)
 
-        print('ASSES MEAN DIFF')
+        print('ASSESS MEAN DIFF')
         print(np.mean(np.abs(Ecc-Edf)[weights > 0]))
         print(np.mean(np.abs(diff)[weights > 0]))
 
