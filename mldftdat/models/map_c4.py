@@ -81,12 +81,12 @@ class VSXCContribs():
                (-10*t)/(3.*n**2.6666666666666665),\
                2/n**1.6666666666666667
 
-    def getD(self, n, g2, t):
+    def get_D(self, n, g2, t):
         y = 1 - g2/(8.*n*t)
         dydn = g2/(8.*n**2*t)
         dydg2 = -1/(8.*n*t)
         dydt = g2/(8.*n*t**2)
-        y = 0.5 * (1 - np.xos(np.pi * y))
+        y = 0.5 * (1 - np.cos(np.pi * y))
         dy = 0.5 * np.pi * np.sin(np.pi * y)
         return y, dy * dydn, dy * dydg2, dy * dydt
 
@@ -116,8 +116,8 @@ class VSXCContribs():
         dftdnu = (4*2**0.3333333333333333*(-(fd*nd**1.3333333333333333) + fu*nd*nu**0.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
         dftdnd = (4*2**0.3333333333333333*(fd*nd**0.3333333333333333*nu - fu*nu**1.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
 
-        Du = self.getD(nu, g2u, tu)
-        Dd = self.getD(nd, g2d, td)
+        Du = self.get_D(nu, g2u, tu)
+        Dd = self.get_D(nd, g2d, td)
         Do = self.get_D(nu+nd, g2u+2*g2o+g2d, tu+td)
 
         yu, derivu = self.xef_terms(fu, self.css)
