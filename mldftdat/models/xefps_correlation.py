@@ -348,7 +348,7 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     np.save(FNAME, X)
 
 
-def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
+def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -554,7 +554,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         Etmp = np.zeros(5)
-        x1 = (1 - Fx**8) / (1 + Fx**8)
+        x1 = (1 - Fx**6) / (1 + Fx**6)
         for i in range(5):
             if i == 0 and (fac is not None):
                 Etmp[i] = np.dot(c * fac, weights)
@@ -568,7 +568,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = True):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
             Etmp = np.zeros(5)
-            x1 = (1 - Fx**10) / (1 + Fx**10)
+            x1 = (1 - Fx**6) / (1 + Fx**6)
             for i in range(5):
                 Etmp[i] = np.dot(elda * amix * rho / 2 * x1**i, weights)
             Fterms = np.append(Fterms, Etmp)
@@ -731,7 +731,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlike2.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -764,7 +764,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
-        E_x = mlx[:,-1]
+        E_x = mlx[:,0]
         #E_x = mnc[:,-1]
         E_xscan = mlx[:,1]
         #print(E_x)
@@ -781,8 +781,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
         #E_c = np.zeros((mlx.shape[0],0))
         E_c = np.append(E_c, mlx[:,18:22], axis=1)
-        E_c = np.append(E_c, mlx[:,22:27], axis=1)
-        E_c = np.append(E_c, mlx0[:,28:32] + mlx0[:,33:37], axis=1)
+        E_c = np.append(E_c, mlx[:,23:27], axis=1)
+        E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
         E_c = np.append(E_c, mlx[:,37:43], axis=1)
         E_c = np.append(E_c, mlx[:,43:49], axis=1)
         E_c = np.append(E_c, mlx[:,49:55], axis=1)
@@ -814,8 +814,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
                 print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                weights.append(0.0)
+                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                #weights.append(0.0)
 
         weights = np.array(weights)
 
@@ -830,7 +830,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 5e-3
+        noise = 4e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
