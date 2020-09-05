@@ -195,12 +195,14 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_uks = nr_uks
 
-    def __init__(self, mlfunc_x, cx, css, cos,
-                 dx, dss, dos, vv10_coeff = None):
+    def __init__(self, mlfunc_x, css, cos, cx, cm, ca,
+                 dss, dos, dx, dm, da, vv10_coeff = None):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
         from mldftdat.models import map_c2
-        self.mlfunc_x.corr_model = map_c2.VSXCContribs(cx, css, cos, dx, dss, dos)
+        self.mlfunc_x.corr_model = map_c2.VSXCContribs(
+                                    css, cos, cx, cm, ca,
+                                    dss, dos, dx, dm, da)
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -356,54 +358,17 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
         
-        vtot[0][:,spin] += sf * ex_fock_rho_deriv
-        vtot[0][:,spin] += sf * cf[1]
-        vtot[1][:,2*spin] += sf * cf[2]
-        vtot[3][:,spin] += sf * cf[3]
+    tot, vxc = mlfunc.corr_model.xefc(cu1, cd1, co1, co0,
+                                      v_scan_uu_1, v_scan_dd_1,
+                                      v_scan_ud_1, v_scan_ud_0,
+                                      rhou, rhod, g2u, g2o, g2d,
+                                      tu, td, F[0], F[1])
 
-        vtot[0][:,0] += dsfdnu * ex_term
-        vtot[0][:,1] += dsfdnd * ex_term
-        vtot[1][:,0] += dsfdg2 * ex_term
-        vtot[1][:,1] += 2 * dsfdg2 * ex_term
-        vtot[1][:,2] += dsfdg2 * ex_term
-        vtot[3][:,0] += dsfdt * ex_term
-        vtot[3][:,1] += dsfdt * ex_term
-
-    corr_fock, fock_terms, corr_fock_uderiv,\
-        corr_fock_dderiv, corr_fock_dg2o = \
-            mlfunc.corr_model.corr_fock(cu1, cd1, co1, co0,
-                                        rhou, rhod, g2u, g2o, g2d, tu, td,
-                                        F[0], F[1])
-
-    corr_mn, mn_terms, corr_mn_uderiv, corr_mn_dderiv, corr_mn_dg2o = \
-        mlfunc.corr_model.corr_mn(cu1, cd1, co1, co0,
-                                  rhou, rhod, g2u, g2o, g2d, tu, td)
-
-    for i in range(3):
-        corr_fock_uderiv[i] += corr_mn_uderiv[i]
-        corr_fock_dderiv[i] += corr_mn_dderiv[i]
-    corr_fock_dg2o += corr_mn_dg2o
-    for i in range(4):
-        fock_terms[i] += mn_terms[i]
-
-    exc += corr_fock + corr_mn
-    vtot[0][:,0] += corr_fock_uderiv[0]
-    vtot[1][:,0] += corr_fock_uderiv[1]
-    vtot[3][:,0] += corr_fock_uderiv[2]
-    vtot[0][:,1] += corr_fock_dderiv[0]
-    vtot[1][:,2] += corr_fock_dderiv[1]
-    vtot[3][:,1] += corr_fock_dderiv[2]
-    vtot[1][:,1] += corr_fock_dg2o
-    vtot[0][:,0] += v_scan_uu_1[0][:,0] * fock_terms[0]
-    vtot[1][:,0] += v_scan_uu_1[1][:,0] * fock_terms[0]
-    vtot[0][:,1] += v_scan_dd_1[0][:,1] * fock_terms[1]
-    vtot[1][:,1] += v_scan_dd_1[1][:,1] * fock_terms[1]
-    vtot[0] += v_scan_ud_1[0] * fock_terms[2][:,np.newaxis]
-    vtot[1] += v_scan_ud_1[1] * fock_terms[2][:,np.newaxis]
-    vtot[0] += v_scan_ud_0[0] * fock_terms[3][:,np.newaxis]
-    vtot[1] += v_scan_ud_0[1] * fock_terms[3][:,np.newaxis]
-    dEddesc[0] += 2 * corr_fock_uderiv[-1].reshape(-1,1) * dF[0]
-    dEddesc[1] += 2 * corr_fock_dderiv[-1].reshape(-1,1) * dF[1]
+    vtot[0][:,:] += vxc[0]
+    vtot[1][:,:] += vxc[1]
+    vtot[3][:,:] += vxc[2]
+    dEddesc[0] += vxc[3][:,0]
+    dEddesc[1] += vxc[3][:,1]
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -456,44 +421,42 @@ def setup_aux(mol):
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
     return auxmol, ao_to_aux
 
-DEFAULT_CSS = [9.45005252e-03,  2.99898283e-02, -5.77803659e-02,  4.71687530e-02]
-DEFAULT_COS = [6.56853990e-02,  1.37109979e-01,  3.86516565e-02, -3.87351635e-02]
-DEFAULT_CX = [2.59109018e-01,  9.17724172e-02,  4.68728794e-01, -1.08767355e-01]
-DEFAULT_DSS = [-2.60863426e-03, -4.96379923e-02, -7.05006634e-02,\
-               1.93345307e-03, 4.74310694e-03,  8.91634839e-03]
-DEFAULT_DOS = [6.41488932e-02, -2.36550649e-02, 1.00285533e-01,\
-               3.89088798e-04, -1.63303498e-03,  2.70268729e-04]
-DEFAULT_DX = [5.30877430e-02,  2.36683945e-03, -1.15681238e-02,\
-              5.09357773e-05, -2.22092336e-04,  3.42532905e-05]
+DEFAULT_CSS = [0.01694267, 0.01154786, 0.00019305, 0.00565762]
+DEFAULT_COS = [ 0.02952912,  0.01509011,  0.03166647, -0.02339623]
+DEFAULT_CX = [ 0.00205387,  0.03301437,  0.0105551 , -0.00348026]
+DEFAULT_CM = [-0.01269282,  0.0148151 , -0.01662529,  0.01717711]
+DEFAULT_CA = [ 0.34101643, -0.01378402,  0.27154121, -0.08137242]
+DEFAULT_DSS = [ 0.00034126, -0.14140119,  0.06004581,  0.00776944, -0.01322139,
+  0.01130723]
+DEFAULT_DOS = [-0.00285467, -0.07683561, -0.05602746,  0.00107202, -0.00256635,
+  0.00585838]
+DEFAULT_DX = [-0.007279  ,  0.0572915 ,  0.06453063, -0.0008062 ,  0.00220696,
+ -0.00468091]
+DEFAULT_DM = [-0.00059425, -0.00892464, -0.02585809,  0.00067835, -0.0023319 ,
+  0.00061676]
+DEFAULT_DA = [ 1.41340827e-03,  7.02634508e-03, -5.76269940e-03, -2.49566825e-05,
+ -2.46628527e-04,  1.64864944e-04]
 
-DEFAULT_CSS = [ 0.02187944,  0.01287096, -0.00256003,  0.01049835]
-DEFAULT_COS = [ 0.01879645,  0.04486457,  0.01278055, -0.00097384]
-DEFAULT_CX = [ 0.28500519,  0.02187848,  0.33032759, -0.09582583]
-DEFAULT_DSS = [-0.00063843, -0.04293042, -0.01698217,  0.00111742,  0.00070242,
-          0.01425176]
-DEFAULT_DOS = [ 0.00740721, -0.02153661,  0.09771835,  0.0005327 , -0.00192225,
-          0.00074129]
-DEFAULT_DX = [ 8.58248658e-03,  3.78015689e-03, -1.44308858e-02, -1.62158915e-05,
-          8.79395582e-05, -2.62201704e-04]
-
-def setup_rks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
-                   cos=DEFAULT_COS, dx=DEFAULT_DX,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
+def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
+                   dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc_x, cx, css,
-                           cos, dx, dss, dos,
+    rks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+                           dss, dos, dx, dm, da,
                            vv10_coeff)
     return rks
 
-def setup_uks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
-                   cos=DEFAULT_COS, dx=DEFAULT_DX,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
+def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
+                   dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc_x, cx, css,
-                           cos, dx, dss, dos,
+    uks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+                           dss, dos, dx, dm, da,
                            vv10_coeff)
     return uks
