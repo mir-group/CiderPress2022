@@ -96,6 +96,32 @@ class VSXCContribs():
         return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
                             corrfunc[2] + corrfunc[3] * gamma[2]
 
+    def get_amix(self, rhou, rhod, g2u, g2o, g2d, Do):
+        rhot = rhou + rhod
+
+        A = 2.74
+        B = 132
+        sprefac = 2 * (3 * np.pi**2)**(1.0/3)
+        s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
+
+        zeta = (rhou - rhod) / (rhot)
+        phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
+        phi43 = ((1-zeta)**(4.0/3) + (1+zeta)**(4.0/3))/2
+        phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
+        chi_inf = 0.128026
+        chi = 0.72161
+        b1c = 0.0285764
+        gamma_eps = 0.031091
+
+        part1 = b1c * np.log(1 + (1-np.e)/np.e / (1 + 4 * chi_inf * s2)**(0.25))
+        part1 *= phi43
+        part2 = gamma_eps * phi**3 * np.log((1 - 1 / (1 + 4 * chi * s2)**(0.25)) + 1e-30)
+        epslim = part1 * (1-Do) + part2 * Do
+        exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
+        exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
+        exlda /= (rhot)
+        amix = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
+
     def xefc(self, cu, cd, co, cx, vu, vd, vo, vx,
              nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
         """
@@ -119,6 +145,8 @@ class VSXCContribs():
         Du = self.get_D(nu, g2u, tu)
         Dd = self.get_D(nd, g2d, td)
         Do = self.get_D(nu+nd, g2u+2*g2o+g2d, tu+td)
+
+        amix = self.get_amix(nu, nd, g2u, g2o, g2d, Do)
 
         yu, derivu = self.xef_terms(fu, self.css)
         yd, derivd = self.xef_terms(fd, self.css)
