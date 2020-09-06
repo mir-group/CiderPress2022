@@ -14,21 +14,26 @@ chi = 0.72161
 b1c = 0.0285764
 gamma = 0.031091
 
-def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df):
+def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df=None):
     vxc[0][:,spin] += dn
     vxc[1][:,2*spin] += dg2
     vxc[2][:,spin] += dt
-    vxc[3][:,spin] += df
-def fill_vxc_os_(vxc, dn, dg2, dt, df):
-    vxc[0][:,0] += dn + df * dftdnu
-    vxc[0][:,1] += dn + df * dftdnd
+    if df is not None:
+        vxc[3][:,spin] += df
+def fill_vxc_os_(vxc, dn, dg2, dt, df=None,
+                 dftdnu=None, dftdnd=None):
+    vxc[0][:,0] += dn
+    vxc[0][:,1] += dn
     vxc[1][:,0] += dg2
     vxc[1][:,1] += 2 * dg2
     vxc[1][:,2] += dg2
     vxc[2][:,0] += dt
     vxc[2][:,1] += dt
-    vxc[3][:,0] += df * dftdfu
-    vxc[3][:,1] += df * dftdfd
+    if df is not None:
+        vxc[0][:,0] += df * dftdnu
+        vxc[0][:,1] += df * dftdnd
+        vxc[3][:,0] += df * dftdfu
+        vxc[3][:,1] += df * dftdfd
 def fill_vxc_base_ss_(vxc, vterm, multerm, spin):
     if vterm[0] is not None:
         vxc[0][:,spin] += vterm[0] * multerm
@@ -167,7 +172,7 @@ class VSXCContribs():
                np.zeros((N,2))]
         fill_vxc_os_(vxc, tmp * D[1],
                      tmp * D[2],
-                     tmp * D[3], 0)
+                     tmp * D[3])
         vxc[0][:,0] += dedzeta * dzetau + deds2 * ds2n
         vxc[0][:,1] += dedzeta * dzetad + dsds2 * ds2n
         vxc[1][:,0] += deds2 * ds2g2
@@ -397,7 +402,9 @@ class VSXCContribs():
                      tmp * Do[2],
                      tmp * Do[3],
                      (cx - co) * (1 - Do[0]) * derivm\
-                        + co * derivo + cx * derivx)
+                        + co * derivo + cx * derivx,
+                     dftdnu,
+                     dftdnd)
 
         # x2, dx2dn, dx2dg2
         x2u = self.get_x2(nu, g2u)
@@ -435,29 +442,27 @@ class VSXCContribs():
                          ldaxm[i] * (cfssa[i][1] * x2[i][1] \
                             + cfssa[i][2] * z[i][1]),
                          ldaxm[i] * cfssa[i][1] * x2[i][2],
-                         ldaxm[i] * cfssa[i][2] * z[i][2], 0)
+                         ldaxm[i] * cfssa[i][2] * z[i][2])
             tmp = css[i] * Dss[i][0]
             fill_vxc_ss_(vxc, i,
                          tmp * (cfss[i][1] * x2[i][1] \
                             + cfss[i][2] * z[i][1]), # deriv wrt nu
                          tmp * cfss[i][1] * x2[i][2], # deriv wrt sigma_u
-                         tmp * cfss[i][2] * z[i][2], 0) # deriv wrt tau_u
+                         tmp * cfss[i][2] * z[i][2]) # deriv wrt tau_u
             for c, cf in [(co, cfo), (cx, cfx), (cm, cfm)]:
                 fill_vxc_ss_(vxc, i,
                              c * (cf[1] * x2[i][1] + cf[2] * z[i][1]),
                              c * cf[1] * x2[i][2],
-                             c * cf[2] * z[i][2], 0)
+                             c * cf[2] * z[i][2])
             fill_vxc_ss_(vxc, i,
                          css[i] * cfss[i][0] * Dss[i][1],
                          css[i] * cfss[i][0] * Dss[i][2],
-                         css[i] * cfss[i][0] * Dss[i][3],
-                         0)
+                         css[i] * cfss[i][0] * Dss[i][3])
 
         tmp = (co - cx) * cfm[0]
         fill_vxc_os_(vxc, tmp * Do[1],
                      tmp * Do[2],
-                     tmp * Do[3],
-                     0)
+                     tmp * Do[3])
        
         vxc[0][:,0] += dldaxu * amix * (yau + cfau[0])
         vxc[0][:,1] += dldaxd * amix * (yad + cfad[0])
