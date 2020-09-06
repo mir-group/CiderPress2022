@@ -350,6 +350,11 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
 
 def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
 
+    from mldftdat.models import map_c4
+
+    corr_model = map_c4.VSXCContribs(None, None, None, None, None,
+                                     None, None, None, None, None)
+
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
         rhot = dft_analyzer.rho_data[0]
@@ -433,6 +438,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     Du = 0.5 * (1 - np.cos(np.pi * Du))
     Dd = 0.5 * (1 - np.cos(np.pi * Dd))
     Do = 0.5 * (1 - np.cos(np.pi * Do))
+    Du = corr_model.get_D(rhou, g2u, tu)
+    Dd = corr_model.get_D(rhod, g2d, td)
+    Do = corr_model.get_D(rhot, g2u + 2 * g2o + g2d, tu+td)
 
     zeta = (rhou - rhod) / (rhot)
     phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
@@ -451,6 +459,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
     exlda /= (rhot)
     amix = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
+    amix = corr_model.get_amix(rhou, rhod, g2u, g2o, g2d, Do)
 
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
     print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
