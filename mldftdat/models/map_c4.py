@@ -122,21 +122,20 @@ class VSXCContribs():
         deds2 = (chi*gamma*phi**3)/((1 + 4*chi*s2)**1.25*(1. - (1 + 4*chi*s2)**(-0.25)))
         return elim, dedphi*dphi, deds2
 
-    def baseline_inf(self, nu, nd, g2, tu, td):
+    def baseline_inf(self, nu, nd, g2, D):
         s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2)
         zeta, dzetau, dzetad = self.get_zeta(nu, nd)
         e0lim, de0dzeta, de0ds2 = self.baseline0inf(zeta, s2)
         e1lim, de1dzeta, de1ds2 = self.baseline1inf(zeta, s2)
-        D = self.get_D(nu+nd, g2, tu+td)
         elim = e1lim * D[0] + e0lim * (1 - D[0])
         dedzeta = de1dzeta * D[0] + de0dzeta * (1 - D[0])
         deds2 = de1ds2 * D[0] + de0ds2 * (1 - D[0])
         tmp = e1lim - e0lim
         vxc = [np.zeros((N,2)), np.zeros((N,3)),
                np.zeros((N,2))]
-        fill_vxc_os_(vxc, tmp * Do[1],
-                     tmp * Do[2],
-                     tmp * Do[3], 0)
+        fill_vxc_os_(vxc, tmp * D[1],
+                     tmp * D[2],
+                     tmp * D[3], 0)
         vxc[0][:,0] += dedzeta * dzetau + deds2 * ds2n
         vxc[0][:,1] += dedzeta * dzetad + dsds2 * ds2n
         vxc[1][:,0] += deds2 * ds2g2
@@ -267,7 +266,7 @@ class VSXCContribs():
         B = 132
         sprefac = 2 * (3 * np.pi**2)**(1.0/3)
         g2 = (g2u + 2 * g2o + g2d)
-        elim, vxclim = self.baseline_inf(rhou, rhod, g2, tu, td)
+        elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
 
         exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
         exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
@@ -326,7 +325,7 @@ class VSXCContribs():
         Dd = self.get_D(nd, g2d, td)
         Do = self.get_D(nu+nd, g2, tu+td)
 
-        amix, vxcmix = self.get_amix(nu, nd, g2u, g2o, g2d, Do[0])
+        amix, vxcmix = self.get_amix(nu, nd, g2u, g2o, g2d, Do)
 
         yu, derivu = self.xef_terms(fu, self.css)
         yd, derivd = self.xef_terms(fd, self.css)
