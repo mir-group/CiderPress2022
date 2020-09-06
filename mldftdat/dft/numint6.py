@@ -299,45 +299,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     rhot = rhou + rhod
     g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
 
-    rho_data_u_0 = rho_data[0].copy()
-    rho_data_u_1 = rho_data[0].copy()
-    rho_data_u_0[4] = 0
-    rho_data_u_0[5] = g2u / (8 * rhou)
-    rho_data_u_1[4] = 0
-    rho_data_u_1[5] = CF * rhou**(5.0/3) + rho_data_u_0[5] + 1e-10
-
-    rho_data_d_0 = rho_data[1].copy()
-    rho_data_d_1 = rho_data[1].copy()
-    rho_data_d_0[4] = 0
-    rho_data_d_0[5] = g2d / (8 * rhod)
-    rho_data_d_1[4] = 0
-    rho_data_d_1[5] = CF * rhod**(5.0/3) + rho_data_d_0[5] + 1e-10
-
-    co0, v_scan_ud_0 = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0),
-                               spin = 1)[:2]
-    cu1, v_scan_uu_1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1),
-                               spin = 1)[:2]
-    cd1, v_scan_dd_1 = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1),
-                               spin = 1)[:2]
-    co1, v_scan_ud_1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1),
-                               spin = 1)[:2]
-    co0 *= rhot
-    cu1 *= rhou
-    cd1 *= rhod
-    co1 = co1 * rhot - cu1 - cd1
-    v_scan_ud_1[0][:,0] -= v_scan_uu_1[0][:,0]
-    v_scan_ud_1[0][:,1] -= v_scan_dd_1[0][:,1]
-    v_scan_ud_1[1][:,0] -= v_scan_uu_1[1][:,0]
-    v_scan_ud_1[1][:,2] -= v_scan_dd_1[1][:,2]
-    print('vtau mean', np.mean(v_scan_ud_0[3][:,0] * rhou))
-    print('vtau mean', np.mean(v_scan_ud_1[3][:,0] * rhou))
-    print('vtau mean', np.mean(v_scan_ud_0[3][:,1] * rhod))
-    print('vtau mean', np.mean(v_scan_ud_1[3][:,1] * rhod))
-    v_scan_uu_1[3][:] = 0
-    v_scan_dd_1[3][:] = 0
-    v_scan_ud_1[3][:] = 0
-    v_scan_ud_0[3][:] = 0
-
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)), np.zeros((N,2))]
 
     exc = 0
@@ -364,10 +325,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
         
-    tot, vxc = mlfunc.corr_model.xefc(cu1, cd1, co1, co0,
-                                      v_scan_uu_1, v_scan_dd_1,
-                                      v_scan_ud_1, v_scan_ud_0,
-                                      rhou, rhod, g2u, g2o, g2d,
+    tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                       tu, td, F[0], F[1])
 
     exc += tot
