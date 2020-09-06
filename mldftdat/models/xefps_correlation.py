@@ -391,19 +391,19 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     rho_data_u_0[4] = 0
     rho_data_u_0[5] = g2u / (8 * rhou)
     rho_data_u_1[4] = 0
-    rho_data_u_1[5] = CF * rhou**(5.0/3)
+    rho_data_u_1[5] = CF * rhou**(5.0/3) + rho_data_u_0[5]
 
     rho_data_d_0 = rho_data_d.copy()
     rho_data_d_1 = rho_data_d.copy()
     rho_data_d_0[4] = 0
     rho_data_d_0[5] = g2d / (8 * rhod)
     rho_data_d_1[4] = 0
-    rho_data_d_1[5] = CF * rhod**(5.0/3)
+    rho_data_d_1[5] = CF * rhod**(5.0/3) + rho_data_d_0[5]
 
-    co0 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[0]
-    cu1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[0]
-    cd1 = eval_xc(',MGGA_C_REVSCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[0]
-    co1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[0]
+    co0 = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[0]
+    cu1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[0]
+    cd1 = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[0]
+    co1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[0]
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
@@ -440,6 +440,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
     chi_inf = 0.128026
     chi = 0.72161
+    #b1c = 0.0285764
     b1c = 0.0285764
     gamma_eps = 0.031091
 
@@ -731,7 +732,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml3.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -830,7 +831,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         Edf = Edf[weights > 0]
         weights = weights[weights > 0]
 
-        noise = 4e-3
+        noise = 5e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
