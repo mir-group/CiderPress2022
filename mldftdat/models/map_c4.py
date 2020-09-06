@@ -110,9 +110,9 @@ class VSXCContribs():
 
     def baseline0inf(self, zeta, s2):
         G, dG = self.get_phi0(zeta)
-        elim = b1c*G*np.log(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))
-        dedG = b1c*np.log(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))
-        deds2 = -((b1c*chiinf*(1 - E)*G)/(E*(1 + 4*chiinf*s2)**1.25*(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))))
+        elim = b1c*G*np.log(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))
+        dedG = b1c*np.log(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))
+        deds2 = -((b1c*chiinf*(1 - np.e)*G)/(np.e*(1 + 4*chiinf*s2)**1.25*(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))))
         return elim, dedG * dG, deds2
 
     def baseline1inf(self, zeta, s2):
