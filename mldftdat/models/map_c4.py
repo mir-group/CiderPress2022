@@ -250,8 +250,8 @@ class VSXCContribs():
         dydn = g2/(8.*n**2*t)
         dydg2 = -1/(8.*n*t)
         dydt = g2/(8.*n*t**2)
-        y = 0.5 * (1 - np.cos(np.pi * y))
         dy = 0.5 * np.pi * np.sin(np.pi * y)
+        y = 0.5 * (1 - np.cos(np.pi * y))
         return y, dy * dydn, dy * dydg2, dy * dydt
 
     def single_corr(self, x2, z, alpha, d):
@@ -286,6 +286,8 @@ class VSXCContribs():
         exlda /= (rhot)
         amix = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
 
+        return amix
+
     def xefc(self, cu, cd, co, cx, vu, vd, vo, vx,
              nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
         """
@@ -310,7 +312,7 @@ class VSXCContribs():
         Dd = self.get_D(nd, g2d, td)
         Do = self.get_D(nu+nd, g2u+2*g2o+g2d, tu+td)
 
-        amix = self.get_amix(nu, nd, g2u, g2o, g2d, Do)
+        amix = self.get_amix(nu, nd, g2u, g2o, g2d, Do[0])
 
         yu, derivu = self.xef_terms(fu, self.css)
         yd, derivd = self.xef_terms(fd, self.css)
@@ -320,16 +322,16 @@ class VSXCContribs():
         yau, derivau = self.xef_terms(fu, self.ca)
         yad, derivad = self.xef_terms(fd, self.ca)
 
-        ym[0] += 1
-        yo[0] += 1
-        yu[0] += 1
-        yd[0] += 1
+        ym += 1
+        yo += 1
+        yu += 1
+        yd += 1
 
         tot = cu * Du[0] * yu + cd * Dd[0] * yd \
               + co * yo + cx * yx \
               + (cx - co) * (1 - Do[0]) * ym \
-              + ldaxu * (1 - amix) * yau \
-              + ldaxd * (1 - amix) * yad
+              + ldaxu * amix * yau \
+              + ldaxd * amix * yad
 
         N = cu.shape[0]
         vxc = [np.zeros((N,2)),
@@ -371,11 +373,11 @@ class VSXCContribs():
         fill_vxc_ss_(vxc, 0, cu * Du[1] * yu,
                      cu * Du[2] * yu,
                      cu * Du[3] * yu,
-                     cu * Du[0] * derivu + ldaxu * (1 - amix) * derivau)
+                     cu * Du[0] * derivu + ldaxu * amix * derivau)
         fill_vxc_ss_(vxc, 1, cd * Dd[1] * yd,
                      cd * Dd[2] * yd,
                      cd * Dd[3] * yd,
-                     cd * Dd[0] * derivd + ldaxd * (1 - amix) * derivad)
+                     cd * Dd[0] * derivd + ldaxd * amix * derivad)
         tmp = (co - cx) * ym
         fill_vxc_os_(vxc, tmp * Do[1],
                      tmp * Do[2],
@@ -393,15 +395,21 @@ class VSXCContribs():
         x2 = (x2u, x2d)
         z = (zu, zd)
         css = (cu, cd)
-        ldaxm = (ldaxu * (1 - amix), ldaxd * (1 - amix))
+        ldaxm = (ldaxu * amix, ldaxd * amix)
 
         cfu = self.single_corr(x2u[0], zu[0], alphass, self.dss)
         cfd = self.single_corr(x2d[0], zd[0], alphass, self.dss)
         cfo = self.single_corr(x2u[0]+x2d[0], zu[0]+zd[0], alphaos, self.dos)
         cfx = self.single_corr(x2u[0]+x2d[0], zu[0]+zd[0], alphaos, self.dx)
         cfm = self.single_corr(x2u[0]+x2d[0], zu[0]+zd[0], alphaos, self.dm)
-        cfau = self.single_corr(x2u[0], zu[0], alphass, self.da)
-        cfad = self.single_corr(x2d[0], zd[0], alphass, self.da)
+        cfau = self.single_corr(x2u[0], zu[0], alphax, self.da)
+        cfad = self.single_corr(x2d[0], zd[0], alphax, self.da)
+
+        tot += cu * Du[0] * cfu[0] + cd * Dd[0] * cfd[0] \
+               + co * cfo[0] + cx * cfx[0] \
+               + (cx - co) * (1 - Do[0]) * cfm[0] \
+               + ldaxu * amix * cfau[0] \
+               + ldaxd * amix * cfad[0]
 
         cfss = (cfu, cfd)
         cfssa = (cfau, cfad)
@@ -414,7 +422,7 @@ class VSXCContribs():
                             + cfssa[i][2] * z[i][1]),
                          ldaxm[i] * cfssa[i][1] * x2[i][2],
                          ldaxm[i] * cfssa[i][2] * z[i][2], 0)
-            tmp = css[i] * Dss[i]
+            tmp = css[i] * Dss[i][0]
             fill_vxc_ss_(vxc, i,
                          tmp * (cfss[i][1] * x2[i][1] \
                             + cfss[i][2] * z[i][1]), # deriv wrt nu
@@ -436,11 +444,12 @@ class VSXCContribs():
                      tmp * Do[2],
                      tmp * Do[3],
                      0)
-        
+       
+        vxc[0][:,0] += dldaxu * amix * (yau + cfau[0])
+        vxc[0][:,1] += dldaxd * amix * (yad + cfad[0])
+
         fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
-        fill_vxc_base_ss_(vxc, dldaxu, yau + cfau[0], 0)
         fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
-        fill_vxc_base_ss_(vxc, dldaxd, yad + cfad[0], 0)
         fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
         fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
 
