@@ -199,8 +199,8 @@ class NLNumInt(pyscf_numint.NumInt):
                  dss, dos, dx, dm, da, vv10_coeff = None):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
-        from mldftdat.models import map_c2
-        self.mlfunc_x.corr_model = map_c2.VSXCContribs(
+        from mldftdat.models import map_c4
+        self.mlfunc_x.corr_model = map_c4.VSXCContribs(
                                     css, cos, cx, cm, ca,
                                     dss, dos, dx, dm, da)
 
@@ -304,33 +304,39 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     rho_data_u_0[4] = 0
     rho_data_u_0[5] = g2u / (8 * rhou)
     rho_data_u_1[4] = 0
-    rho_data_u_1[5] = CF * rhou**(5.0/3)
+    rho_data_u_1[5] = CF * rhou**(5.0/3) + rho_data_u_0[5] + 1e-10
 
     rho_data_d_0 = rho_data[1].copy()
     rho_data_d_1 = rho_data[1].copy()
     rho_data_d_0[4] = 0
     rho_data_d_0[5] = g2d / (8 * rhod)
     rho_data_d_1[4] = 0
-    rho_data_d_1[5] = CF * rhod**(5.0/3)
+    rho_data_d_1[5] = CF * rhod**(5.0/3) + rho_data_d_0[5] + 1e-10
 
-    co0, v_scan_ud_0 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_0, rho_data_d_0),
+    co0, v_scan_ud_0 = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0),
                                spin = 1)[:2]
-    cu1, v_scan_uu_1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, 0*rho_data_d_1),
+    cu1, v_scan_uu_1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1),
                                spin = 1)[:2]
-    cd1, v_scan_dd_1 = eval_xc(',MGGA_C_REVSCAN', (0*rho_data_u_1, rho_data_d_1),
+    cd1, v_scan_dd_1 = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1),
                                spin = 1)[:2]
-    co1, v_scan_ud_1 = eval_xc(',MGGA_C_REVSCAN', (rho_data_u_1, rho_data_d_1),
+    co1, v_scan_ud_1 = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1),
                                spin = 1)[:2]
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
     co1 = co1 * rhot - cu1 - cd1
-    for i in range(2):
-        v_scan_ud_1[:,0] -= v_scan_uu_1[:,0]
-        v_scan_ud_1[:,1] -= v_scan_dd_1[:,1]
-
-    sf, dsfdnu, dsfdnd, dsfdg2, dsfdt = \
-        mlfunc.corr_model.spinpol_factor(rhou, rhod, g2u + 2*g2o + g2d, tu + td)
+    v_scan_ud_1[0][:,0] -= v_scan_uu_1[0][:,0]
+    v_scan_ud_1[0][:,1] -= v_scan_dd_1[0][:,1]
+    v_scan_ud_1[1][:,0] -= v_scan_uu_1[1][:,0]
+    v_scan_ud_1[1][:,2] -= v_scan_dd_1[1][:,2]
+    print('vtau mean', np.mean(v_scan_ud_0[3][:,0] * rhou))
+    print('vtau mean', np.mean(v_scan_ud_1[3][:,0] * rhou))
+    print('vtau mean', np.mean(v_scan_ud_0[3][:,1] * rhod))
+    print('vtau mean', np.mean(v_scan_ud_1[3][:,1] * rhod))
+    v_scan_uu_1[3][:] = 0
+    v_scan_dd_1[3][:] = 0
+    v_scan_ud_1[3][:] = 0
+    v_scan_ud_0[3][:] = 0
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)), np.zeros((N,2))]
 
@@ -364,11 +370,12 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
                                       rhou, rhod, g2u, g2o, g2d,
                                       tu, td, F[0], F[1])
 
+    exc += tot
     vtot[0][:,:] += vxc[0]
     vtot[1][:,:] += vxc[1]
     vtot[3][:,:] += vxc[2]
-    dEddesc[0] += vxc[3][:,0]
-    dEddesc[1] += vxc[3][:,1]
+    dEddesc[0] += vxc[3][:,0,np.newaxis] * dF[0]
+    dEddesc[1] += vxc[3][:,1,np.newaxis] * dF[1]
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -436,6 +443,38 @@ DEFAULT_DM = [-0.00059425, -0.00892464, -0.02585809,  0.00067835, -0.0023319 ,
   0.00061676]
 DEFAULT_DA = [ 1.41340827e-03,  7.02634508e-03, -5.76269940e-03, -2.49566825e-05,
  -2.46628527e-04,  1.64864944e-04]
+
+DEFAULT_CSS = [0.0100458 , 0.0072586 , 0.00095743, 0.00394399]
+DEFAULT_COS = [0.00632121, 0.02553949, 0.00487545, 0.00380487]
+DEFAULT_CX = [-0.00129929,  0.0216167 ,  0.00976573, -0.00125441]
+DEFAULT_CM = [-0.00147788, -0.00160216,  0.00335923, -0.00319578]
+DEFAULT_CA = [ 0.34561037, -0.05442116,  0.25354443, -0.06530622]
+DEFAULT_DSS = [ 0.0002054 , -0.0744199 ,  0.059358  , -0.00174137,  0.01088066,
+  0.02379759]
+DEFAULT_DOS = [-0.00122135, -0.00200719,  0.04211056,  0.00108703, -0.00208667,
+ -0.00430475]
+DEFAULT_DX = [-2.86962068e-03, -3.31386092e-02,  5.15970961e-02,  8.40754115e-05,
+ -1.79613165e-03,  5.09152327e-03]
+DEFAULT_DM = [-0.00303753, -0.02655579, -0.07728049, -0.00043326,  0.00671263,
+ -0.01188554]
+DEFAULT_DA = [-0.00448212,  0.00967764, -0.02234779, -0.00013738,  0.00058732,
+ -0.00070051]
+
+DEFAULT_CSS = [0.01921742, 0.00317641, 0.00299911, 0.00342114]
+DEFAULT_COS = [0.01600721, 0.01645205, 0.00745459, 0.00270249]
+DEFAULT_CX = [0.00840119, 0.01301878, 0.00770621, 0.00052342]
+DEFAULT_CM = [ 0.00140456, -0.0003514 ,  0.00034346, -0.00052276]
+DEFAULT_CA = [ 0.33589508, -0.08838812,  0.23104473, -0.03706446]
+DEFAULT_DSS = [ 0.00073444, -0.11502326,  0.02273354,  0.00089824, -0.00060023,
+  0.02836146]
+DEFAULT_DOS = [-0.00040099, -0.02370804,  0.03368014,  0.00299498, -0.00830962,
+ -0.00033488]
+DEFAULT_DX = [-0.00046298, -0.00377196,  0.07380675, -0.00223734,  0.00437788,
+  0.00201595]
+DEFAULT_DM = [-0.00050864, -0.01457361, -0.01313629,  0.00150984,  0.00262915,
+ -0.007714  ]
+DEFAULT_DA = [-0.00216782,  0.0091289 , -0.01767703, -0.00014168,  0.00068019,
+ -0.00086588]
 
 def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
