@@ -12,7 +12,7 @@ sprefac = 2 * (3 * np.pi**2)**(1.0/3)
 chi_inf = 0.128026
 chi = 0.72161
 b1c = 0.0285764
-gamma_eps = 0.031091
+gamma = 0.031091
 
 class VSXCContribs():
 
@@ -266,36 +266,50 @@ class VSXCContribs():
         A = 2.74
         B = 132
         sprefac = 2 * (3 * np.pi**2)**(1.0/3)
-        s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
+        g2 = (g2u + 2 * g2o + g2d)
+        elim, vxclim = self.baseline_inf(rhou, rhod, g2, tu, td)
 
-        zeta = (rhou - rhod) / (rhot)
-        phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
-        phi43 = ((1-zeta)**(4.0/3) + (1+zeta)**(4.0/3))/2
-        phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
-        chi_inf = 0.128026
-        chi = 0.72161
-        b1c = 0.0285764
-        gamma_eps = 0.031091
-
-        part1 = b1c * np.log(1 + (1-np.e)/np.e / (1 + 4 * chi_inf * s2)**(0.25))
-        part1 *= phi43
-        part2 = gamma_eps * phi**3 * np.log((1 - 1 / (1 + 4 * chi * s2)**(0.25)) + 1e-30)
-        epslim = part1 * (1-Do) + part2 * Do
         exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
         exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
+        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2
+        dinvldau += 1 / exlda
+        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2
+        dinvldad += 1 / exlda
         exlda /= (rhot)
-        amix = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
+        u = elim / exlda
+        amix = 1 - 1/(1 + A*np.log(1 + B*u))
+        damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
+        vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
+        vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
+        vxclim[1] /= exlda
+        vxclim[2] /= exlda
+        for i in range(3):
+            vxclim[i] *= damix
 
-        return amix
+        return amix, vxclim
 
-    def xefc(self, cu, cd, co, cx, vu, vd, vo, vx,
-             nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
+    def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
         """
         Return tot
         Return yu, yd, yo, yx
         Return derivs wrt nu, nd, g2u, g2o, d2g, tu, td, fu, fd
             that arise from y*
         """
+        g2 = g2u + g2d + 2 * g2o
+        nt = nu + nd
+        cu, vu = self.ss_baseline(nu, g2u)
+        cd, vd = self.ss_baseline(nd, g2d)
+        co, vo = self.os_baseline(nu, nd, g2, type=1)
+        cx, vx = self.os_baseline(nu, nd, g2, type=0)
+        co *= nt
+        cx *= nt
+        cu *= nu
+        cd *= nd
+        co -= cu + cd
+        vo[0][:,0] -= vu[0]
+        vo[0][:,1] -= vd[0]
+        vo[1][:,0] -= vu[1]
+        vo[1][:,2] -= vd[1]
 
         ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3)
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
@@ -310,9 +324,9 @@ class VSXCContribs():
 
         Du = self.get_D(nu, g2u, tu)
         Dd = self.get_D(nd, g2d, td)
-        Do = self.get_D(nu+nd, g2u+2*g2o+g2d, tu+td)
+        Do = self.get_D(nu+nd, g2, tu+td)
 
-        amix = self.get_amix(nu, nd, g2u, g2o, g2d, Do[0])
+        amix, vxcmix = self.get_amix(nu, nd, g2u, g2o, g2d, Do[0])
 
         yu, derivu = self.xef_terms(fu, self.css)
         yd, derivd = self.xef_terms(fd, self.css)
@@ -356,19 +370,19 @@ class VSXCContribs():
             vxc[3][:,1] += df * dftdfd
         def fill_vxc_base_ss_(vxc, vterm, multerm, spin):
             if vterm[0] is not None:
-                vxc[0][:,spin] += vterm[0][:,spin] * multerm
+                vxc[0][:,spin] += vterm[0] * multerm
             if vterm[1] is not None:
-                vxc[1][:,2*spin] += vterm[1][:,2*spin] * multerm
-            if vterm[3] is not None:
-                vxc[2][:,spin] += vterm[3][:,spin] * multerm
+                vxc[1][:,2*spin] += vterm[1] * multerm
+            if vterm[2] is not None:
+                vxc[2][:,spin] += vterm[2] * multerm
         def fill_vxc_base_os_(vxc, vterm, multerm):
             multerm = multerm.reshape(-1, 1)
             if vterm[0] is not None:
                 vxc[0] += vterm[0] * multerm
             if vterm[1] is not None:
                 vxc[1] += vterm[1] * multerm
-            if vterm[3] is not None:
-                vxc[2] += vterm[3] * multerm
+            if vterm[2] is not None:
+                vxc[2] += vterm[2] * multerm
 
         fill_vxc_ss_(vxc, 0, cu * Du[1] * yu,
                      cu * Du[2] * yu,
@@ -447,6 +461,9 @@ class VSXCContribs():
        
         vxc[0][:,0] += dldaxu * amix * (yau + cfau[0])
         vxc[0][:,1] += dldaxd * amix * (yad + cfad[0])
+
+        fill_vxc_base_os_(vxc, vxcmix, ldaxu * (yau + cfau[0])
+                                     + ldaxd * (yad + cfad[0]))
 
         fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
         fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
