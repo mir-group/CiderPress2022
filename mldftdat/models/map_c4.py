@@ -6,6 +6,14 @@ alphax = 0.001867
 alphass, alphaos = 0.00515088, 0.00304966
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
+A = 2.74
+B = 132
+sprefac = 2 * (3 * np.pi**2)**(1.0/3)
+chi_inf = 0.128026
+chi = 0.72161
+b1c = 0.0285764
+gamma_eps = 0.031091
+
 class VSXCContribs():
 
     def __init__(self, css, cos, cx, cm, ca,
@@ -34,6 +42,158 @@ class VSXCContribs():
         else:
             self.bos = bos
         #print(len(self.dss), len(self.dos))
+
+    """
+    def baseline1(self, nu, nd, g2u, g2o, g2d, tu, td):
+        g2 = g2u + 2 * g2o + g2d
+        sprefac = 2 * (3 * np.pi**2)**(1.0/3)
+        s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
+        rs = (4 * np.pi * (nu + nd) / 3)**(-1.0/3)
+
+        beta = 0.066725 * (1+0.1*rs) / (1+0.1778*rs)
+        dbetadrs = -0.16421191515852426/(5.624296962879639 + 1.*rs)**2
+
+        tconst = (3 * np.pi**2 / 16)**(2.0/3)
+        t2 = tconst * s2 / (phi**2 * rs)
+        dt2ds2 = tconst / (phi**2 * rs)
+        dt2dphi = -2 * tconst * s2 / (phi**3 * rs)
+        dt2drs = -tconst * s2 / (phi**2 * rs**2)
+
+        zeta = (rhou - rhod) / (rhot)
+        phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
+        dphidzeta = (-(1 - zeta)**(-0.3333333333333333) + (1 + zeta)**(-0.3333333333333333))/3.
+
+        phi43 = ((1-zeta)**(4.0/3) + (1+zeta)**(4.0/3))/2
+        phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
+        dphi43dzeta = -1.5754000000000001*(-1. + zeta**12)*((1 - zeta)**0.3333333333333333 - 1.*(1 + zeta)**0.3333333333333333) - 12*zeta**11*(3.3631 - 1.18155*((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333))
+
+        A = beta / (gamma * w1)
+        dAdbeta = 1/(gamma*w1)
+        dAdw1 = -(beta/(gamma*w1**2))
+
+        g1 = (1 + 4*A*t**2)**(-0.25)
+        dg1dA = -(t**2/(1 + 4*A*t**2)**1.25)
+        dg1dt2 = (-2*A*t)/(1 + 4*A*t**2)**1.25
+        dg1dw1 = dg1dA * dAdw1
+        dg1drs = dg1dA * dAdbeta * dbetadrs + dg1dt2 * dt2drs + dg1dw1 * dw1drs
+        dg1ds2 = dg1dt2 * dt2ds2
+        dg1dphi = dg1dt2 * dt2dphi
+
+        H1m = gamma * phi**3
+        dH1mdphi = 3 * gamma * phi**2
+        H1 = H1m * np.log(1 + w1 * (1 - g1))
+        dH1dw1 = H1m * (-1 + g1)/(-1 + (-1 + g1)*w1)
+        dH1dg1 = H1m * w1/(-1 + (-1 + g1)*w1)
+
+        dH1dg1 * dg1drs
+    """
+
+    def get_rs(self, n):
+        rs = (4 * np.pi * n / 3)**(-1.0/3)
+        return rs, -rs / (3 * n)
+
+    def get_zeta(self, nu, nd):
+        zeta = (-nd + nu)/(nd + nu)
+        dzetau = (2*nd)/(nd + nu)**2
+        dzetad = (-2*nu)/(nd + nu)**2
+        return zeta, dzetau, dzetad
+
+    def get_phi0(self, zeta):
+        G = (1 - zeta**12)*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        dG = -1.18105*(1 - zeta**12)*((-4*(1 - zeta)**0.3333333333333333)/3. + (4*(1 + zeta)**0.3333333333333333)/3.) - 12*zeta**11*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        return G, dG
+
+    def get_phi1(self, zeta):
+        phi = ((1 - zeta)**0.6666666666666666 + (1 + zeta)**0.6666666666666666)/2.
+        dphi = (-2/(3.*(1 - zeta)**0.3333333333333333) + 2/(3.*(1 + zeta)**0.3333333333333333))/2.
+        return phi, dphi
+
+    def baseline0inf(self, zeta, s2):
+        G, dG = self.get_phi0(zeta)
+        elim = b1c*G*Log(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))
+        dedG = b1c*Log(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))
+        deds2 = -((b1c*chiinf*(1 - E)*G)/(E*(1 + 4*chiinf*s2)**1.25*(1 + (1 - E)/(E*(1 + 4*chiinf*s2)**0.25))))
+        return elim, dedG * dG, deds2
+
+    def baseline1inf(self, zeta, s2):
+        phi, dphi = self.get_phi1(zeta)
+        elim = gamma*phi**3*Log(1. - (1 + 4*chi*s2)**(-0.25))
+        dedphi = 3*gamma*phi**2*Log(1. - (1 + 4*chi*s2)**(-0.25))
+        deds2 = (chi*gamma*phi**3)/((1 + 4*chi*s2)**1.25*(1. - (1 + 4*chi*s2)**(-0.25)))
+        return elim, dedphi*dphi, deds2
+
+    def baseline_inf(self, nu, nd, g2, tu, td):
+        s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2)
+        zeta, dzetau, dzetad = self.get_zeta(nu, nd)
+        e0lim, de0dzeta, de0ds2 = self.baseline0inf(zeta, s2)
+        e1lim, de1dzeta, de1ds2 = self.baseline1inf(zeta, s2)
+        D = self.get_D(nu+nd, g2, tu+td)
+        elim = e1lim * D[0] + e0lim * (1 - D[0])
+        dedzeta = de1dzeta * D[0] + de0dzeta * (1 - D[0])
+        deds2 = de1ds2 * D[0] + de0ds2 * (1 - D[0])
+        tmp = e1lim - e0lim
+        vxc = [np.zeros((N,2)), np.zeros((N,3)),
+               np.zeros((N,2))]
+        fill_vxc_os_(vxc, tmp * Do[1],
+                     tmp * Do[2],
+                     tmp * Do[3], 0)
+        vxc[0][:,0] += dedzeta * dzetau + deds2 * ds2n
+        vxc[0][:,1] += dedzeta * dzetad + dsds2 * ds2n
+        vxc[1][:,0] += deds2 * ds2g2
+        vxc[1][:,1] += 2 * deds2 * ds2g2
+        vxc[1][:,2] += deds2 * ds2g2
+        return elim, vxc
+
+    def baseline0(self, rs, zeta, s2):
+        lda = -(b1c/(1 + b2c*Sqrt(rs) + b3c*rs))
+        dlda = (b1c*(b3c + b2c/(2.*Sqrt(rs))))/(1 + b2c*Sqrt(rs) + b3c*rs)**2
+        G, dG = self.get_phi0(self, zeta)
+        EC = G*(lda + b1c*Log(1 + (-1 + E**(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25))))
+        dECdlda = G*(1 - (1 - (1 + 4*chiinf*s2)**(-0.25))/(E**(lda/b1c)*(1 + (-1 + E**(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25)))))
+        dECds2 = (b1c*chiinf*(-1 + E**(-lda/b1c))*G)/((1 + 4*chiinf*s2)**1.25*(1 + (-1 + E**(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25))))
+        dECdGZ = lda + b1c*Log(1 + (-1 + E**(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25)))
+        return EC, dECdlda * dlda, dECdGZ * dG, dECds2
+
+    def baseline1(self, lda, rs, zeta, s2):
+        phi, dphi = self.get_phi1(zeta)
+        EC = lda + gamma*phi**3*Log(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        dECdlda = 1 + (gamma*phi**3*((0.10057481925409646*(1 + 0.1*rs)*s2)/(E**(lda/(gamma*phi**3))*(-1 + E**(-lda/(gamma*phi**3)))*gamma**2*phi**5*(1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) - (1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))/(E**(lda/(gamma*phi**3))*gamma*phi**3)))/(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        dECdrs = ((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**3*((-0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs**2) - (0.0715288114535134*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)**2*rs) + (0.040229927701638586*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
+        dECds2 = (0.10057481925409646*phi*(1 + 0.1*rs))/((1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
+        dECdGZ = (gamma*phi**3*(((-1 + E**(-lda/(gamma*phi**3)))*((-1.2068978310491576*lda*(1 + 0.1*rs)*s2)/(E**(lda/(gamma*phi**3))*(-1 + E**(-lda/(gamma*phi**3)))**2*gamma**2*phi**6*(1 + 0.1778*rs)*rs) - (0.8045985540327717*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**3*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) + (3*lda*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))/(E**(lda/(gamma*phi**3))*gamma*phi**4)))/(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))) + 3*gamma*phi**2*Log(1 + (-1 + E**(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + E**(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        return EC, dECdlda, dECdrs, dECdsGZ * dphi, dECds2
+
+    def ss_baseline(self, n, g2):
+        N = n.shape[0]
+        rs, drs = self.get_rs(nu)
+        s2, ds2n, ds2g2 = self.get_s2(n, g2)
+        lda, dlda = eval_xc(',LDA_C_PW_MOD', (n, 0*n), spin=1)[:2]
+        e, dedlda, dedrs, _, deds2 = self.baseline1(n, 0*n, rs, 1, s2)
+        vxc = [None, None, None, None]
+        vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0][:,0]
+        vxc[1] = deds2 * ds2g2
+        return e, vxc
+
+    def os_baseline(self, nu, nd, g2, type = 0):
+        N = nu.shape[0]
+        rs, drs = self.get_rs(nu+nd)
+        zeta, dzetau, dzetad = self.get_zeta(nu, nd)
+        s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2)
+        if type == 0:
+            e, dedrs, dedzeta, deds2 = self.baseline0(rs, zeta, s2)
+        else:
+            lda, dlda = eval_xc(',LDA_C_PW_MOD', (nu, nd), spin=1)[:2]
+            e, dedlda, dedrs, dedzeta, deds2 = self.baseline1(lda, rs, zeta, s2)
+        vxc = [np.zeros((N,2)), np.zeros((N,3)), None, None]
+        vxc[0][:,0] = dedrs * drs + dedzeta * dzetau + deds2 * ds2n
+        vxc[0][:,1] = dedrs * drs + dedzeta * dzetad + deds2 * ds2n
+        if type == 1:
+            vxc[0][:,0] += dedlda * dlda[0][:,0]
+            vxc[0][:,1] += dedlda * dlda[0][:,1]
+        vxc[1][:,0] = deds2 * ds2g2
+        vxc[1][:,1] = deds2 * 2 * ds2g2
+        vxc[1][:,2] = deds2 * ds2g2
+        return e, vxc
 
     def gammafunc(self, x2, z, alpha):
         y = 1 + alpha * (x2 + z)
@@ -75,6 +235,10 @@ class VSXCContribs():
         return g2/n**2.6666666666666665,\
                (-8*g2)/(3.*n**3.6666666666666665),\
                n**(-2.6666666666666665)
+
+    def get_s2(self, n, g2):
+        a, b, c = self.get_x2(n, g2)
+        return a / sprefac**2, b / sprefac**2, c / sprefac**2
 
     def get_z(self, n, t):
         return -2*CF + (2*t)/n**1.6666666666666667,\
