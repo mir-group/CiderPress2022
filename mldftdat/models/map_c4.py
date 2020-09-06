@@ -9,10 +9,41 @@ CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 A = 2.74
 B = 132
 sprefac = 2 * (3 * np.pi**2)**(1.0/3)
-chi_inf = 0.128026
+chiinf = 0.128026
 chi = 0.72161
 b1c = 0.0285764
 gamma = 0.031091
+
+def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df):
+    vxc[0][:,spin] += dn
+    vxc[1][:,2*spin] += dg2
+    vxc[2][:,spin] += dt
+    vxc[3][:,spin] += df
+def fill_vxc_os_(vxc, dn, dg2, dt, df):
+    vxc[0][:,0] += dn + df * dftdnu
+    vxc[0][:,1] += dn + df * dftdnd
+    vxc[1][:,0] += dg2
+    vxc[1][:,1] += 2 * dg2
+    vxc[1][:,2] += dg2
+    vxc[2][:,0] += dt
+    vxc[2][:,1] += dt
+    vxc[3][:,0] += df * dftdfu
+    vxc[3][:,1] += df * dftdfd
+def fill_vxc_base_ss_(vxc, vterm, multerm, spin):
+    if vterm[0] is not None:
+        vxc[0][:,spin] += vterm[0] * multerm
+    if vterm[1] is not None:
+        vxc[1][:,2*spin] += vterm[1] * multerm
+    if vterm[2] is not None:
+        vxc[2][:,spin] += vterm[2] * multerm
+def fill_vxc_base_os_(vxc, vterm, multerm):
+    multerm = multerm.reshape(-1, 1)
+    if vterm[0] is not None:
+        vxc[0] += vterm[0] * multerm
+    if vterm[1] is not None:
+        vxc[1] += vterm[1] * multerm
+    if vterm[2] is not None:
+        vxc[2] += vterm[2] * multerm
 
 class VSXCContribs():
 
@@ -123,6 +154,7 @@ class VSXCContribs():
         return elim, dedphi*dphi, deds2
 
     def baseline_inf(self, nu, nd, g2, D):
+        N = nu.shape[0]
         s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2)
         zeta, dzetau, dzetad = self.get_zeta(nu, nd)
         e0lim, de0dzeta, de0ds2 = self.baseline0inf(zeta, s2)
@@ -351,37 +383,6 @@ class VSXCContribs():
                np.zeros((N,3)),
                np.zeros((N,2)),
                np.zeros((N,2))]
-
-        def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df):
-            vxc[0][:,spin] += dn
-            vxc[1][:,2*spin] += dg2
-            vxc[2][:,spin] += dt
-            vxc[3][:,spin] += df
-        def fill_vxc_os_(vxc, dn, dg2, dt, df):
-            vxc[0][:,0] += dn + df * dftdnu
-            vxc[0][:,1] += dn + df * dftdnd
-            vxc[1][:,0] += dg2
-            vxc[1][:,1] += 2 * dg2
-            vxc[1][:,2] += dg2
-            vxc[2][:,0] += dt
-            vxc[2][:,1] += dt
-            vxc[3][:,0] += df * dftdfu
-            vxc[3][:,1] += df * dftdfd
-        def fill_vxc_base_ss_(vxc, vterm, multerm, spin):
-            if vterm[0] is not None:
-                vxc[0][:,spin] += vterm[0] * multerm
-            if vterm[1] is not None:
-                vxc[1][:,2*spin] += vterm[1] * multerm
-            if vterm[2] is not None:
-                vxc[2][:,spin] += vterm[2] * multerm
-        def fill_vxc_base_os_(vxc, vterm, multerm):
-            multerm = multerm.reshape(-1, 1)
-            if vterm[0] is not None:
-                vxc[0] += vterm[0] * multerm
-            if vterm[1] is not None:
-                vxc[1] += vterm[1] * multerm
-            if vterm[2] is not None:
-                vxc[2] += vterm[2] * multerm
 
         fill_vxc_ss_(vxc, 0, cu * Du[1] * yu,
                      cu * Du[2] * yu,
