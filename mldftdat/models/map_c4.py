@@ -1,5 +1,6 @@
 # Autocode from mathematica for VSXC-type contribs
 import numpy as np
+from pyscf.dft.libxc import eval_xc
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 alphax = 0.001867
@@ -12,6 +13,8 @@ sprefac = 2 * (3 * np.pi**2)**(1.0/3)
 chiinf = 0.128026
 chi = 0.72161
 b1c = 0.0285764
+b2c = 0.00889
+b3c = 0.125541
 gamma = 0.031091
 
 def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df=None):
@@ -21,7 +24,8 @@ def fill_vxc_ss_(vxc, spin, dn, dg2, dt, df=None):
     if df is not None:
         vxc[3][:,spin] += df
 def fill_vxc_os_(vxc, dn, dg2, dt, df=None,
-                 dftdnu=None, dftdnd=None):
+                 dftdnu=None, dftdnd=None,
+                 dftdfu=None, dftdfd=None):
     vxc[0][:,0] += dn
     vxc[0][:,1] += dn
     vxc[1][:,0] += dg2
@@ -79,51 +83,6 @@ class VSXCContribs():
             self.bos = bos
         #print(len(self.dss), len(self.dos))
 
-    """
-    def baseline1(self, nu, nd, g2u, g2o, g2d, tu, td):
-        g2 = g2u + 2 * g2o + g2d
-        sprefac = 2 * (3 * np.pi**2)**(1.0/3)
-        s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
-        rs = (4 * np.pi * (nu + nd) / 3)**(-1.0/3)
-
-        beta = 0.066725 * (1+0.1*rs) / (1+0.1778*rs)
-        dbetadrs = -0.16421191515852426/(5.624296962879639 + 1.*rs)**2
-
-        tconst = (3 * np.pi**2 / 16)**(2.0/3)
-        t2 = tconst * s2 / (phi**2 * rs)
-        dt2ds2 = tconst / (phi**2 * rs)
-        dt2dphi = -2 * tconst * s2 / (phi**3 * rs)
-        dt2drs = -tconst * s2 / (phi**2 * rs**2)
-
-        zeta = (rhou - rhod) / (rhot)
-        phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
-        dphidzeta = (-(1 - zeta)**(-0.3333333333333333) + (1 + zeta)**(-0.3333333333333333))/3.
-
-        phi43 = ((1-zeta)**(4.0/3) + (1+zeta)**(4.0/3))/2
-        phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
-        dphi43dzeta = -1.5754000000000001*(-1. + zeta**12)*((1 - zeta)**0.3333333333333333 - 1.*(1 + zeta)**0.3333333333333333) - 12*zeta**11*(3.3631 - 1.18155*((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333))
-
-        A = beta / (gamma * w1)
-        dAdbeta = 1/(gamma*w1)
-        dAdw1 = -(beta/(gamma*w1**2))
-
-        g1 = (1 + 4*A*t**2)**(-0.25)
-        dg1dA = -(t**2/(1 + 4*A*t**2)**1.25)
-        dg1dt2 = (-2*A*t)/(1 + 4*A*t**2)**1.25
-        dg1dw1 = dg1dA * dAdw1
-        dg1drs = dg1dA * dAdbeta * dbetadrs + dg1dt2 * dt2drs + dg1dw1 * dw1drs
-        dg1ds2 = dg1dt2 * dt2ds2
-        dg1dphi = dg1dt2 * dt2dphi
-
-        H1m = gamma * phi**3
-        dH1mdphi = 3 * gamma * phi**2
-        H1 = H1m * np.log(1 + w1 * (1 - g1))
-        dH1dw1 = H1m * (-1 + g1)/(-1 + (-1 + g1)*w1)
-        dH1dg1 = H1m * w1/(-1 + (-1 + g1)*w1)
-
-        dH1dg1 * dg1drs
-    """
-
     def get_rs(self, n):
         rs = (4 * np.pi * n / 3)**(-1.0/3)
         return rs, -rs / (3 * n)
@@ -135,13 +94,15 @@ class VSXCContribs():
         return zeta, dzetau, dzetad
 
     def get_phi0(self, zeta):
-        G = (1 - zeta**12)*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
-        dG = -1.18105*(1 - zeta**12)*((-4*(1 - zeta)**0.3333333333333333)/3. + (4*(1 + zeta)**0.3333333333333333)/3.) - 12*zeta**11*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        #G = (1 - zeta**12)*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        #dG = -1.18105*(1 - zeta**12)*((-4*(1 - zeta)**0.3333333333333333)/3. + (4*(1 + zeta)**0.3333333333333333)/3.) - 12*zeta**11*(1 - 2.3621*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        G = (1 - zeta**12)*(1 - 2.3631*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
+        dG = -1.18155*(1 - zeta**12)*((-4*(1 - zeta)**0.3333333333333333)/3. + (4*(1 + zeta)**0.3333333333333333)/3.) - 12*zeta**11*(1 - 2.3631*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
         return G, dG
 
     def get_phi1(self, zeta):
         phi = ((1 - zeta)**0.6666666666666666 + (1 + zeta)**0.6666666666666666)/2.
-        dphi = (-2/(3.*(1 - zeta)**0.3333333333333333) + 2/(3.*(1 + zeta)**0.3333333333333333))/2.
+        dphi = (-2/(3.*(1 - zeta + 1e-30)**0.3333333333333333) + 2/(3.*(1 + zeta + 1e-30)**0.3333333333333333))/2.
         return phi, dphi
 
     def baseline0inf(self, zeta, s2):
@@ -153,14 +114,14 @@ class VSXCContribs():
 
     def baseline1inf(self, zeta, s2):
         phi, dphi = self.get_phi1(zeta)
-        elim = gamma*phi**3*np.log(1. - (1 + 4*chi*s2)**(-0.25))
+        elim = gamma*phi**3*np.log(1. - (1 + 4*chi*s2)**(-0.25) + 1e-30)
         dedphi = 3*gamma*phi**2*np.log(1. - (1 + 4*chi*s2)**(-0.25))
         deds2 = (chi*gamma*phi**3)/((1 + 4*chi*s2)**1.25*(1. - (1 + 4*chi*s2)**(-0.25)))
         return elim, dedphi*dphi, deds2
 
     def baseline_inf(self, nu, nd, g2, D):
         N = nu.shape[0]
-        s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2)
+        s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2 + 1e-30)
         zeta, dzetau, dzetad = self.get_zeta(nu, nd)
         e0lim, de0dzeta, de0ds2 = self.baseline0inf(zeta, s2)
         e1lim, de1dzeta, de1ds2 = self.baseline1inf(zeta, s2)
@@ -174,16 +135,16 @@ class VSXCContribs():
                      tmp * D[2],
                      tmp * D[3])
         vxc[0][:,0] += dedzeta * dzetau + deds2 * ds2n
-        vxc[0][:,1] += dedzeta * dzetad + dsds2 * ds2n
+        vxc[0][:,1] += dedzeta * dzetad + deds2 * ds2n
         vxc[1][:,0] += deds2 * ds2g2
         vxc[1][:,1] += 2 * deds2 * ds2g2
         vxc[1][:,2] += deds2 * ds2g2
         return elim, vxc
-
+    
     def baseline0(self, rs, zeta, s2):
         lda = -(b1c/(1 + b2c*np.sqrt(rs) + b3c*rs))
         dlda = (b1c*(b3c + b2c/(2.*np.sqrt(rs))))/(1 + b2c*np.sqrt(rs) + b3c*rs)**2
-        G, dG = self.get_phi0(self, zeta)
+        G, dG = self.get_phi0(zeta)
         EC = G*(lda + b1c*np.log(1 + (-1 + np.exp(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25))))
         dECdlda = G*(1 - (1 - (1 + 4*chiinf*s2)**(-0.25))/(np.exp(lda/b1c)*(1 + (-1 + np.exp(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25)))))
         dECds2 = (b1c*chiinf*(-1 + np.exp(-lda/b1c))*G)/((1 + 4*chiinf*s2)**1.25*(1 + (-1 + np.exp(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25))))
@@ -197,17 +158,20 @@ class VSXCContribs():
         dECdrs = ((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*((-0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs**2) - (0.0715288114535134*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)**2*rs) + (0.040229927701638586*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
         dECds2 = (0.10057481925409646*phi*(1 + 0.1*rs))/((1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
         dECdGZ = (gamma*phi**3*(((-1 + np.exp(-lda/(gamma*phi**3)))*((-1.2068978310491576*lda*(1 + 0.1*rs)*s2)/(np.exp(lda/(gamma*phi**3))*(-1 + np.exp(-lda/(gamma*phi**3)))**2*gamma**2*phi**6*(1 + 0.1778*rs)*rs) - (0.8045985540327717*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) + (3*lda*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))/(np.exp(lda/(gamma*phi**3))*gamma*phi**4)))/(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))) + 3*gamma*phi**2*np.log(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
-        return EC, dECdlda, dECdrs, dECdsGZ * dphi, dECds2
+        return EC, dECdlda, dECdrs, dECdGZ * dphi, dECds2
 
     def ss_baseline(self, n, g2):
         N = n.shape[0]
-        rs, drs = self.get_rs(nu)
+        rs, drs = self.get_rs(n)
         s2, ds2n, ds2g2 = self.get_s2(n, g2)
         lda, dlda = eval_xc(',LDA_C_PW_MOD', (n, 0*n), spin=1)[:2]
-        e, dedlda, dedrs, _, deds2 = self.baseline1(n, 0*n, rs, 1, s2)
+        #lda, dlda = eval_xc(',LDA_C_PW_MOD', n, spin=0)[:2]
+        e, dedlda, dedrs, _, deds2 = self.baseline1(lda, rs, 1, s2)
         vxc = [None, None, None, None]
         vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0][:,0]
-        vxc[1] = deds2 * ds2g2
+        #vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0]
+        vxc[1] = deds2 * ds2g2# * n
+        #vxc[0] = vxc[0] * n + e
         return e, vxc
 
     def os_baseline(self, nu, nd, g2, type = 0):
@@ -229,6 +193,7 @@ class VSXCContribs():
         vxc[1][:,0] = deds2 * ds2g2
         vxc[1][:,1] = deds2 * 2 * ds2g2
         vxc[1][:,2] = deds2 * ds2g2
+        #vxc[1] *= (nu + nd)
         return e, vxc
 
     def gammafunc(self, x2, z, alpha):
@@ -299,9 +264,6 @@ class VSXCContribs():
     def get_amix(self, rhou, rhod, g2u, g2o, g2d, Do):
         rhot = rhou + rhod
 
-        A = 2.74
-        B = 132
-        sprefac = 2 * (3 * np.pi**2)**(1.0/3)
         g2 = (g2u + 2 * g2o + g2d)
         elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
 
@@ -317,10 +279,10 @@ class VSXCContribs():
         damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
         vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
         vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
-        vxclim[1] /= exlda
-        vxclim[2] /= exlda
+        vxclim[1] /= exlda[:,np.newaxis]
+        vxclim[2] /= exlda[:,np.newaxis]
         for i in range(3):
-            vxclim[i] *= damix
+            vxclim[i] *= damix[:,np.newaxis]
 
         return amix, vxclim
 
@@ -403,8 +365,7 @@ class VSXCContribs():
                      tmp * Do[3],
                      (cx - co) * (1 - Do[0]) * derivm\
                         + co * derivo + cx * derivx,
-                     dftdnu,
-                     dftdnd)
+                     dftdnu, dftdnd, dftdfu, dftdfd)
 
         # x2, dx2dn, dx2dg2
         x2u = self.get_x2(nu, g2u)
@@ -470,9 +431,9 @@ class VSXCContribs():
         fill_vxc_base_os_(vxc, vxcmix, ldaxu * (yau + cfau[0])
                                      + ldaxd * (yad + cfad[0]))
 
-        fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
-        fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
-        fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
-        fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
+        #fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
+        #fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
+        #fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
+        #fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
 
         return tot, vxc
