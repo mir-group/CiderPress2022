@@ -47,7 +47,7 @@ def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
     diff = np.abs(vals1 - vals2)**exponent
     return np.dot(diff, weights)**(1.0/exponent)
 
-def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.4):
     weights = grid.weights.copy()
     for atom in mol._atom:
         coord = np.array(atom[1])
@@ -1206,7 +1206,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint6 import setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'PBE')
+                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
@@ -1222,7 +1222,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = None
                     #mf.xc = ',MGGA_C_SCAN'
-                mf.kernel(dm0 = None)
+                mf.kernel(dm0 = dm0)
                 e_tot = mf.e_tot
                 calc = mf
             else:

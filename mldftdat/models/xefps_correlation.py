@@ -410,26 +410,10 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     rho_data_d_1[4] = 0
     rho_data_d_1[5] = 0#CF * rhod**(5.0/3) + rho_data_d_0[5]
 
-    co0_, vo0_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[:2]
-    rho_data_u_1[5] = CU * ds * rhou**(5.0/3) + g2u / (8 * rhou)
-    cu1_, vu1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[:2]
-    rho_data_d_1[5] = CU * ds * rhod**(5.0/3) + g2d / (8 * rhod)
-    cd1_, vd1_ = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[:2]
-    rho_data_u_1[5] = CU * ds * rhot**(5.0/3) + g2 / (8 * rhot)
-    rho_data_d_1[5] = 0
-    co1_, vo1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[:2]
     co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
     co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
-    cu1, vu1 = corr_model.ss_baseline(rhou, g2)[:2]
-    cd1, vd1 = corr_model.ss_baseline(rhod, g2)[:2]
-    print(np.dot(vu1[0], rhou*weights), np.dot(vu1_[0][:,0], rhou*weights))
-    print(np.dot(vd1[0], rhod*weights), np.dot(vd1_[0][:,1], rhod*weights))
-    print(np.dot(vo1[0][:,0], rhot*weights), np.dot(vo1_[0][:,0], rhot*weights))
-    print(np.dot(vo0[0][:,0], rhot*weights), np.dot(vo0_[0][:,0], rhot*weights))
-    print(np.dot(co0, rhot*weights), np.dot(co0_, rhot*weights))
-    print(np.dot(co1, rhot*weights), np.dot(co1_, rhot*weights))
-    print(np.dot(cu1, rhot*weights), np.dot(cu1_, rhot*weights))
-    print(np.dot(cd1, rhot*weights), np.dot(cd1_, rhot*weights))
+    cu1, vu1 = corr_model.ss_baseline(rhou, g2u)[:2]
+    cd1, vd1 = corr_model.ss_baseline(rhod, g2d)[:2]
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
@@ -449,16 +433,6 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
     zu *= 2
     zd *= 2
-    #Du = 1 - np.linalg.norm(rho_data_u[1:4], axis=0)**2 / (8 * rho_data_u[0] * rho_data_u[5] + 1e-20)
-    #Dd = 1 - np.linalg.norm(rho_data_d[1:4], axis=0)**2 / (8 * rho_data_d[0] * rho_data_d[5] + 1e-20)
-    Du = 1 - g2u / (8 * rhou * tu)
-    Dd = 1 - g2d / (8 * rhod * td)
-    Do = 1 - (g2u + 2 * g2o + g2d) / (8 * (rhou + rhod) * (tu + td))
-    #Du = np.sin(np.pi * 0.5 * Du)
-    #Dd = np.sin(np.pi * 0.5 * Dd)
-    oDu = 0.5 * (1 - np.cos(np.pi * Du))
-    oDd = 0.5 * (1 - np.cos(np.pi * Dd))
-    oDo = 0.5 * (1 - np.cos(np.pi * Do))
     Du = corr_model.get_D(rhou, g2u, tu)[0]
     Dd = corr_model.get_D(rhod, g2d, td)[0]
     Do = corr_model.get_D(rhot, g2u + 2 * g2o + g2d, tu+td)
@@ -482,18 +456,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
     exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
     exlda /= (rhot)
-    amixo = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
+    #amixo = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
     amix = corr_model.get_amix(rhou, rhod, g2u, g2o, g2d, fDo)[0]
-    b0 = corr_model.baseline0inf(zeta, s2)[0]
-    b1 = corr_model.baseline1inf(zeta, s2)[0]
-    bt = corr_model.baseline_inf(rhou, rhod, g2u + 2 * g2o + g2d, fDo)[0]
-
-    #print(np.mean(np.abs(part2 - b1) * rhot))
-    #print(np.mean(np.abs(part1 - b0) * rhot))
-    #print(np.mean(np.abs(epslim - bt) * rhot))
     print(np.min(epslim / exlda), np.max(epslim / exlda))
-    print(np.mean(np.abs(amix - amixo) * rhot))
-    #print(np.min(amix[rhot > 1e-5]), np.max(amix[rhot > 1e-5]), np.min(amixo[rhot > 1e-5]), np.max(amixo[rhot > 1e-5]))
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
     print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
 
@@ -773,7 +738,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml3.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml4.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -893,7 +858,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         hind = indd[hind]
         waterind = indd[waterind]
 
-        noise = 7.5e-3
+        noise = 5e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
@@ -905,11 +870,23 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         coef = np.dot(A, B)
         #coef *= 0
 
+        E0 = E_x[inds] + mlx[inds,2] + mlx[inds,7] + mlx[inds,12] + mlx[inds,22]
+
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(score, score0)
         print((y - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
+        print((np.dot(E_c[inds], coef) + E0)[[hind, oind, waterind]])
+        print('20', (np.dot(E_c[inds,:20], coef[:20]) + E0)[[hind, oind, waterind]])
+        print('26', (np.dot(E_c[inds,:26], coef[:26]) + E0)[[hind, oind, waterind]])
+        print('32', (np.dot(E_c[inds,:32], coef[:32]) + E0)[[hind, oind, waterind]])
+        print('38', (np.dot(E_c[inds,:38], coef[:38]) + E0)[[hind, oind, waterind]])
+        print('44', (np.dot(E_c[inds,:44], coef[:44]) + E0)[[hind, oind, waterind]])
+        print('working', (np.dot(E_c[inds,:20], coef[:20]) + np.dot(E_c[inds,32:38], coef[32:38]) + np.dot(E_c[inds,44:], coef[44:]) + E0)[[hind, oind, waterind]])
+        print('50', (np.dot(E_c[inds], coef) + E0)[[hind, oind, waterind]])
+        print(coef[20:32], coef[38:44])
+        print((E_x[inds])[[hind, oind, waterind]])
         print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
         print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))

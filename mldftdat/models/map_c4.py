@@ -114,9 +114,9 @@ class VSXCContribs():
 
     def baseline1inf(self, zeta, s2):
         phi, dphi = self.get_phi1(zeta)
-        elim = gamma*phi**3*np.log(1. - (1 + 4*chi*s2)**(-0.25) + 1e-30)
-        dedphi = 3*gamma*phi**2*np.log(1. - (1 + 4*chi*s2)**(-0.25))
-        deds2 = (chi*gamma*phi**3)/((1 + 4*chi*s2)**1.25*(1. - (1 + 4*chi*s2)**(-0.25)))
+        elim = gamma*phi**3*np.log((1. - (1 + 4*chi*s2)**(-0.25)) + 1e-30)
+        dedphi = 3*gamma*phi**2*np.log((1. - (1 + 4*chi*s2)**(-0.25)) + 1e-20)
+        deds2 = (chi*gamma*phi**3)/((1 + 4*chi*s2)**1.25*((1. - (1 + 4*chi*s2)**(-0.25)) + 1e-30))
         return elim, dedphi*dphi, deds2
 
     def baseline_inf(self, nu, nd, g2, D):
@@ -165,13 +165,13 @@ class VSXCContribs():
         rs, drs = self.get_rs(n)
         s2, ds2n, ds2g2 = self.get_s2(n, g2)
         lda, dlda = eval_xc(',LDA_C_PW_MOD', (n, 0*n), spin=1)[:2]
-        #lda, dlda = eval_xc(',LDA_C_PW_MOD', n, spin=0)[:2]
+        dlda = (dlda[0][:,0] - lda) / n
         e, dedlda, dedrs, _, deds2 = self.baseline1(lda, rs, 1, s2)
         vxc = [None, None, None, None]
-        vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0][:,0]
-        #vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0]
-        vxc[1] = deds2 * ds2g2# * n
-        #vxc[0] = vxc[0] * n + e
+        #vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda[0][:,0]
+        vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda
+        vxc[1] = deds2 * ds2g2 * n
+        vxc[0] = vxc[0] * n + e
         return e, vxc
 
     def os_baseline(self, nu, nd, g2, type = 0):
@@ -183,17 +183,23 @@ class VSXCContribs():
             e, dedrs, dedzeta, deds2 = self.baseline0(rs, zeta, s2)
         else:
             lda, dlda = eval_xc(',LDA_C_PW_MOD', (nu, nd), spin=1)[:2]
+            dldau = (dlda[0][:,0] - lda) / (nu + nd)
+            dldad = (dlda[0][:,1] - lda) / (nu + nd)
             e, dedlda, dedrs, dedzeta, deds2 = self.baseline1(lda, rs, zeta, s2)
         vxc = [np.zeros((N,2)), np.zeros((N,3)), None, None]
         vxc[0][:,0] = dedrs * drs + dedzeta * dzetau + deds2 * ds2n
         vxc[0][:,1] = dedrs * drs + dedzeta * dzetad + deds2 * ds2n
         if type == 1:
-            vxc[0][:,0] += dedlda * dlda[0][:,0]
-            vxc[0][:,1] += dedlda * dlda[0][:,1]
+            #vxc[0][:,0] += dedlda * dlda[0][:,0]
+            vxc[0][:,0] += dedlda * dldau
+            #vxc[0][:,1] += dedlda * dlda[0][:,1]
+            vxc[0][:,1] += dedlda * dldad
+        vxc[0] *= (nu + nd)[:,np.newaxis]
+        vxc[0] += e[:,np.newaxis]
         vxc[1][:,0] = deds2 * ds2g2
         vxc[1][:,1] = deds2 * 2 * ds2g2
         vxc[1][:,2] = deds2 * ds2g2
-        #vxc[1] *= (nu + nd)
+        vxc[1] *= (nu + nd)[:,np.newaxis]
         return e, vxc
 
     def gammafunc(self, x2, z, alpha):
@@ -269,9 +275,9 @@ class VSXCContribs():
 
         exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
         exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
-        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2
+        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2 * (rhou + rhod)
         dinvldau += 1 / exlda
-        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2
+        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2 * (rhou + rhod)
         dinvldad += 1 / exlda
         exlda /= (rhot)
         u = elim / exlda
@@ -338,13 +344,14 @@ class VSXCContribs():
         yo += 1
         yu += 1
         yd += 1
-
+        tot = 0
+        
         tot = cu * Du[0] * yu + cd * Dd[0] * yd \
               + co * yo + cx * yx \
               + (cx - co) * (1 - Do[0]) * ym \
               + ldaxu * amix * yau \
               + ldaxd * amix * yad
-
+        
         N = cu.shape[0]
         vxc = [np.zeros((N,2)),
                np.zeros((N,3)),
@@ -392,7 +399,8 @@ class VSXCContribs():
                + (cx - co) * (1 - Do[0]) * cfm[0] \
                + ldaxu * amix * cfau[0] \
                + ldaxd * amix * cfad[0]
-
+        
+        #tot += cx * cfx[0] + ldaxu * amix * cfau[0] + ldaxd * amix * cfad[0]
         cfss = (cfu, cfd)
         cfssa = (cfau, cfad)
         Dss = (Du, Dd)
@@ -428,12 +436,12 @@ class VSXCContribs():
         vxc[0][:,0] += dldaxu * amix * (yau + cfau[0])
         vxc[0][:,1] += dldaxd * amix * (yad + cfad[0])
 
-        fill_vxc_base_os_(vxc, vxcmix, ldaxu * (yau + cfau[0])
-                                     + ldaxd * (yad + cfad[0]))
+        #fill_vxc_base_os_(vxc, vxcmix, ldaxu * (yau + cfau[0])
+        #                             + ldaxd * (yad + cfad[0]))
 
-        #fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
-        #fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
-        #fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
-        #fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
+        fill_vxc_base_ss_(vxc, vu, Du[0] * (yu + cfu[0]), 0)
+        fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
+        fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
+        fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
 
         return tot, vxc
