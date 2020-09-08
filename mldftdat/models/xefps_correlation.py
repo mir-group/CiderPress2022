@@ -392,36 +392,44 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
     g2 = g2u + 2 * g2o + g2d
 
+    zeta = (rhou - rhod) / (rhot)
+    ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
+    CU = 0.3 * (3 * np.pi**2)**(2.0/3)
+
     rho_data_u_0 = rho_data_u.copy()
     rho_data_u_1 = rho_data_u.copy()
     rho_data_u_0[4] = 0
     rho_data_u_0[5] = g2 / (8 * rhot)
     rho_data_u_1[4] = 0
-    rho_data_u_1[5] = CF * rhou**(5.0/3) + rho_data_u_0[5]
+    rho_data_u_1[5] = CU * ds * rhot**(5.0/3) + rho_data_u_0[5]
 
     rho_data_d_0 = rho_data_d.copy()
     rho_data_d_1 = rho_data_d.copy()
     rho_data_d_0[4] = 0
     rho_data_d_0[5] = 0#g2d / (8 * rhod)
     rho_data_d_1[4] = 0
-    rho_data_d_1[5] = CF * rhod**(5.0/3) + rho_data_d_0[5]
+    rho_data_d_1[5] = 0#CF * rhod**(5.0/3) + rho_data_d_0[5]
 
-    co0_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[0]
-    rho_data_u_1[5] = CF / 2**(2.0/3) * rhou**(5.0/3) + g2u / (8 * rhou)
-    cu1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[0]
-    rho_data_d_1[5] = CF / 2**(2.0/3) * rhod**(5.0/3) + g2d / (8 * rhod)
-    cd1_ = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[0]
-    rho_data_u_1[5] = CF / 2**(2.0/3) * rhot**(5.0/3) + g2 / (8 * rhot)
+    co0_, vo0_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin = 1)[:2]
+    rho_data_u_1[5] = CU * ds * rhou**(5.0/3) + g2u / (8 * rhou)
+    cu1_, vu1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, 0*rho_data_d_1), spin = 1)[:2]
+    rho_data_d_1[5] = CU * ds * rhod**(5.0/3) + g2d / (8 * rhod)
+    cd1_, vd1_ = eval_xc(',MGGA_C_SCAN', (0*rho_data_u_1, rho_data_d_1), spin = 1)[:2]
+    rho_data_u_1[5] = CU * ds * rhot**(5.0/3) + g2 / (8 * rhot)
     rho_data_d_1[5] = 0
-    co1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[0]
-    co0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[0]
-    co1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[0]
-    cu1 = corr_model.ss_baseline(rhou, g2)[0]
-    cd1 = corr_model.ss_baseline(rhod, g2)[0]
+    co1_, vo1_ = eval_xc(',MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin = 1)[:2]
+    co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
+    co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
+    cu1, vu1 = corr_model.ss_baseline(rhou, g2)[:2]
+    cd1, vd1 = corr_model.ss_baseline(rhod, g2)[:2]
+    print(np.dot(vu1[0], rhou*weights), np.dot(vu1_[0][:,0], rhou*weights))
+    print(np.dot(vd1[0], rhod*weights), np.dot(vd1_[0][:,1], rhod*weights))
+    print(np.dot(vo1[0][:,0], rhot*weights), np.dot(vo1_[0][:,0], rhot*weights))
+    print(np.dot(vo0[0][:,0], rhot*weights), np.dot(vo0_[0][:,0], rhot*weights))
+    print(np.dot(co0, rhot*weights), np.dot(co0_, rhot*weights))
+    print(np.dot(co1, rhot*weights), np.dot(co1_, rhot*weights))
     print(np.dot(cu1, rhot*weights), np.dot(cu1_, rhot*weights))
     print(np.dot(cd1, rhot*weights), np.dot(cd1_, rhot*weights))
-    print(np.dot(co1, rhot*weights), np.dot(co1_, rhot*weights))
-    print(np.dot(co0, rhot*weights), np.dot(co0_, rhot*weights))
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
@@ -483,6 +491,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     #print(np.mean(np.abs(part2 - b1) * rhot))
     #print(np.mean(np.abs(part1 - b0) * rhot))
     #print(np.mean(np.abs(epslim - bt) * rhot))
+    print(np.min(epslim / exlda), np.max(epslim / exlda))
     print(np.mean(np.abs(amix - amixo) * rhot))
     #print(np.min(amix[rhot > 1e-5]), np.max(amix[rhot > 1e-5]), np.min(amixo[rhot > 1e-5]), np.max(amixo[rhot > 1e-5]))
     print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
@@ -764,7 +773,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlike6.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml3.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -797,7 +806,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
-        E_x = mlx[:,-1]
+        E_x = mlx[:,0]
         #E_x = mnc[:,-1]
         E_xscan = mlx[:,1]
         #print(E_x)
@@ -840,30 +849,51 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
             if i in formulas.keys():
                 weights.append(1.0)
                 formula = formulas[i]
+                if formula.get(1) == 2 and formula.get(8) == 1 and len(list(formula.keys()))==2:
+                    waterind = i
+                    print(formula, E_ccsd[i], E_dft[i])
                 for Z in list(formula.keys()):
                     X[i,:] -= formula[Z] * X[Z_to_ind[Z],:]
                     y[i] -= formula[Z] * y[Z_to_ind[Z]]
                     Ecc[i] -= formula[Z] * Ecc[Z_to_ind[Z]]
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
-                print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
+               # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 18 else 0)
+                if mols[i].nelectron == 1:
+                    hind = i
+                if mols[i].nelectron == 8:
+                    oind = i
+                    print(mols[i], E_ccsd[i], E_dft[i])
+                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
 
-        weights = np.array(weights)
 
+        weights = np.array(weights)
+        
+        print(E_xscan[[hind,oind,waterind]])
         print('ASSESS MEAN DIFF')
         print(np.mean(np.abs(Ecc-Edf)[weights > 0]))
         print(np.mean(np.abs(diff)[weights > 0]))
 
+        inds = np.arange(len(y))
         valset_bools = valset_bools_init[weights > 0]
         X = X[weights > 0, :]
         y = y[weights > 0]
         Ecc = Ecc[weights > 0]
         Edf = Edf[weights > 0]
+        inds = inds[weights > 0]
+        indd = {}
+        for i in range(inds.shape[0]):
+            indd[inds[i]] = i
         weights = weights[weights > 0]
 
-        noise = 5e-3
+        print(E_ccsd[waterind], E_dft[waterind])
+
+        oind = indd[oind]
+        hind = indd[hind]
+        waterind = indd[waterind]
+
+        noise = 7.5e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
@@ -878,7 +908,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(score, score0)
-        #print(y - np.dot(X, coef))
+        print((y - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
+        print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
         print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
