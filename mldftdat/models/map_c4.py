@@ -154,13 +154,39 @@ class VSXCContribs():
         return EC, dECdlda * dlda, dECdGZ * dG, dECds2
 
     def baseline1(self, lda, rs, zeta, s2):
+        Pi = np.pi
+        Log = np.Log
+        Exp = np.exp
         phi, dphi = self.get_phi1(zeta)
-        EC = lda + gamma*phi**3*np.log(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
-        dECdlda = 1 + (gamma*phi**3*((0.10057481925409646*(1 + 0.1*rs)*s2)/(np.exp(lda/(gamma*phi**3))*(-1 + np.exp(-lda/(gamma*phi**3)))*gamma**2*phi**5*(1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) - (1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))/(np.exp(lda/(gamma*phi**3))*gamma*phi**3)))/(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
-        dECdrs = ((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*((-0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs**2) - (0.0715288114535134*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)**2*rs) + (0.040229927701638586*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
-        dECds2 = (0.10057481925409646*phi*(1 + 0.1*rs))/((1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
-        dECdGZ = (gamma*phi**3*(((-1 + np.exp(-lda/(gamma*phi**3)))*((-1.2068978310491576*lda*(1 + 0.1*rs)*s2)/(np.exp(lda/(gamma*phi**3))*(-1 + np.exp(-lda/(gamma*phi**3)))**2*gamma**2*phi**6*(1 + 0.1778*rs)*rs) - (0.8045985540327717*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) + (3*lda*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))/(np.exp(lda/(gamma*phi**3))*gamma*phi**4)))/(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))) + 3*gamma*phi**2*np.log(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
-        return EC, dECdlda, dECdrs, dECdGZ * dphi, dECds2
+        beta = (0.066725*(1 + 0.1*rs))/(1 + 0.1778*rs)
+        dbetadrs = (-0.011863705000000002*(1 + 0.1*rs))/(1 + 0.1778*rs)**2 + 0.006672500000000001/(1 + 0.1778*rs)
+        w1 = -1 + E**(-lda/(gamma*phi**3))
+        dw1dlda = -(1/(E**(lda/(gamma*phi**3))*gamma*phi**3))
+        dw1dphi = (3*lda)/(E**(lda/(gamma*phi**3))*gamma*phi**4)
+        t2 = (1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs)
+        dt2drs = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs**2)
+        dt2ds2 = (1.5**0.6666666666666666*Pi**1.3333333333333333)/(4.*phi**2*rs)
+        dt2dphi = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(2.*phi**3*rs)
+        e = lda + gamma*phi**3*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+        dedlda = 1
+        dedt2 = (beta*phi**3)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
+        dedphi = 3*gamma*phi**2*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+        dedbeta = (phi**3*t2)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
+        dedw1 = (gamma*phi**3*(1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25) - (beta*t2)/(gamma*(1 + (4*beta*t2)/(gamma*w1))**1.25*w1)))/(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+        
+        dedrs = dedbeta * dbetadrs + dedt2 * dt2drs
+        dedlda += dedw1 * dw1dlda
+        dedrs += dedt2 * dt2drs + dedbeta * dbetadrs
+        deds2 = dedt2 * dt2ds2
+        dedphi += dedt2 * dt2dphi + dedw1 * dw1dbeta
+
+        #phi, dphi = self.get_phi1(zeta)
+        #EC = lda + gamma*phi**3*np.log(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        #dECdlda = 1 + (gamma*phi**3*((0.10057481925409646*(1 + 0.1*rs)*s2)/(np.exp(lda/(gamma*phi**3))*(-1 + np.exp(-lda/(gamma*phi**3)))*gamma**2*phi**5*(1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) - (1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))/(np.exp(lda/(gamma*phi**3))*gamma*phi**3)))/(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        #dECdrs = ((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*((-0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs**2) - (0.0715288114535134*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)**2*rs) + (0.040229927701638586*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
+        #dECds2 = (0.10057481925409646*phi*(1 + 0.1*rs))/((1 + 0.1778*rs)*rs*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25*(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))))
+        #dECdGZ = (gamma*phi**3*(((-1 + np.exp(-lda/(gamma*phi**3)))*((-1.2068978310491576*lda*(1 + 0.1*rs)*s2)/(np.exp(lda/(gamma*phi**3))*(-1 + np.exp(-lda/(gamma*phi**3)))**2*gamma**2*phi**6*(1 + 0.1778*rs)*rs) - (0.8045985540327717*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**3*(1 + 0.1778*rs)*rs)))/(4.*(1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**1.25) + (3*lda*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))/(np.exp(lda/(gamma*phi**3))*gamma*phi**4)))/(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25))) + 3*gamma*phi**2*np.log(1 + (-1 + np.exp(-lda/(gamma*phi**3)))*(1 - (1 + (0.40229927701638585*(1 + 0.1*rs)*s2)/((-1 + np.exp(-lda/(gamma*phi**3)))*gamma*phi**2*(1 + 0.1778*rs)*rs))**(-0.25)))
+        return e, dedlda, dedrs, dedphi, deds2
 
     def ss_baseline(self, n, g2):
         N = n.shape[0]
