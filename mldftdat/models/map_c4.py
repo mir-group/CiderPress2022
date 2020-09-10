@@ -155,14 +155,14 @@ class VSXCContribs():
 
     def baseline1(self, lda, rs, zeta, s2):
         Pi = np.pi
-        Log = np.Log
+        Log = np.log
         Exp = np.exp
         phi, dphi = self.get_phi1(zeta)
         beta = (0.066725*(1 + 0.1*rs))/(1 + 0.1778*rs)
         dbetadrs = (-0.011863705000000002*(1 + 0.1*rs))/(1 + 0.1778*rs)**2 + 0.006672500000000001/(1 + 0.1778*rs)
-        w1 = -1 + E**(-lda/(gamma*phi**3))
-        dw1dlda = -(1/(E**(lda/(gamma*phi**3))*gamma*phi**3))
-        dw1dphi = (3*lda)/(E**(lda/(gamma*phi**3))*gamma*phi**4)
+        w1 = -1 + np.exp(-lda/(gamma*phi**3))
+        dw1dlda = -(1/(np.exp(lda/(gamma*phi**3))*gamma*phi**3))
+        dw1dphi = (3*lda)/(np.exp(lda/(gamma*phi**3))*gamma*phi**4)
         t2 = (1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs)
         dt2drs = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs**2)
         dt2ds2 = (1.5**0.6666666666666666*Pi**1.3333333333333333)/(4.*phi**2*rs)
