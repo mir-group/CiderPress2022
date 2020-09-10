@@ -116,8 +116,8 @@ class VSXCContribs():
 
     def baseline1inf(self, zeta, s2):
         phi, dphi = self.get_phi1(zeta)
-        elim = gamma*phi**3*Log(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))
-        dedphi = (-2*chi*gamma*s2)/((1 + (4*chi*s2)/phi**2)**1.25*(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))) + 3*gamma*phi**2*Log(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))
+        elim = gamma*phi**3*np.log(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))
+        dedphi = (-2*chi*gamma*s2)/((1 + (4*chi*s2)/phi**2)**1.25*(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))) + 3*gamma*phi**2*np.log(1. - (1 + (4*chi*s2)/phi**2)**(-0.25))
         deds2 = (chi*gamma*phi)/((1 + (4*chi*s2)/phi**2)**1.25*(1. - (1 + (4*chi*s2)/phi**2)**(-0.25)))
         return elim, dedphi*dphi, deds2
 
@@ -445,5 +445,26 @@ class VSXCContribs():
         fill_vxc_base_ss_(vxc, vd, Dd[0] * (yd + cfd[0]), 1)
         fill_vxc_base_os_(vxc, vo, yo + cfo[0] - (1 - Do[0]) * (ym + cfm[0]))
         fill_vxc_base_os_(vxc, vx, yx + cfx[0] + (1 - Do[0]) * (ym + cfm[0]))
+
+        rhou, rhod = nu, nd
+        vxc[0][rhou<1e-8,0] = 0
+        vxc[1][rhou<1e-8,0] = 0
+        vxc[2][rhou<1e-8,0] = 0
+        vxc[3][rhou<1e-8,0] = 0
+        vxc[0][rhod<1e-8,1] = 0
+        vxc[1][rhod<1e-8,2] = 0
+        vxc[2][rhod<1e-8,1] = 0
+        vxc[3][rhod<1e-8,1] = 0
+        vxc[1][np.minimum(rhou,rhod)<1e-8,1] = 0
+
+        print('check', nu[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        print('check', g2u[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        print('check', tu[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        print('check', nd[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        print('check', g2d[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        print('check', td[np.argmax(np.abs(np.sum(vxc[0] * nd[:,np.newaxis], axis=-1)))])
+        #print(g2u[np.argmax(vxc[1])])
+        #print(tu[np.argmax(vxc[2])])
+        #print(fu[np.argmax(vxc[3])])
 
         return tot, vxc
