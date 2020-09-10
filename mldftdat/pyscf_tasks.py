@@ -74,6 +74,86 @@ class SCFCalc(FiretaskBase):
 
 
 @explicit_serialize
+class SCFFromDB(FiretaskBase):
+    """
+    Rerun calculation in new basis.
+    """
+
+    required_params = ['struct', 'basis', 'oldbasis', 'calc_type', 'mol_id']
+    optional_params = ['functional']
+
+    DEFAULT_MAX_CONV_TOL = 1e-7
+
+    def run_task(self, fw_spec):
+
+        if self.get('functional') is not None:
+            functional = get_functional_db_name(self['functional'])
+        else:
+            functional = None
+        adir = get_save_dir(os.environ['MLDFTDB'], self['calc_type'],
+                            self['oldbasis'], self['mol_id'],
+                            functional=functional)
+        if 'U' in calc_type:
+            analyzer = UHFAnalyzer.load(adir)
+        else:
+            analyzer = RHFAnalyzer.load(adir)
+        init_mol = analyzer.mol
+        init_mol.build()
+        mol = init_mol.copy()
+        mol.basis = self['basis']
+        mol.build()
+        s = mol.get_ovlp()
+        mo = analyzer.mo_coeff
+        mo_occ = analyzer.mo_occ
+        def fproj(mo):
+            mo = addons.project_mo_nr2nr(init_mol, mo, mol)
+            norm = numpy.einsum('pi,pi->i', mo.conj(), s.dot(mo))
+            mo /= np.sqrt(norm)
+            return mo
+        if 'U' in calc_type:
+            dm = analyzer.calc.make_rdm1([fproj(mo[0]), fproj(mo[1])], mo_occ)
+        else:
+            dm = analyzer.calc.make_rdm1(fproj(mo), mo_occ)
+
+        start_time = time.monotonic()
+        calc = run_scf(mol, calc_type, functional = functional,
+                       remove_ld = True, dm0 = dm)
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            calc.conv_tol *= 10
+
+            start_time = time.monotonic()
+            calc.kernel(dm0 = dm)
+            stop_time = time.monotonic()
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        if 'KS' in calc_type:
+            functional = self.get('functional')
+            if functional is None:
+                update_spec['functional'] = 'LDA_VWN'
+            else:
+                update_spec['functional'] = get_functional_db_name(functional)
+
+        return FWAction(update_spec = update_spec)
+
+
+
+@explicit_serialize
 class MLSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type',\
@@ -96,7 +176,7 @@ class MLSCFCalc(FiretaskBase):
 
         import joblib
         if self.get('mlfunc_c_file') is None:
-            from mldftdat.dft import numint4 as numint
+            from mldftdat.dft import numint6 as numint
             mlfunc = joblib.load(self['mlfunc_file'])
         else:
             from mldftdat.dft import numint5 as numint
