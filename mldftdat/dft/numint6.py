@@ -149,7 +149,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             #:aow = np.einsum('npi,np->pi', ao[:4], wvb, out=aow)
             aow = _scale_ao(ao[:4], wvb, out=aow)
             vmat[1,idm] += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-
+            print(np.max(np.abs(vmat[1,idm])))
 # FIXME: .5 * .5   First 0.5 for v+v.T symmetrization.
 # Second 0.5 is due to the Libxc convention tau = 1/2 \nabla\phi\dot\nabla\phi
             wv = (.25 * weight * vtau[:,0]).reshape(-1,1)
@@ -160,9 +160,10 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             vmat[1,idm] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
             vmat[1,idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
             vmat[1,idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
-
+            print(np.max(np.abs(vmat[1,idm])))
             vmat[0,idm] += 0.5 * vmol[0,:,:]
             vmat[1,idm] += 0.5 * vmol[1,:,:]
+            print(np.max(np.abs(vmat[1,idm])))
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
@@ -179,6 +180,8 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
     for i in range(nset):
         vmat[0,i] = vmat[0,i] + vmat[0,i].T
         vmat[1,i] = vmat[1,i] + vmat[1,i].T
+        print("VMAT", np.max(np.abs(vmat[0,i])))
+        print("VMAT", np.max(np.abs(vmat[1,i])))
     if isinstance(dma, np.ndarray) and dma.ndim == 2:
         vmat = vmat[:,0]
         nelec = nelec.reshape(2)
@@ -287,12 +290,12 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     dF = [0, 0]
     dEddesc = [0, 0]
 
-    rhou = rho_data[0][0]# + 1e-20
+    rhou = rho_data[0][0] + 1e-20
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-    tu = rho_data[0][5]# + 1e-20
-    rhod = rho_data[1][0]# + 1e-20
+    tu = rho_data[0][5] + 1e-20
+    rhod = rho_data[1][0] + 1e-20
     g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-    td = rho_data[1][5]# + 1e-20
+    td = rho_data[1][5] + 1e-20
     ntup = (rhou, rhod)
     gtup = (g2u, g2d)
     ttup = (tu, td)
@@ -328,6 +331,16 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                       tu, td, F[0], F[1])
 
+    print('V ACTION')
+    weights = grid.weights
+    print(np.dot(vxc[0][:,0], rhou * weights))
+    print(np.dot(vxc[0][:,1], rhod * weights))
+    print(np.dot(vxc[1][:,0], g2u * weights))
+    print(np.dot(vxc[1][:,1], g2o * weights))
+    print(np.dot(vxc[1][:,2], g2d * weights))
+    print(np.dot(vxc[2][:,0], tu * weights))
+    print(np.dot(vxc[2][:,1], td * weights))
+    
     exc += tot
     vtot[0][:,:] += vxc[0]
     vtot[1][:,:] += vxc[1]
@@ -476,7 +489,7 @@ DEFAULT_CSS = [0.01975172, 0.02643192, 0.00684282, 0.01066147]
 DEFAULT_COS = [0.01975172, 0.02643192, 0.00684282, 0.01066147]
 DEFAULT_CX = [0.00577485, 0.01369322, 0.00759016, 0.00202679]
 DEFAULT_CM = [ 0.00175147, -0.00161191,  0.00176254, -0.00193061]
-DEFAULT_CA = [ 0.34794482, -0.05576447,  0.24719607, -0.03914316]
+DEFAULT_CA = [0]*4#[ 0.34794482, -0.05576447,  0.24719607, -0.03914316]
 DEFAULT_DSS = [-0.00127952, -0.04815332, -0.01275823,  0.00101604,  0.00200155,
           0.00137506]
 DEFAULT_DOS = [-0.00127952, -0.04815332, -0.01275823,  0.00101604,  0.00200155,
@@ -485,8 +498,39 @@ DEFAULT_DX = [-0.00285345,  0.04897107,  0.02013399, -0.00093622, -0.00325507,
          -0.00078262]
 DEFAULT_DM = [-8.73440107e-05, -7.79228604e-03,  1.22301358e-02,  4.15236651e-04,
           8.89644694e-03,  1.33991076e-02]
-DEFAULT_DA = [ 1.02182307e-03,  6.29811168e-03, -8.03489007e-03, -1.29607620e-06,
-         -3.49977408e-04,  4.65553133e-04]
+DEFAULT_DA = [0]*6#[ 1.02182307e-03,  6.29811168e-03, -8.03489007e-03, -1.29607620e-06, -3.49977408e-04,  4.65553133e-04]
+
+DEFAULT_CSS = [-0.05452783, -0.00076775, -0.01041533,  0.00035368]
+DEFAULT_COS = [-0.06617057,  0.00878463, -0.01445688,  0.00632798]
+DEFAULT_CX = [-0.07860136,  0.01874689, -0.02177897,  0.01350697]
+DEFAULT_CM = [-0.01108625,  0.00712482, -0.00612263,  0.00535104]
+DEFAULT_CA = [ 0.06855746, -0.08013932, -0.00688188,  0.0133931 ]
+DEFAULT_DSS = [-0.00037777, -0.0408486 ,  0.04620767,  0.00957358, -0.01502667,
+ -0.01146411]
+DEFAULT_DOS = [-0.00204951,  0.00461263,  0.04031432, -0.00464195,  0.01852419,
+ -0.01416855]
+DEFAULT_DX = [-0.00413646,  0.04395188, -0.22308177,  0.00416432, -0.01603316,
+  0.01326185]
+DEFAULT_DM = [-0.00037919,  0.00480977, -0.01043522, -0.0071598 ,  0.03734132,
+ -0.04103396]
+DEFAULT_DA = [-0.01323424, -0.01298428,  0.06510855,  0.00024175, -0.0011504 ,
+  0.00109085]
+
+DEFAULT_CSS = [0]*4
+DEFAULT_COS = [0]*4
+DEFAULT_CX = [0]*4
+DEFAULT_CM = [0]*4
+DEFAULT_CA = [0]*4
+DEFAULT_DSS = [ 0.00030139, -0.20149783,  0.03334822,  0.0065964 , -0.00139713,
+  0.06582131]
+DEFAULT_DOS = [-4.54440375e-03,  4.68927593e-02,  1.71085167e-01, -7.55834408e-05,
+  1.43144853e-02, -2.47920272e-02]
+DEFAULT_DX = [-0.00026006, -0.1129298 , -0.17554901,  0.00190763, -0.02059737,
+  0.02543308]
+DEFAULT_DM = [-0.00038683,  0.0128838 ,  0.06481756, -0.003573  ,  0.02111423,
+  0.04788578]
+DEFAULT_DA = [-5.06180839e-02,  1.85477868e-03,  1.12961979e-02, -8.91128820e-05,
+  4.22394485e-04, -1.21530515e-03]
 
 def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,

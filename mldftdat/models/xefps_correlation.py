@@ -738,7 +738,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml4.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml5.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -785,11 +785,11 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 37:61 -- dvals
         # 61:73 -- xvals
         # 73 -- Ex exact
-        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-        #E_c = np.zeros((mlx.shape[0],0))
-        E_c = np.append(E_c, mlx[:,18:22], axis=1)
-        E_c = np.append(E_c, mlx[:,23:27], axis=1)
-        E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+        #E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+        E_c = np.zeros((mlx.shape[0],0))
+        #E_c = np.append(E_c, mlx[:,18:22], axis=1)
+        #E_c = np.append(E_c, mlx[:,23:27], axis=1)
+        #E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
         E_c = np.append(E_c, mlx[:,37:43], axis=1)
         E_c = np.append(E_c, mlx[:,43:49], axis=1)
         E_c = np.append(E_c, mlx[:,49:55], axis=1)
