@@ -492,8 +492,8 @@ class CorrGPFunctional5(GPFunctional):
 import mldftdat.models.map_v3 as mapper
 
 def cutoff_and_deriv(scale):
-    x = np.exp(0.4 * (scale - 10**1.5))
-    return 1.0 / (1 + x), 0.4 * x / (1 + x)**2
+    x = np.exp(0.35 * (scale - 10**1.45))
+    return 1.0 / (1 + x), 0.35 * x / (1 + x)**2
 
 class NormGPFunctional(GPFunctional):
 
@@ -517,23 +517,29 @@ class NormGPFunctional(GPFunctional):
 
     def get_F_and_derivative(self, X, compare = None):
         mat, dmat, scale, dscaledp, dscaledalpha = \
-            mapper.desc_and_ddesc(X.T, normp = self.normp)
+            mapper.desc_and_ddesc(X.T)
         if compare is not None:
             print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        cut, cut_deriv = cutoff_and_deriv(scale)
+        cut, cut_deriv = cutoff_and_deriv(scale**2)
+        cut[scale**2>45] = 0
+        cut_deriv[scale**2>45] = 0
         dFddesc *= cut[:,np.newaxis]
-        #dFddesc[:,0] += F * cut_deriv * dscaledp
-        #dFddesc[:,1] += F * cut_deriv * dscaledalpha
+        #dFddesc[:,0] += F * cut_deriv * 2 * scale * dscaledp
+        #dFddesc[:,1] += F * cut_deriv * 2 * scale * dscaledalpha
         F *= cut
         return F, dFddesc
 
     def get_F(self, X):
-        return self.get_F_and_derivative(self, X)[0]
+        x = np.sqrt(X[:,0]) * 4 * np.pi / 9
+        fch_num = 3 * x**2 + np.pi**2 * np.log(x + 1)
+        fch_den = (3 * x + np.pi**2) * np.log(x + 1)
+        fch = (fch_num + 1e-10) / (fch_den + 1e-10)
+        return self.get_F_and_derivative(X)[0] + fch
 
     def get_derivative(self, X):
-        return self.get_F_and_derivative(self, X)[1]
+        return self.get_F_and_derivative(X)[1]
 
 
 class CorrGPFunctional6(GPFunctional):

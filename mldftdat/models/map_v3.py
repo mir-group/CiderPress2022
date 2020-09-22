@@ -4,6 +4,8 @@ fac = (6*np.pi**2)**(2.0/3)/(16*np.pi)
 
 def desc_and_ddesc(x):
 
+    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
+
     gammax = 0.0800
     gamma1 = 0.0481
     gamma2 = 0.0128
@@ -11,8 +13,18 @@ def desc_and_ddesc(x):
     gamma0b = 0.44065
     gamma0c = 0.1769
 
-    matrix = np.zeros((10, x.shape[-1]))
-    dmatrix = np.zeros((10, 10, x.shape[-1]))
+    gammax = 0.004 * sprefac**2
+    gamma1 = 0.01552
+    gamma2 = 0.01617
+    gamma0a = 0.5
+    gamma0b = 0.125
+    gamma0c = 2.0
+
+    p = x[0]
+    alpha = x[1]
+
+    matrix = np.zeros((11, x.shape[-1]))
+    dmatrix = np.zeros((11, 11, x.shape[-1]))
 
     scale = np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
     dscaledp = fac/np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
