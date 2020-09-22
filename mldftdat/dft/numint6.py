@@ -323,7 +323,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
-
+        F[spin][(ntup[spin]<1e-8)] = 0
+        dF[spin][(ntup[spin]<1e-8)] = 0
         exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
@@ -331,6 +332,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                       tu, td, F[0], F[1])
 
+    """
     print('V ACTION')
     weights = grid.weights
     print(np.dot(vxc[0][:,0], rhou * weights))
@@ -347,6 +349,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     vtot[3][:,:] += vxc[2]
     dEddesc[0] += 2 * vxc[3][:,0,np.newaxis] * dF[0]
     dEddesc[1] += 2 * vxc[3][:,1,np.newaxis] * dF[1]
+    """
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
