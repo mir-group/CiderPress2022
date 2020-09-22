@@ -489,18 +489,23 @@ class CorrGPFunctional5(GPFunctional):
         return E, vo, (dEddesc_u, dEddesc_d)
 
 
-import mldftdat.models.map_v1 as mapper
+import mldftdat.models.map_v3 as mapper
+
+def cutoff_and_deriv(scale):
+    x = np.exp(0.4 * (scale - 10**1.5))
+    return 1.0 / (1 + x), 0.4 * x / (1 + x)**2
 
 class NormGPFunctional(GPFunctional):
 
     def __init__(self, evaluator, normp = True):
+        # for use with Chachiyo reference
         self.evaluator = evaluator
         self.y_to_f_mul = None
         self.desc_list = [
             Descriptor(1, square, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
             Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(5, square, single, mul = 1.0),\
             Descriptor(8, identity, single, mul = 1.0),\
             Descriptor(12, identity, single, mul = 1.00),\
             Descriptor(6, identity, single, mul = 1.00),\
@@ -511,12 +516,18 @@ class NormGPFunctional(GPFunctional):
         self.normp = normp
 
     def get_F_and_derivative(self, X, compare = None):
-        mat, dmat = mapper.desc_and_ddesc(X.T, normp = self.normp)
+        mat, dmat, scale, dscaledp, dscaledalpha = \
+            mapper.desc_and_ddesc(X.T, normp = self.normp)
         if compare is not None:
             print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        return F + 1, dFddesc
+        cut, cut_deriv = cutoff_and_deriv(scale)
+        dFddesc *= cut[:,np.newaxis]
+        #dFddesc[:,0] += F * cut_deriv * dscaledp
+        #dFddesc[:,1] += F * cut_deriv * dscaledalpha
+        F *= cut
+        return F, dFddesc
 
     def get_F(self, X):
         return self.get_F_and_derivative(self, X)[0]

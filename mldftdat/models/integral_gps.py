@@ -50,6 +50,15 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     X[:,2] = np.sinh(1 / (1 + X[:,2]**2))
     return np.arcsinh(X[:,(1,2,4,5,8,6,12,15,16,13,14)[:num]])
 
+def xed_to_y_chachiyo(xed, rho_data):
+    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
+
+def y_to_xed_chachiyo(y, rho_data):
+    yp = y * ldax(rho_data[0])
+    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    return yp + pbex
+
 class PBEGPR(DFTGPR):
 
     def __init__(self, num_desc, init_kernel = None, use_algpr = False):
@@ -292,48 +301,37 @@ def get_big_desc2(X, num):
 def get_big_desc3(X, num):
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 
-    gammax = 0.682
+    gammax = 0.004 * sprefac**2
     gamma1 = 0.01552
     gamma2 = 0.01617
-    gamma0a = 0.64772
-    gamma0b = 0.44065
-    gamma0c = 0.6144
+    gamma0a = 0.5
+    gamma0b = 0.125
+    gamma0c = 2.0
 
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    scale = np.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+    scale = np.sqrt(1 + 2 * fac * p + 1.2 * fac * (alpha - 1))
 
     desc = np.zeros((X.shape[0], 12))
     refs = gammax / (1 + gammax * s**2)
-    #desc[:,(1,2)] = np.arcsinh(desc[:,(1,2)])
     ref0a = gamma0a / (1 + X[:,4] * scale**3 * gamma0a)
     ref0b = gamma0b / (1 + X[:,15] * scale**3 * gamma0b)
     ref0c = gamma0c / (1 + X[:,16] * scale**3 * gamma0c)
     ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
     ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
 
-    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
-    hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
-    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3)
-
     desc[:,0] = X[:,0]
-    #desc[:,1] = hprefac * 2.0 / 3 * sp / np.arcsinh(0.5 * sp + 1.1752012)
-    #desc[:,1] = np.arcsinh(0.5 * sp)
-    #desc[:,1] = tail_fx_direct(s)# * s**2 * refs
     desc[:,1] = s**2 * refs
     desc[:,2] = 2 / (1 + alpha**2) - 1.0
-    #desc[:,2] = np.arcsinh(alpha - 1)
     desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
-    #desc[:,3] = X[:,4] - 2.0 / scale**3
     desc[:,4] = X[:,5]**2 * scale**6 * ref1
     desc[:,5] = X[:,8] * scale**6 * ref2
     desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
     desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
     desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
     desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
-    #desc[:,9] = X[:,16] - 0.5 / scale**3
     desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
     desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
     return desc[:,:num+1]
@@ -546,7 +544,7 @@ class AddEDMGPR2(EDMGPR):
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors15 if norm_feat\
                                else get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       xed_y_converter = (xed_to_y_chachiyo, y_to_xed_chachiyo),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
