@@ -38,7 +38,7 @@ class SCFCalc(FiretaskBase):
         calc_type = self['calc_type']
 
         start_time = time.monotonic()
-        calc = run_scf(mol, calc_type, self.get('functional'))
+        calc = run_scf(mol, calc_type, self.get('functional'), remove_ld = True)
         stop_time = time.monotonic()
 
         max_iter = 50 # extra safety catch
