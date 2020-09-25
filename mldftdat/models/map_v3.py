@@ -20,6 +20,13 @@ def desc_and_ddesc(x):
     gamma0b = 0.125
     gamma0c = 2.0
 
+    gammax = 0.4590
+    gamma1 = 0.0410
+    gamma2 = 0.0360
+    gamma0a = 0.2167
+    gamma0b = 1.0937
+    gamma0c = 0.2365
+
     p = x[0]
     alpha = x[1]
 
