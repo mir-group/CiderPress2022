@@ -974,7 +974,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
             symbol = chemical_symbols[Z]
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
                         dbpath, letter, Z, symbol, spin)
             if letter == 'R':
                 element_analyzers[Z] = RHFAnalyzer.load(path)
@@ -1002,6 +1002,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
                                     model = model, num = num, version = version)
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num, version = version)
+            print(fx_total_pred, fx_total_true, fx_total_ref, fx_total_ref_true)
             print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
                                                  - (fx_total_ref - fx_total_ref_true))
 

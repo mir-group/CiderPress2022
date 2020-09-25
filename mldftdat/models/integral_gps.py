@@ -6,6 +6,8 @@ import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
 
+SCALE_FAC = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+
 def xed_to_y_tail(xed, rho_data):
     y = xed / (ldax(rho_data[0]) - 1e-10)
     return y / tail_fx(rho_data) - 1
@@ -51,8 +53,11 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     return np.arcsinh(X[:,(1,2,4,5,8,6,12,15,16,13,14)[:num]])
 
 def xed_to_y_chachiyo(xed, rho_data):
+    rho, s, alpha = get_dft_input2(rho_data)[:3]
+    fac = SCALE_FAC
+    scale = 1 + 2 * fac * s**2 + 1.2 * fac * (alpha - 1)
     pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
-    return (xed - pbex) / (ldax(rho_data[0]) - 1e-12)
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-12) / (1 + 1e-3 * scale**3)
 
 def y_to_xed_chachiyo(y, rho_data):
     yp = y * ldax(rho_data[0])
@@ -314,7 +319,14 @@ def get_big_desc3(X, num):
     gamma0a = 0.0807
     gamma0b = 0.8126
     gamma0c = 0.2545
-    
+
+    gammax = 0.4590
+    gamma1 = 0.0410
+    gamma2 = 0.0360
+    gamma0a = 0.2167
+    gamma0b = 1.0937
+    gamma0c = 0.2365
+
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
 
@@ -536,16 +548,21 @@ class AddEDMGPR2(EDMGPR):
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         else:
             const = ConstantKernel(0.527**2)
-            rbf = PartialARBF(order = order, length_scale = [1.6776, 0.2906, 0.4926, 0.7320, \
-                         0.4242, 0.3169, 0.7596, 0.2107, 0.3993][:num_desc-1],
-                         scale = [0.296135,  0.0289514, 0.1114619],
-                         length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
+            #rbf = PartialARBF(order = order, length_scale = [0.388, 0.159, 0.205, 0.138, 0.134, 0.12, 0.172, 0.103, 0.126][:num_desc-1],
+            #rbf = PartialARBF(order = order, length_scale = [1.8597, 0.4975, 0.6506, \
+            #             0.8821, 1.2929, 0.8559, 0.8274, 0.2809, 0.8953][:num_desc-1],
+            rbf = PartialARBF(order = order, length_scale = [1.17771474, 0.25438798, 0.62641259,\
+                         0.3181303, 0.54790193, 0.34339042, 0.79567503, 0.12223949, 0.36900684][:num_desc-1],
+                         scale = [0.98331435, 0.58746915, 1.39161546],
+                         #scale = [0.296135,  0.0289514, 0.1114619],
+                         length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
+                         #length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        cov_kernel = rbf * SingleRBF(length_scale=0.198, index = 1)
+        cov_kernel = rbf * SingleRBF(length_scale=0.3, index = 1)#, length_scale_bounds='fixed')
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,

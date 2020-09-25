@@ -24,7 +24,7 @@ spins = spins_r2 + spins_r3 + spins_r4 + spins1 + spins2
 functional_list = ['pbe', 'scan', 'm06-l', 'pbe0', 'b3lyp', 'm06']
 
 for Z, spin in zip(numbers, spins):
-    for basis in ['aug-cc-pvtz', 'cc-pcvtz']:
+    for basis in ['def2-qzvppd']:
         struct = Atoms([Z], positions=[(0,0,0)])
         element = struct.get_chemical_formula()
         mol_id = 'atoms/%d-%s-%d' % (Z, element, spin)
