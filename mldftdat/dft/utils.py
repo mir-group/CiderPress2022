@@ -396,7 +396,7 @@ def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
         dedb = dedg.reshape(1, -1)
     elif l == 1:
         #dedb = 2 * elda * g * dfdg
-        dedb = dedg * g / (np.linalg.norm(g, axis=0) + 1e-10)
+        dedb = 2 * dedg * g #/ (np.linalg.norm(g, axis=0) + 1e-10)
     elif l == 2:
         dedb = 2 * dedg * g / np.sqrt(5)
     elif l == -2:
@@ -420,9 +420,10 @@ def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
     a[cond] = GG_AMIN * np.exp(a[cond] / GG_AMIN - 1)
 
     # (ngrid * (2l+1), naux)
+    dedb[:,rho<1e-8] = 0
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
-    dgda[rho<1e-8] = 0
+    dgda[:,rho<1e-8] = 0
 
     dadn = mul * a / (3 * (mul * rho / 2 + 1e-16))
     dadp = GG_SMUL * np.pi * fac * (mul * rho / 2 + 1e-16)**(2.0/3)

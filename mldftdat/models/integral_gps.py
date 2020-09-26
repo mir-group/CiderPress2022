@@ -52,7 +52,7 @@ def get_edmgga_descriptors(X, rho_data, num=1):
 
 def xed_to_y_chachiyo(xed, rho_data):
     pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
-    return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-12)
 
 def y_to_xed_chachiyo(y, rho_data):
     yp = y * ldax(rho_data[0])
@@ -308,6 +308,13 @@ def get_big_desc3(X, num):
     gamma0b = 0.125
     gamma0c = 2.0
 
+    gammax = 0.0537
+    gamma1 = 0.0542
+    gamma2 = 0.0394
+    gamma0a = 0.0807
+    gamma0b = 0.8126
+    gamma0c = 0.2545
+    
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
 
@@ -529,8 +536,8 @@ class AddEDMGPR2(EDMGPR):
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 1)
         else:
             const = ConstantKernel(0.527**2)
-            rbf = PartialARBF(order = order, length_scale = [0.573, 0.175, 0.15,\
-                         0.158, 0.249, 0.235, 0.344, 0.124, 0.185, 0.3][:num_desc-1],
+            rbf = PartialARBF(order = order, length_scale = [1.6776, 0.2906, 0.4926, 0.7320, \
+                         0.4242, 0.3169, 0.7596, 0.2107, 0.3993][:num_desc-1],
                          scale = [0.296135,  0.0289514, 0.1114619],
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
@@ -542,7 +549,7 @@ class AddEDMGPR2(EDMGPR):
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
-                       descriptor_getter = get_rho_and_edmgga_descriptors15 if norm_feat\
+                       descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
                                else get_rho_and_edmgga_descriptors,
                        xed_y_converter = (xed_to_y_chachiyo, y_to_xed_chachiyo),
                        init_kernel = init_kernel, use_algpr = use_algpr)

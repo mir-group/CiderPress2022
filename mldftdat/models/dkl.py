@@ -85,7 +85,7 @@ class FeatureNormalizer(torch.nn.Module):
         p, alpha = X[:,1]**2, X[:,2]
 
         fac = (6 * pi**2)**(2.0/3) / (16 * pi)
-        scale = torch.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+        scale = torch.sqrt(1 + 2 * fac * p + 1.2 * fac * (alpha - 1))
 
         gammax = torch.exp(self.gammax)
         gamma1 = torch.exp(self.gamma1)
@@ -101,9 +101,7 @@ class FeatureNormalizer(torch.nn.Module):
         ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
         ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
 
-        #d0 = X[:,0]
         d1 = p * refs
-        #d1 = X[:,0]
         d2 = 2 / (1 + alpha**2) - 1.0
         d3 = (X[:,4] * scale**3 - 2.0) * ref0a
         d4 = X[:,5]**2 * scale**6 * ref1
@@ -334,7 +332,7 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 500
+        training_iterations = 100
 
     model.train()
     likelihood.train()
