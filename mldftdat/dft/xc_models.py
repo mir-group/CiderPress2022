@@ -495,6 +495,19 @@ def cutoff_and_deriv(scale):
     x = np.exp(0.35 * (scale - 10**1.45))
     return 1.0 / (1 + x), 0.35 * x / (1 + x)**2
 
+def chachiyo_fx(s2):
+    c = 4 * np.pi / 9
+    x = c * np.sqrt(s2)
+    dx = c / (2 * np.sqrt(s2))
+    Pi = np.pi
+    Log = np.log
+    chfx = (3*x**2 + Pi**2*Log(1 + x))/((Pi**2 + 3*x)*Log(1 + x))
+    dchfx = (-3*x**2*(Pi**2 + 3*x) + 3*x*(1 + x)*(2*Pi**2 + 3*x)*Log(1 + x) - 3*Pi**2*(1 + x)*Log(1 + x)**2)/((1 + x)*(Pi**2 + 3*x)**2*Log(1 + x)**2)
+    dchfx *= dx
+    chfx[s2<1e-8] = 1 + 8 * s2 / 27
+    dchfx[s2<1e-8] = 8.0 / 27
+    return chfx, dchfx
+
 class NormGPFunctional(GPFunctional):
 
     def __init__(self, evaluator, normp = True):
@@ -529,14 +542,19 @@ class NormGPFunctional(GPFunctional):
         #dFddesc[:,0] += F * cut_deriv * 2 * scale * dscaledp
         #dFddesc[:,1] += F * cut_deriv * 2 * scale * dscaledalpha
         F *= cut
+
+        chfx, dchfx = chachiyo_fx(mat[0])
+        F += chfx
+        dFddesc[:,0] += dchfx
+
         return F, dFddesc
 
     def get_F(self, X):
         x = np.sqrt(X[:,0]) * 4 * np.pi / 9
-        fch_num = 3 * x**2 + np.pi**2 * np.log(x + 1)
-        fch_den = (3 * x + np.pi**2) * np.log(x + 1)
-        fch = (fch_num + 1e-10) / (fch_den + 1e-10)
-        return self.get_F_and_derivative(X)[0] + fch
+        #fch_num = 3 * x**2 + np.pi**2 * np.log(x + 1)
+        #fch_den = (3 * x + np.pi**2) * np.log(x + 1)
+        #fch = (fch_num + 1e-10) / (fch_den + 1e-10)
+        return self.get_F_and_derivative(X)[0]# + fch
 
     def get_derivative(self, X):
         return self.get_F_and_derivative(X)[1]
