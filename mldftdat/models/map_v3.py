@@ -6,26 +6,12 @@ def desc_and_ddesc(x):
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 
-    gammax = 0.0800
-    gamma1 = 0.0481
-    gamma2 = 0.0128
-    gamma0a = 0.1827
-    gamma0b = 0.44065
-    gamma0c = 0.1769
-
-    gammax = 0.004 * sprefac**2
-    gamma1 = 0.01552
-    gamma2 = 0.01617
-    gamma0a = 0.5
-    gamma0b = 0.125
-    gamma0c = 2.0
-
-    gammax = 0.4590
-    gamma1 = 0.0410
-    gamma2 = 0.0360
-    gamma0a = 0.2167
-    gamma0b = 1.0937
-    gamma0c = 0.2365
+    gammax = 0.5469
+    gamma1 = 0.0635
+    gamma2 = 0.0524
+    gamma0a = 0.1687
+    gamma0b = 1.0166
+    gamma0c = 0.2072
 
     p = x[0]
     alpha = x[1]
