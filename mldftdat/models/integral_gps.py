@@ -320,12 +320,19 @@ def get_big_desc3(X, num):
     gamma0b = 0.8126
     gamma0c = 0.2545
 
-    gammax = 0.4590
-    gamma1 = 0.0410
-    gamma2 = 0.0360
-    gamma0a = 0.2167
-    gamma0b = 1.0937
-    gamma0c = 0.2365
+    gammax = 0.5469
+    gamma1 = 0.0635
+    gamma2 = 0.0524
+    gamma0a = 0.1687
+    gamma0b = 1.0166
+    gamma0c = 0.2072
+
+    #gammax = 0.682
+    #gamma1 = 0.01552
+    #gamma2 = 0.01617
+    #gamma0a = 0.64772
+    #gamma0b = 0.44065
+    #gamma0c = 0.6144
 
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
@@ -551,18 +558,19 @@ class AddEDMGPR2(EDMGPR):
             #rbf = PartialARBF(order = order, length_scale = [0.388, 0.159, 0.205, 0.138, 0.134, 0.12, 0.172, 0.103, 0.126][:num_desc-1],
             #rbf = PartialARBF(order = order, length_scale = [1.8597, 0.4975, 0.6506, \
             #             0.8821, 1.2929, 0.8559, 0.8274, 0.2809, 0.8953][:num_desc-1],
-            rbf = PartialARBF(order = order, length_scale = [1.17771474, 0.25438798, 0.62641259,\
-                         0.3181303, 0.54790193, 0.34339042, 0.79567503, 0.12223949, 0.36900684][:num_desc-1],
-                         scale = [0.98331435, 0.58746915, 1.39161546],
+            rbf = PartialARBF(order = order, length_scale = [1.1507, 0.2789, \
+                         0.4756, 0.5305, 0.6608, 0.6514, 0.5314, 0.1741, 0.5371][:num_desc-1],
+                         #scale = [0.33] * 3,
+                         scale = [0.33, 0.33/9, 0.33/35],
                          #scale = [0.296135,  0.0289514, 0.1114619],
-                         length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
-                         #length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
+                         #length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 2.0)
         rhok2 = FittedDensityNoise(decay_rate = 600.0)
         wk = WhiteKernel(noise_level=3.0e-5, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.002, noise_level_bounds=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds=(1e-05, 1.0e5))
-        cov_kernel = rbf * SingleRBF(length_scale=0.3, index = 1)#, length_scale_bounds='fixed')
+        cov_kernel = rbf * SingleRBF(length_scale=0.4, index = 1)#, length_scale_bounds='fixed')
         noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
@@ -576,7 +584,9 @@ class AddEDMGPR2(EDMGPR):
         y_pred, y_std = self.gp.predict(x, return_std=True)
         return (y_std > threshold).any()
 
-    def add_heg_limit(self, wt=1):
+    def add_heg_limit(self, wt=1, add_approx_grad=False):
+        # wt should always be 1
+        wt = 1
         hegx = (0 * self.X[0])
         hegx[0] = 1e8
         hegy = 0
