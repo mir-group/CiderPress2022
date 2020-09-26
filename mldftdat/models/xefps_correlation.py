@@ -350,9 +350,9 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
 
 def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
 
-    from mldftdat.models import map_c4
+    from mldftdat.models import map_c6
 
-    corr_model = map_c4.VSXCContribs(None, None, None, None, None,
+    corr_model = map_c6.VSXCContribs(None, None, None, None, None,
                                      None, None, None, None, None)
 
     if restricted:
@@ -391,6 +391,9 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     rhot = rhou + rhod
     g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
     g2 = g2u + 2 * g2o + g2d
+    rsu = corr_model.get_rs(rhou)[0]
+    rsd = corr_model.get_rs(rhod)[0]
+    rs = corr_model.get_rs(rhot)[0]
 
     zeta = (rhou - rhod) / (rhot)
     ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
@@ -410,10 +413,23 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     rho_data_d_1[4] = 0
     rho_data_d_1[5] = 0#CF * rhod**(5.0/3) + rho_data_d_0[5]
 
+    tstldau = corr_model.pw92term(rsu, 1)[0]
+    tstldad = corr_model.pw92term(rsd, 1)[0]
+    tstldao = corr_model.pw92(rs, zeta)[0]
     co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
     co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
     cu1, vu1 = corr_model.ss_baseline(rhou, g2u)[:2]
     cd1, vd1 = corr_model.ss_baseline(rhod, g2d)[:2]
+    ecldau = eval_xc('LDA_C_PW_MOD', (rhou, 0*rhou), spin=1)[0]
+    ecldad = eval_xc('LDA_C_PW_MOD', (rhod, 0*rhod), spin=1)[0]
+    ecldao = eval_xc('LDA_C_PW_MOD', (rhou, rhod), spin=1)[0]
+    escan0 = eval_xc('MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin=1)[0]
+    escan1 = eval_xc('MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin=1)[0]
+    print(np.dot(ecldau, rhou*weights), np.dot(tstldau, rhou*weights))
+    print(np.dot(ecldad, rhod*weights), np.dot(tstldad, rhod*weights))
+    print(np.dot(ecldao, rhot*weights), np.dot(tstldao, rhot*weights))
+    print(np.dot(escan0, rhot*weights), np.dot(co0, rhot*weights))
+    print(np.dot(escan1, rhot*weights), np.dot(co1, rhot*weights))
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
@@ -422,45 +438,25 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     cd = cd1
     co = co1
     cx = co0
+    ct = cu1 + cd1 + co1
     A = 2.74
     B = 132
     sprefac = 2 * (3 * np.pi**2)**(1.0/3)
 
-    xu = np.linalg.norm(rho_data_u[1:4], axis=0) / (rho_data_u[0]**(4.0/3) + 1e-20)
-    xd = np.linalg.norm(rho_data_d[1:4], axis=0) / (rho_data_d[0]**(4.0/3) + 1e-20)
-    s2 = (g2u + 2 * g2o + g2d) / (sprefac**2 * rhot**(8.0/3) + 1e-20)
-    zu = rho_data_u[5] / (rho_data_u[0]**(5.0/3) + 1e-20) - CF
-    zd = rho_data_d[5] / (rho_data_d[0]**(5.0/3) + 1e-20) - CF
-    zu *= 2
-    zd *= 2
+    nu, nd = rhou, rhod
+    x2u = corr_model.get_x2(nu, g2u)[0]
+    x2d = corr_model.get_x2(nd, g2d)[0]
+    x2o = corr_model.get_x2((nu+nd)/2**(1.0/3), g2)[0]
+    zu = corr_model.get_z(nu, tu)[0]
+    zd = corr_model.get_z(nd, td)[0]
+    zo = corr_model.get_z((nu+nd)/2**(2.0/3), tu+td)[0]
+    s2 = x2o / sprefac**2
     Du = corr_model.get_D(rhou, g2u, tu)[0]
     Dd = corr_model.get_D(rhod, g2d, td)[0]
     Do = corr_model.get_D(rhot, g2u + 2 * g2o + g2d, tu+td)
     fDo = Do
     Do = fDo[0]
-
-    zeta = (rhou - rhod) / (rhot)
-    phi = ((1-zeta)**(2.0/3) + (1+zeta)**(2.0/3))/2
-    phi43 = ((1-zeta)**(4.0/3) + (1+zeta)**(4.0/3))/2
-    phi43 = (1 - 2.3631 * (phi43 - 1)) * (1-zeta**12)
-    chi_inf = 0.128026
-    chi = 0.72161
-    #b1c = 0.0285764
-    b1c = 0.0285764
-    gamma_eps = 0.031091
-
-    part1 = b1c * np.log(1 + (1-np.e)/np.e / (1 + 4 * chi_inf * s2)**(0.25))
-    part1 *= phi43
-    part2 = gamma_eps * phi**3 * np.log((1 - 1 / (1 + 4 * chi * s2)**(0.25)) + 1e-30)
-    epslim = part1 * (1-Do) + part2 * Do
-    exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
-    exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
-    exlda /= (rhot)
-    #amixo = 1 - 1 / (1 + A * np.log(1 + B * (epslim / exlda)))
-    amix = corr_model.get_amix(rhou, rhod, g2u, g2o, g2d, fDo)[0]
-    print(np.min(epslim / exlda), np.max(epslim / exlda))
-    print('D RANGE', np.min(Du), np.min(Dd), np.min(Do))
-    print('D RANGE', np.max(Du), np.max(Dd), np.max(Do))
+    amix = corr_model.get_amix(rhou, rhod, g2, fDo)[0]
 
     alpha_x = 0.001867
     alpha_ss, alpha_os = 0.00515088, 0.00304966
@@ -469,47 +465,36 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
 
     def gamma_func(x2, z, alpha):
         return 1 + alpha * (x2 + z)
-    for x2, z, alpha in [(xu**2, zu, alpha_ss), (xd**2, zd, alpha_ss),\
-                        (xu**2+xd**2, zu+zd, alpha_os),\
-                        (xu**2+xd**2, zu+zd, alpha_os),\
-                        (xu**2+xd**2, zu+zd, alpha_os)]:
+    for x2, z, alpha in [(x2u, zu, alpha_ss), (x2d, zd, alpha_ss),\
+                        (x2o, zo, alpha_os),\
+                        (x2o, zo, alpha_os),\
+                        (x2o, zo, alpha_os)]:
         gamma = gamma_func(x2, z, alpha)
-        dvals[start+0] = 1 / gamma - 1
-        dvals[start+1] = x2 / gamma**2
-        dvals[start+2] = z / gamma**2
-        dvals[start+3] = x2**2 / gamma**3
-        dvals[start+4] = x2 * z / gamma**3
-        dvals[start+5] = z**2 / gamma**3
+        dvals[start:start+6] = corr_model.get_separate_corrfunc_terms(x2, z, gamma)
         start += 6
-    dvals[:6] *= cu * Du
-    dvals[6:12] *= cd * Dd
-    dvals[12:18] *= co
+    dvals[:6] *= cu * Do
+    dvals[6:12] *= cd * Do
+    dvals[12:18] *= ct * Do
     dvals[18:24] *= cx
-    dvals[24:30] *= (cx - co) * (1 - Do)
+    dvals[24:30] *= (cx - ct) * (1 - Do)
     dvals = np.dot(dvals, weights)
     dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
-    cvals = np.zeros((20, weights.shape[0]))
+    cvals = np.zeros((25, weights.shape[0]))
     start = 0
     gamma_ss, gamma_os = 0.06, 0.0031
-    for x2, gamma in [(xu**2, gamma_ss), (xd**2, gamma_ss),\
-                      (xu**2+xd**2, gamma_os),\
-                      (xu**2+xd**2, gamma_os)]:
+    for x2, gamma in [(x2u, gamma_ss), (x2d, gamma_ss),\
+                      (x2o, gamma_os),\
+                      (x2o, gamma_os),\
+                      (x2o, gamma_os)]:
         u = gamma * x2 / (1 + gamma * x2)
         for i in range(5):
             cvals[start+i] = u**i
         start += 5
-    """
-    for D, gamma in [(Du, gamma_ss), (Dd, gamma_ss),\
-                     (Do, gamma_os),\
-                     ((1-Do), gamma_os)]:
-        for i in range(5):
-            cvals[start+i] = D**i * (1 - D)
-        start += 5
-    """
     cvals[:5] *= cu * Du
     cvals[5:10] *= cd * Dd
-    cvals[15:20] *= cx * (1 - Do)
-    cvals[10:15] *= co * Do
+    cvals[15:20] *= cx
+    cvals[10:15] *= ct * Do
+    cvals[20:25] *= (cx - ct) * (1 - Do)
     cvals = np.dot(cvals, weights)
     cvals = np.append(cvals[:5] + cvals[5:10], cvals[10:])
 
@@ -553,56 +538,52 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
     Eterms = np.array([Ex, Exscan])
 
     for rho, ex, c in zip([rhou, rhod, rhot, rhot, rhot], [exu, exd, exo, exo, exo],
-                          [cu * Du, cd * Dd, co, cx, (cx - co) * (1 - Do)]):
-        if isinstance(c, tuple):
-            c, fac = c
-        else:
-            fac = None
+                          [cu * Du, cd * Dd, ct * Do, cx, (cx - ct) * (1 - Do)]):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
-        Etmp = np.zeros(5)
-        x1 = (1 - Fx**6) / (1 + Fx**6)
-        for i in range(5):
-            if i == 0 and (fac is not None):
-                Etmp[i] = np.dot(c * fac, weights)
-            else:
-                Etmp[i] = np.dot(c * x1**i, weights)
-        Eterms = np.append(Eterms, Etmp)
+        E_tmp = corr_model.get_separate_xef_terms(Fx)
+        E_tmp *= c
+        E_tmp = np.dot(E_tmp, weights)
+        Eterms = np.append(Eterms, E_tmp)
 
     Fterms = np.array([])
 
     for rho, ex in zip([rhou, rhod], [exu, exd]):
             elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
             Fx = ex / elda
-            Etmp = np.zeros(5)
-            x1 = (1 - Fx**6) / (1 + Fx**6)
-            for i in range(5):
-                Etmp[i] = np.dot(elda * amix * rho / 2 * x1**i, weights)
-            Fterms = np.append(Fterms, Etmp)
+            E_tmp = corr_model.get_separate_xef_terms(Fx)
+            E_tmp *= elda * amix * rho / 2
+            E_tmp = np.dot(E_tmp, weights)
+            Fterms = np.append(Fterms, E_tmp)
+
+    Fterms2 = np.array([])
+
+    for rho, ex in zip([rhou, rhod], [exu, exd]):
+            elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
+            Fx = ex / elda
+            E_tmp = corr_model.get_separate_xef_terms(Fx)
+            E_tmp *= elda * rho / 2
+            E_tmp = np.dot(E_tmp, weights)
+            Fterms2 = np.append(Fterms2, E_tmp)
 
     xvals = np.zeros((12,weights.shape[0]))
     start = 0
-    for rho, x2, z, alpha in [(rho_data_u[0], xu**2, zu, alpha_x),\
-                              (rho_data_d[0], xd**2, zd, alpha_x)]:
+    for rho, x2, z, alpha in [(rho_data_u[0], x2u, zu, alpha_x),\
+                              (rho_data_d[0], x2d, zd, alpha_x)]:
         gamma = gamma_func(x2, z, alpha)
-        xvals[start+0] = 1 / gamma - 1
-        xvals[start+1] = x2 / gamma**2
-        xvals[start+2] = z / gamma**2
-        xvals[start+3] = x2**2 / gamma**3
-        xvals[start+4] = x2 * z / gamma**3
-        xvals[start+5] = z**2 / gamma**3
+        xvals[start:start+6] = corr_model.get_separate_corrfunc_terms(x2, z, gamma)
         xvals[start:start+6] *= LDA_FACTOR * 2**(1.0/3) * amix * rho**(4.0/3)
         start += 6
     xvals = np.dot(xvals, weights)
 
-    #                      25      10      24     12
-    return np.concatenate([Eterms, Fterms, dvals, xvals,
+    #                      25      10      24     12,    10
+    return np.concatenate([Eterms, Fterms, dvals, xvals, Fterms2,
                           [dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC):
 
-    SIZE = 25+10+24+12+3
+    SIZE = 25+10+24+12+10+3
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -738,7 +719,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'lhlikeml5.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'betaml.npy'))
     mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
     mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
     vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
@@ -785,12 +766,13 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 37:61 -- dvals
         # 61:73 -- xvals
         # 73 -- Ex exact
-        #E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-        E_c = np.zeros((mlx.shape[0],0))
-        #E_c = np.append(E_c, mlx[:,18:22], axis=1)
-        #E_c = np.append(E_c, mlx[:,23:27], axis=1)
-        #E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
-        E_c = np.append(E_c, mlx[:,37:43], axis=1)
+        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+        E_c = mlx[:,13:17]
+        #E_c = np.zeros((mlx.shape[0],0))
+        E_c = np.append(E_c, mlx[:,18:22], axis=1)
+        E_c = np.append(E_c, mlx[:,23:27], axis=1)
+        E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+        #E_c = np.append(E_c, mlx[:,37:43], axis=1)
         E_c = np.append(E_c, mlx[:,43:49], axis=1)
         E_c = np.append(E_c, mlx[:,49:55], axis=1)
         E_c = np.append(E_c, mlx[:,55:61], axis=1)
@@ -799,7 +781,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
         #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
+        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
         #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
@@ -870,7 +853,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         coef = np.dot(A, B)
         #coef *= 0
 
-        E0 = E_x[inds] + mlx[inds,2] + mlx[inds,7] + mlx[inds,12] + mlx[inds,22]
+        E0 = E_x[inds] + mlx[inds,12] + mlx[inds,22]
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
