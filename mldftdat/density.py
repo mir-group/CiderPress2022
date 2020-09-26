@@ -225,9 +225,10 @@ def get_exchange_descriptors2(analyzer, restricted = True, version = 'a'):
         _get_x_helper = _get_x_helper_b
     else:
         raise ValueError('unknown descriptor version')
-    auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
+    #auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
     nao = analyzer.mol.nao_nr()
-    auxmol = df.make_auxmol(analyzer.mol, auxbasis)
+    auxmol = df.make_auxmol(analyzer.mol, auxbasis='weigend+etb')
+    #auxmol = df.make_auxmol(analyzer.mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
