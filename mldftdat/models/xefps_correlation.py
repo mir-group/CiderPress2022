@@ -1,5 +1,6 @@
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.dft.numint5 import _eval_x_0, setup_aux
+from mldftdat.dft.numint6 import _eval_xc_0
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir
@@ -503,7 +504,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
         if exact:
             ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
         else:
-            ex = _eval_x_0(mlfunc, mol, rho_data, grid, rdm1)[0]
+            ex = _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1)[0]
+            ex += eval_xc('GGA_X_CHACHIYO', rho_data)[0]
         exu = ex
         exd = ex
         exo = ex
@@ -516,8 +518,10 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
             exu = dft_analyzer.fx_energy_density_u / (rho_data[0][0] + 1e-20)
             exd = dft_analyzer.fx_energy_density_d / (rho_data[1][0] + 1e-20)
         else:
-            exu = _eval_x_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
-            exd = _eval_x_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
+            exu = _eval_xc_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
+            exu += eval_xc('GGA_X_CHACHIYO', 2 * rho_data[0])[0]
+            exd = _eval_xc_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
+            exd += eval_xc('GGA_X_CHACHIYO', 2 * rho_data[1])[0]
         rhou = 2 * rho_data[0][0]
         rhod = 2 * rho_data[1][0]
         rhot = rho_data[0][0] + rho_data[1][0]
