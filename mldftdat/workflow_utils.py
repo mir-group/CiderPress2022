@@ -3,6 +3,9 @@ from pyscf import gto, lib
 import numpy as np
 from mldftdat.pyscf_utils import CALC_TYPES
 
+SAVE_ROOT = os.environ['MLDFTDB']
+ACCDB_DIR = os.environ.get('ACCDB')
+
 def safe_mem_cap_mb():
     return int(psutil.virtual_memory().available // 16e6)
 
