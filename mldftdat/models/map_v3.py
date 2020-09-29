@@ -32,7 +32,7 @@ def desc_and_ddesc(x):
     matrix[6] = scale**3*np.sqrt(gammax/(1 + gammax*x[0]))*np.sqrt(gamma1/(1 + gamma1*scale**6*x[3]))*x[6]
     matrix[7] = (gamma0b*(-8 + scale**3*x[7]))/(1 + gamma0b*scale**3*x[7])
     matrix[8] = (gamma0c*(-0.5 + scale**3*x[8]))/(1 + gamma0c*scale**3*x[8])
-    matrix[9] = scale**6*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2/(1 + gamma2*scale**6*x[4]))
+    matrix[9] = np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1*scale**6/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2*scale**6/(1 + gamma2*scale**6*x[4]))
     matrix[10] = scale
 
     dmatrix[0,0] = gammax/(1 + gammax*x[0])**2
@@ -137,8 +137,8 @@ def desc_and_ddesc(x):
     dmatrix[9,0] = -((gammax*scale**6*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2/(1 + gamma2*scale**6*x[4])))/(2 + 2*gammax*x[0]))
     dmatrix[9,1] = 0
     dmatrix[9,2] = 0
-    dmatrix[9,3] = -((gamma1*scale**12*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2/(1 + gamma2*scale**6*x[4])))/(2 + 2*gamma1*scale**6*x[3]))
-    dmatrix[9,4] = -((gamma2*scale**12*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2/(1 + gamma2*scale**6*x[4])))/(2 + 2*gamma2*scale**6*x[4]))
+    dmatrix[9,3] = -((gamma1*scale**6*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1*scale**6/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2*scale**6/(1 + gamma2*scale**6*x[4])))/(2 + 2*gamma1*scale**6*x[3]))
+    dmatrix[9,4] = -((gamma2*scale**6*np.sqrt(gammax/(1 + gammax*x[0]))*x[9]*np.sqrt(gamma1*scale**6/(1 + gamma1*scale**6*x[3]))*np.sqrt(gamma2*scale**6/(1 + gamma2*scale**6*x[4])))/(2 + 2*gamma2*scale**6*x[4]))
     dmatrix[9,5] = 0
     dmatrix[9,6] = 0
     dmatrix[9,7] = 0
