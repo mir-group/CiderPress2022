@@ -504,8 +504,13 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
         if exact:
             ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
         else:
-            ex = _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1)[0]
-            ex += eval_xc('GGA_X_CHACHIYO', rho_data)[0]
+            desc  = np.zeros((N, len(model.desc_list)))
+            ddesc = np.zeros((N, len(model.desc_list)))
+            xdesc = get_exchange_descriptors2(dft_analyzer, restricted=True)
+            for i, d in enumerate(model.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+            xef = model.get_F(desc)
+            ex = LDA_FACTOR * xef * rho_data[0]**(1.0/3)
         exu = ex
         exd = ex
         exo = ex
@@ -518,10 +523,17 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
             exu = dft_analyzer.fx_energy_density_u / (rho_data[0][0] + 1e-20)
             exd = dft_analyzer.fx_energy_density_d / (rho_data[1][0] + 1e-20)
         else:
-            exu = _eval_xc_0(mlfunc, mol, 2 * rho_data[0], grid, 2 * rdm1[0])[0]
-            exu += eval_xc('GGA_X_CHACHIYO', 2 * rho_data[0])[0]
-            exd = _eval_xc_0(mlfunc, mol, 2 * rho_data[1], grid, 2 * rdm1[1])[0]
-            exd += eval_xc('GGA_X_CHACHIYO', 2 * rho_data[1])[0]
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
+            xdesc_u, xdesc_d = get_exchange_descriptors2(dft_analyzer, restricted=False)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_u, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exu = LDA_FACTOR * xef * rho_data[0][0]**(1.0/3)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_d, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exd = LDA_FACTOR * xef * rho_data[1][0]**(1.0/3)
         rhou = 2 * rho_data[0][0]
         rhod = 2 * rho_data[1][0]
         rhot = rho_data[0][0] + rho_data[1][0]
