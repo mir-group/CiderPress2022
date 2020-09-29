@@ -108,7 +108,8 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
     ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
     env[bas[:,5]] = ascale
     print(np.sqrt(np.min(env[bas[:,5]])))
-    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    env[bas[:,6]] = np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
     return atm, bas, env
 
