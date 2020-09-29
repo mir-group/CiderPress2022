@@ -423,6 +423,7 @@ def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
     dedb[:,rho<1e-8] = 0
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
+    #print(dgda.shape, gr2.shape)
     dgda[:,rho<1e-8] = 0
 
     dadn = mul * a / (3 * (mul * rho / 2 + 1e-16))

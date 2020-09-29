@@ -290,12 +290,12 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     dF = [0, 0]
     dEddesc = [0, 0]
 
-    rhou = rho_data[0][0] + 1e-20
+    rhou = rho_data[0][0]
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-    tu = rho_data[0][5] + 1e-20
-    rhod = rho_data[1][0] + 1e-20
+    tu = rho_data[0][5]
+    rhod = rho_data[1][0]
     g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-    td = rho_data[1][5] + 1e-20
+    td = rho_data[1][5]
     ntup = (rhou, rhod)
     gtup = (g2u, g2d)
     ttup = (tu, td)
@@ -322,9 +322,9 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
-        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
-        F[spin][(ntup[spin]<1e-8)] = 0
-        dF[spin][(ntup[spin]<1e-8)] = 0
+        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin], ntup[spin])
+        #F[spin][(ntup[spin]<1e-8)] = 0
+        #dF[spin][(ntup[spin]<1e-8)] = 0
         exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
         vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
@@ -385,7 +385,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
 def setup_aux(mol):
     nao = mol.nao_nr()
-    auxmol = df.make_auxmol(mol, 'weigend')
+    auxmol = df.make_auxmol(mol, 'weigend+etb')
     #auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
@@ -394,12 +394,18 @@ def setup_aux(mol):
     aux_e2 = df.incore.aux_e2(mol, auxmol)
     #print(aux_e2.shape)
     # shape (naux, nao * nao)
+    """
     aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
     aux_e2 = np.ascontiguousarray(aux_e2)
     lu, piv, info = dgetrf(aug_J, overwrite_a = True)
     inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
     ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+    """
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    inv_aug_J = np.linalg.inv(aug_J)
+    ao_to_aux = np.dot(inv_aug_J, aux_e2)
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+
     return auxmol, ao_to_aux
 
 DEFAULT_CSS = [ 1.85235182e-02,  1.59240884e-03,  1.34328251e-03, -9.60218877e-06]
