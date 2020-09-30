@@ -348,7 +348,7 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
         dedb = (elda * dfdg).reshape(1, -1)
     elif l == 1:
         #dedb = 2 * elda * g * dfdg
-        dedb = elda * g * dfdg / (np.linalg.norm(g, axis=0) + 1e-10)
+        dedb = 2 * elda * g * dfdg# / (np.linalg.norm(g, axis=0) + 1e-10)
     elif l == 2:
         dedb = 2 * elda * g * dfdg / np.sqrt(5)
     elif l == -2:
@@ -361,25 +361,30 @@ def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
         raise ValueError('angular momentum code l=%d unknown' % l)
 
     rho, s, alpha = lc
-    a = np.pi * (mul * rho / 2 + 1e-6)**(2.0 / 3)
+    a = np.pi * (mul * rho / 2 + 1e-16)**(2.0 / 3)
     scale = 1
-    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    scale += fac * s**2
-    scale += 3.0 / 5 * fac * (alpha - 1)
+    scale += GG_SMUL * fac * s**2
+    scale += GG_AMUL * 0.6 * fac * (alpha - 1)
     a = a * scale
-    a[rho<1e-8] = 1e16
+    cond = a < GG_AMIN
+    da = np.exp(a[cond] / GG_AMIN - 1)
+    a[cond] = GG_AMIN * np.exp(a[cond] / GG_AMIN - 1)
 
     # (ngrid * (2l+1), naux)
+    dedb[:,rho<1e-8] = 0
     dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
     dgda = l / (2 * a) * g - gr2
     dgda[:,rho<1e-8] = 0
 
-    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     dadn = mul * a / (3 * (mul * rho / 2 + 1e-6))
     dadp = np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
     dadalpha = 0.6 * np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
     # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
+    dadn[cond] *= da
+    dadp[cond] *= da
+    dadalpha[cond] *= da
+
     v_npa = np.zeros((4, N))
     deda = np.einsum('mi,mi->i', dedb, dgda)
     v_npa[0] = deda * dadn

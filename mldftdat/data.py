@@ -12,6 +12,7 @@ from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
 from pyscf.dft.numint import eval_ao, eval_rho
+from pyscf.scf.stability import uhf_internal
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -1213,17 +1214,27 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
                     mf = setup_rks_calc(mol, FUNCTIONAL)
                     mf.xc = None
-                    mf.xc = 'GGA_X_CHACHIYO'
+                    #mf.xc = 'GGA_X_CHACHIYO'
                 else:
                     from mldftdat.dft.numint6 import setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'PBE')
-                    dm0 = mf.make_rdm1()
-                    #dm0 = None
+                    #mf = run_scf(mol, 'UKS', functional = 'PBE')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = None
-                    mf.xc = 'GGA_X_CHACHIYO'
+                    #mf.xc = 'GGA_X_CHACHIYO'
+                    mf.init_guess = 'atom'
+                    #mf.diis_start_cycle = 10
+                    from pyscf.scf.diis import ADIIS
+                    mf.DIIS = ADIIS
+                    mf.damp = 5
+                    #mf.kernel()
+                    #mo = uhf_internal(mf)
+                    #dm0 = mf.make_rdm1(mo_coeff=mo, mo_occ=mf.mo_occ)
                 mf.kernel(dm0 = dm0)
+                if mol.spin > 0:
+                    uhf_internal(mf)
                 e_tot = mf.e_tot
                 calc = mf
             else:
