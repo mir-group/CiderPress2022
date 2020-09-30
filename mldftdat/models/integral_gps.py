@@ -78,6 +78,10 @@ def xed_to_y_chachiyo(xed, rho_data):
     return y / (1 + 1e-2 * (scale-1)**2)
     #return (xed - pbex) / (ldax(rho_data[0]) - 1e-12) / (1 + 1e-2 * (scale-1)**2)
 
+def xed_to_y_chachiyo(xed, rho_data):
+    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-16)
+
 def y_to_xed_chachiyo(y, rho_data):
     yp = y * ldax(rho_data[0])
     pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
@@ -606,7 +610,7 @@ class AddEDMGPR2(EDMGPR):
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
                                else get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
+                       xed_y_converter = (xed_to_y_chachiyo, y_to_xed_chachiyo),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
