@@ -1,17 +1,21 @@
 import numpy as np
 
+Sqrt = np.sqrt
+Pi = np.pi
+Log = np.log
+
 fac = (6*np.pi**2)**(2.0/3)/(16*np.pi)
 
 def desc_and_ddesc(x):
 
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 
-    gammax = 0.5469
-    gamma1 = 0.0635
-    gamma2 = 0.0524
-    gamma0a = 0.1687
-    gamma0b = 1.0166
-    gamma0c = 0.2072
+    gammax = 0.4219
+    gamma1 = 0.0566
+    gamma2 = 0.0327
+    gamma0a = 0.3668
+    gamma0b = 0.9966
+    gamma0c = 0.2516
 
     p = x[0]
     alpha = x[1]
@@ -19,9 +23,13 @@ def desc_and_ddesc(x):
     matrix = np.zeros((11, x.shape[-1]))
     dmatrix = np.zeros((11, 11, x.shape[-1]))
 
-    scale = np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
-    dscaledp = fac/np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
-    dscaledalpha = (0.6*fac)/np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
+    #scale = np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
+    #dscaledp = fac/np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
+    #dscaledalpha = (0.6*fac)/np.sqrt(1 + 1.2*(-1 + alpha)*fac + 2*fac*p)
+
+    scale = Sqrt(1 + 0.6*(-1 + alpha)*fac + fac*p)
+    dscaledp = fac/(2.*Sqrt(1 + 0.6*(-1 + alpha)*fac + fac*p))
+    dscaledalpha = (0.3*fac)/Sqrt(1 + 0.6*(-1 + alpha)*fac + fac*p)
 
     matrix[0] = (gammax*x[0])/(1 + gammax*x[0])
     matrix[1] = -1 + 2/(1 + x[1]**2)
