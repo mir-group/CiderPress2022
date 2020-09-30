@@ -332,7 +332,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         #F = mlfunc.get_F(desc)
         # shape (N, ndesc)
         #dF = mlfunc.get_derivative(desc)
-        F, dF = mlfunc.get_F_and_derivative(desc)
+        F, dF = mlfunc.get_F_and_derivative(desc, rho_data[0])
     else:
         F = mlfunc.get_F(desc, s = contracted_desc[1])
         dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
