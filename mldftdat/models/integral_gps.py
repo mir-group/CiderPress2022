@@ -5,6 +5,7 @@ from mldftdat.models.matrix_rbf import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
+from mldftdat.pyscf_utils import GG_SMUL, GG_AMUL, GG_AMIN
 
 SCALE_FAC = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
 
@@ -52,17 +53,46 @@ def get_edmgga_descriptors(X, rho_data, num=1):
     X[:,2] = np.sinh(1 / (1 + X[:,2]**2))
     return np.arcsinh(X[:,(1,2,4,5,8,6,12,15,16,13,14)[:num]])
 
+def chachiyo_fx(s2):
+    c = 4 * np.pi / 9
+    x = c * np.sqrt(s2)
+    dx = c / (2 * np.sqrt(s2))
+    Pi = np.pi
+    mu = 8.0 / 27
+    Log = np.log
+    const = 1 / (1 + mu * s2)
+    chfx = (3*x**2 + Pi**2*Log(const + x))/((Pi**2 + 3*x)*Log(const + x))
+    dchfx = (-3*x**2*(Pi**2 + 3*x) + 3*x*(1 + x)*(2*Pi**2 + 3*x)*Log(1 + x) - 3*Pi**2*(1 + x)*Log(1 + x)**2)/((1 + x)*(Pi**2 + 3*x)**2*Log(1 + x)**2)
+    dchfx *= dx
+    chfx[s2<1e-8] = 1 + 8 * s2[s2<1e-8] / 27
+    dchfx[s2<1e-8] = 8.0 / 27
+    return chfx, dchfx
+
 def xed_to_y_chachiyo(xed, rho_data):
     rho, s, alpha = get_dft_input2(rho_data)[:3]
     fac = SCALE_FAC
-    scale = 1 + 2 * fac * s**2 + 1.2 * fac * (alpha - 1)
-    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
-    return (xed - pbex) / (ldax(rho_data[0]) - 1e-12) / (1 + 1e-3 * scale**3)
+    scale = 1 + GG_SMUL * fac * s**2 + GG_AMUL * 0.6 * fac * (alpha - 1)
+    #pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    y = get_y_from_xed(xed, rho_data[0])
+    y += 1 - chachiyo_fx(s**2)[0]
+    return y / (1 + 1e-2 * (scale-1)**2)
+    #return (xed - pbex) / (ldax(rho_data[0]) - 1e-12) / (1 + 1e-2 * (scale-1)**2)
 
 def y_to_xed_chachiyo(y, rho_data):
     yp = y * ldax(rho_data[0])
     pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
     return yp + pbex
+
+def xed_to_y_chr(xed, rho_data):
+    rho, s, alpha = get_dft_input2(rho_data)[:3]
+    fac = SCALE_FAC
+    scale = 1 + GG_SMUL * fac * s**2 + GG_AMUL * 0.6 * fac * (alpha - 1)
+    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / pbex / (1 + 1e-2 * (scale-1)**2)
+
+def y_to_xed_chr(y, rho_data):
+    pbex = eval_xc('GGA_X_CHACHIYO,', rho_data)[0] * rho_data[0]
+    return (y + 1) * pbex
 
 class PBEGPR(DFTGPR):
 
@@ -327,18 +357,18 @@ def get_big_desc3(X, num):
     gamma0b = 1.0166
     gamma0c = 0.2072
 
-    #gammax = 0.682
-    #gamma1 = 0.01552
-    #gamma2 = 0.01617
-    #gamma0a = 0.64772
-    #gamma0b = 0.44065
-    #gamma0c = 0.6144
+    gammax = 0.4219
+    gamma1 = 0.0566
+    gamma2 = 0.0327
+    gamma0a = 0.3668
+    gamma0b = 0.9966
+    gamma0c = 0.2516
 
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    scale = np.sqrt(1 + 2 * fac * p + 1.2 * fac * (alpha - 1))
+    scale = np.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
     desc = np.zeros((X.shape[0], 12))
     refs = gammax / (1 + gammax * s**2)
@@ -558,24 +588,25 @@ class AddEDMGPR2(EDMGPR):
             #rbf = PartialARBF(order = order, length_scale = [0.388, 0.159, 0.205, 0.138, 0.134, 0.12, 0.172, 0.103, 0.126][:num_desc-1],
             #rbf = PartialARBF(order = order, length_scale = [1.8597, 0.4975, 0.6506, \
             #             0.8821, 1.2929, 0.8559, 0.8274, 0.2809, 0.8953][:num_desc-1],
-            rbf = PartialARBF(order = order, length_scale = [0.421, 0.127, 0.2, 0.178, 0.229, 0.197, 0.458, 0.0518, 0.196][:num_desc-1],
-                         scale = [0.25100654, 0.01732103, 0.02348104],
-                         #scale = [0.33, 0.33/9, 0.33/35],
+            rbf = PartialARBF(order = order, length_scale = [2*x for x in [0.421, 0.127, 0.2, 0.178, 0.229, 0.197, 0.458, 2*0.0518, 0.196][:num_desc-1]],
+                         #scale = [0.25100654, 0.01732103, 0.02348104],
+                         scale = [0.02, 0.02, 0.02],
                          #scale = [0.296135,  0.0289514, 0.1114619],
-                         length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
-                         #length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
+                         #length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
+                         #length_scale_bounds='fixed', start = 2)
+                         length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 46.8, decay_rate_bounds='fixed')
-        rhok2 = FittedDensityNoise(decay_rate = 600.0, decay_rate_bounds='fixed')
-        wk = WhiteKernel(noise_level=1.0e-6, noise_level_bounds='fixed')#noise_level_bounds=(1e-06, 1.0e5))
+        rhok2 = FittedDensityNoise(decay_rate = 1000.0, decay_rate_bounds='fixed')
+        wk = WhiteKernel(noise_level=2.5e-5, noise_level_bounds='fixed')#noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.000448, noise_level_bounds='fixed')#=(1e-05, 1.0e5))
-        wk2 = WhiteKernel(noise_level = 0.02, noise_level_bounds='fixed')#(1e-05, 1.0e5))
-        cov_kernel = rbf * SingleRBF(length_scale=0.167, index = 1, length_scale_bounds='fixed')
-        noise_kernel = wk + wk1 * rhok1# + wk2 * Exponentiation(rhok2, 2)
+        wk2 = WhiteKernel(noise_level = 0.0064, noise_level_bounds='fixed')#(1e-05, 1.0e5))
+        cov_kernel = rbf * SingleRBF(length_scale=0.3, index = 1)#, length_scale_bounds='fixed')
+        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
                                else get_rho_and_edmgga_descriptors,
-                       xed_y_converter = (xed_to_y_chachiyo, y_to_xed_chachiyo),
+                       xed_y_converter = (xed_to_y_lda, y_to_xed_lda),
                        init_kernel = init_kernel, use_algpr = use_algpr)
 
     def is_uncertain(self, x, y, threshold_factor = 2, low_noise_bound = 0.002):
