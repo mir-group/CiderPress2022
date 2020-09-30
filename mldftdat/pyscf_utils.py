@@ -23,8 +23,8 @@ SCF_TYPES = {
     'UKS'  : dft.UKS
 }
 
-GG_SMUL = 2.0
-GG_AMUL = 2.0
+GG_SMUL = 1.0
+GG_AMUL = 1.0
 GG_AMIN = 1.0 / 18
 
 def mol_from_ase(atoms, basis, spin = 0, charge = 0):
