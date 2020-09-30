@@ -7,6 +7,7 @@ from torch import nn
 from math import pi, log
 from mldftdat.models.agp import NAdditiveStructureKernel, AQRBF
 from gpytorch.kernels.additive_structure_kernel import AdditiveStructureKernel
+from mldftdat.pyscf_utils import GG_SMUL, GG_AMUL
 
 # based on https://github.com/cornellius-gp/gpytorch/blob/master/examples/06_PyTorch_NN_Integration_DKL/KISSGP_Deep_Kernel_Regression_CUDA.ipynb
 
@@ -85,7 +86,7 @@ class FeatureNormalizer(torch.nn.Module):
         p, alpha = X[:,1]**2, X[:,2]
 
         fac = (6 * pi**2)**(2.0/3) / (16 * pi)
-        scale = torch.sqrt(1 + 2 * fac * p + 1.2 * fac * (alpha - 1))
+        scale = 1#torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
         gammax = torch.exp(self.gammax)
         gamma1 = torch.exp(self.gamma1)
