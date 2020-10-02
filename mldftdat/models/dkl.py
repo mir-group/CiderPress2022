@@ -29,14 +29,12 @@ class Predictor(mldftdat.models.nn.Predictor):
 class FeatureExtractor(torch.nn.Sequential):
     def __init__(self):
         super(FeatureExtractor, self).__init__()
-        self.add_module('linear1', torch.nn.Linear(421, 400))
-        self.add_module('celu1', torch.nn.CELU())
-        self.add_module('linear2', torch.nn.Linear(400, 200))
-        self.add_module('celu2', torch.nn.CELU())
-        self.add_module('linear3', torch.nn.Linear(200, 50))
-        self.add_module('celu3', torch.nn.CELU())
-        self.add_module('linear4', torch.nn.Linear(50, 3))
-        self.add_module('sigmoid4', torch.nn.Sigmoid())
+        self.add_module('linear1', torch.nn.Linear(10, 6))
+        self.add_module('sigmoid1', torch.nn.Sigmoid())
+        self.add_module('linear2', torch.nn.Linear(6, 3))
+        self.add_module('sigmoid2', torch.nn.Sigmoid())
+        self.add_module('linear3', torch.nn.Linear(3, 3))
+        self.add_module('sigmoid3', torch.nn.Sigmoid())
 
 class GPRModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
@@ -44,11 +42,13 @@ class GPRModel(gpytorch.models.ExactGP):
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=3),
-            num_dims = 3, grid_size = 20
+            num_dims = 3, grid_size = 16
         ))
         self.feature_extractor = FeatureExtractor()
+        self.feature_normalizer = FeatureNormalizer(ndim=10)
 
     def forward(self, x):
+        x = self.feature_normalizer(x)
         projected_x = self.feature_extractor(x)
         mean_x = self.mean_module(projected_x)
         covar_x = self.covar_module(projected_x)
@@ -86,7 +86,7 @@ class FeatureNormalizer(torch.nn.Module):
         p, alpha = X[:,1]**2, X[:,2]
 
         fac = (6 * pi**2)**(2.0/3) / (16 * pi)
-        scale = 1#torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
+        scale = torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
         gammax = torch.exp(self.gammax)
         gamma1 = torch.exp(self.gamma1)
@@ -96,22 +96,22 @@ class FeatureNormalizer(torch.nn.Module):
         gamma0c = torch.exp(self.gamma0b)
 
         refs = gammax / (1 + gammax * p)
-        ref0a = gamma0a / (1 + gamma0a * X[:,4] * scale**3)
-        ref0b = gamma0b / (1 + gamma0b * X[:,15] * scale**3)
-        ref0c = gamma0c / (1 + gamma0c * X[:,16] * scale**3)
-        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
-        ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+        ref0a = gamma0a / (1 + gamma0a * X[:,4])
+        ref0b = gamma0b / (1 + gamma0b * X[:,15])
+        ref0c = gamma0c / (1 + gamma0c * X[:,16])
+        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2)
+        ref2 = gamma2 / (1 + gamma2 * X[:,8])
 
         d1 = p * refs
         d2 = 2 / (1 + alpha**2) - 1.0
-        d3 = (X[:,4] * scale**3 - 2.0) * ref0a
-        d4 = X[:,5]**2 * scale**6 * ref1
-        d5 = X[:,8] * scale**6 * ref2
-        d6 = X[:,12] * scale**3 * refs * torch.sqrt(ref2)
-        d7 = X[:,6] * scale**3 * torch.sqrt(refs) * torch.sqrt(ref1)
-        d8 = (X[:,15] * scale**3 - 8.0) * ref0b
-        d9 = (X[:,16] * scale**3 - 0.5) * ref0c
-        d10 = (X[:,13] * scale**6) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
+        d3 = (X[:,4] - 2.0 / scale**3) * ref0a
+        d4 = X[:,5]**2 * ref1
+        d5 = X[:,8] * ref2
+        d6 = X[:,12] * refs * torch.sqrt(ref2)
+        d7 = X[:,6] * torch.sqrt(refs) * torch.sqrt(ref1)
+        d8 = (X[:,15] - 8.0 / scale**3) * ref0b
+        d9 = (X[:,16] - 0.5 / scale**3) * ref0c
+        d10 = (X[:,13]) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
         #d11 = (X[:,14] * scale**9) * torch.sqrt(ref2) * ref1
 
         return torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9, d10)[:self.ndim], dim = 1)
@@ -315,6 +315,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
     elif model_type == 'BIG':
         print('BIG MODEL')
         model = BigGPR(train_x, train_y, likelihood, ndim = 10)
+    elif model_type == 'BIG2':
+        model = GPRModel(train_x, train_y, likelihood)
     elif model_type == 'AQRBF':
         model = AQGPR(train_x, train_y, likelihood, ndim = 10)
     elif model_type == 'CORR':
