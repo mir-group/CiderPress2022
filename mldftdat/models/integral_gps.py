@@ -406,32 +406,39 @@ def get_big_desc5(X, num):
     gamma0b = 0.8318
     gamma0c = 0.3535
 
+    gammax =  0.023363456685874712
+    gamma1 =  0.0419231549751321
+    gamma2 =  0.01778256399976796
+    gamma0a =  0.6751313483086911
+    gamma0b =  1.6063456594287293
+    gamma0c =  0.19782664430722932
+
     s = X[:,1]
     p, alpha = X[:,1]**2, X[:,2]
 
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    scale = 1#np.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
+    scale = np.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
     desc = np.zeros((X.shape[0], 12))
     refs = gammax / (1 + gammax * s**2)
-    ref0a = gamma0a / (1 + X[:,4] * scale**3 * gamma0a)
-    ref0b = gamma0b / (1 + X[:,15] * scale**3 * gamma0b)
-    ref0c = gamma0c / (1 + X[:,16] * scale**3 * gamma0c)
-    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
-    ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+    ref0a = gamma0a / (1 + X[:,4] * gamma0a)
+    ref0b = gamma0b / (1 + X[:,15] * gamma0b)
+    ref0c = gamma0c / (1 + X[:,16] * gamma0c)
+    ref1 = gamma1 / (1 + gamma1 * X[:,5]**2)
+    ref2 = gamma2 / (1 + gamma2 * X[:,8])
 
     desc[:,0] = X[:,0]
     desc[:,1] = s**2 * refs
     desc[:,2] = 2 / (1 + alpha**2) - 1.0
-    desc[:,3] = (X[:,4] * scale**3 - 2.0) * ref0a
-    desc[:,4] = X[:,5]**2 * scale**6 * ref1
-    desc[:,5] = X[:,8] * scale**6 * ref2
-    desc[:,6] = X[:,12] * scale**3 * refs * np.sqrt(ref2)
-    desc[:,7] = X[:,6] * scale**3 * np.sqrt(refs) * np.sqrt(ref1)
-    desc[:,8] = (X[:,15] * scale**3 - 8.0) * ref0b
-    desc[:,9] = (X[:,16] * scale**3 - 0.5) * ref0c
-    desc[:,10] = (X[:,13] * scale**6) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
-    desc[:,11] = (X[:,14] * scale**9) * np.sqrt(ref2) * ref1
+    desc[:,3] = (X[:,4] - 2.0 / scale**3) * ref0a
+    desc[:,4] = X[:,5]**2 * ref1
+    desc[:,5] = X[:,8] * ref2
+    desc[:,6] = X[:,12] * refs * np.sqrt(ref2)
+    desc[:,7] = X[:,6] * np.sqrt(refs) * np.sqrt(ref1)
+    desc[:,8] = (X[:,15] - 8.0 / scale**3) * ref0b
+    desc[:,9] = (X[:,16] - 0.5 / scale**3) * ref0c
+    desc[:,10] = (X[:,13]) * np.sqrt(refs) * np.sqrt(ref1) * np.sqrt(ref2)
+    desc[:,11] = (X[:,14]) * np.sqrt(ref2) * ref1
     return desc[:,:num+1]
 
 
@@ -630,20 +637,21 @@ class AddEDMGPR2(EDMGPR):
             #rbf = PartialARBF(order = order, length_scale = [0.388, 0.159, 0.205, 0.138, 0.134, 0.12, 0.172, 0.103, 0.126][:num_desc-1],
             #rbf = PartialARBF(order = order, length_scale = [1.8597, 0.4975, 0.6506, \
             #             0.8821, 1.2929, 0.8559, 0.8274, 0.2809, 0.8953][:num_desc-1],
-            rbf = PartialARBF(order = order, length_scale = [2*x for x in [0.421/2, 0.127, 0.2, 0.178, 0.229, 0.197, 0.458, 2*0.0518, 0.196][:num_desc-1]],
+            rbf = PartialARBF(order = order, length_scale = [0.3, 2*0.127, 0.123, 0.132, \
+                         0.147, 0.17, 2*0.305, 2*0.0609, 0.154][:num_desc-1],
                          #scale = [0.25100654, 0.01732103, 0.02348104],
-                         scale = [0.02, 0.02, 0.02],
+                         scale = [5e-2, 5e-2, 0.02],
                          #scale = [0.296135,  0.0289514, 0.1114619],
                          #length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
                          #length_scale_bounds='fixed', start = 2)
                          length_scale_bounds=(1.0e-5, 1.0e5), start = 2)
         rhok1 = FittedDensityNoise(decay_rate = 46.8, decay_rate_bounds='fixed')
-        rhok2 = FittedDensityNoise(decay_rate = 1000.0, decay_rate_bounds='fixed')
+        rhok2 = FittedDensityNoise(decay_rate = 1e6, decay_rate_bounds='fixed')
         wk = WhiteKernel(noise_level=2.5e-5, noise_level_bounds='fixed')#noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.000448, noise_level_bounds='fixed')#=(1e-05, 1.0e5))
-        wk2 = WhiteKernel(noise_level = 0.0064, noise_level_bounds='fixed')#(1e-05, 1.0e5))
+        wk2 = WhiteKernel(noise_level = 0.1, noise_level_bounds='fixed')#(1e-05, 1.0e5))
         cov_kernel = rbf * SingleRBF(length_scale=0.12, index = 1)#, length_scale_bounds='fixed')
-        noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+        noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2# Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,
                        descriptor_getter = get_rho_and_edmgga_descriptors14 if norm_feat\
