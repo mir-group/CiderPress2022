@@ -349,7 +349,7 @@ def store_mn_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     np.save(FNAME, X)
 
 
-def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
+def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
 
     from mldftdat.models import map_c6
 
@@ -597,7 +597,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact = False):
                           [dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
-                                IS_RESTRICTED_LIST, MLFUNC):
+                                IS_RESTRICTED_LIST, MLFUNC,
+                                exact=True):
 
     SIZE = 25+10+24+12+10+3
     X = np.zeros([0,SIZE])
@@ -614,7 +615,7 @@ def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
         sl_contribs = get_full_contribs(dft_dir, is_restricted,
-                                       MLFUNC)
+                                        MLFUNC, exact=exact)
 
         X = np.vstack([X, sl_contribs])
 
