@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
 from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
-import os
+import os, json
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
@@ -48,7 +48,7 @@ def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
     diff = np.abs(vals1 - vals2)**exponent
     return np.dot(diff, weights)**(1.0/exponent)
 
-def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.4):
+def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
     weights = grid.weights.copy()
     for atom in mol._atom:
         coord = np.array(atom[1])
@@ -1217,18 +1217,19 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     #mf.xc = 'GGA_X_CHACHIYO'
                 else:
                     from mldftdat.dft.numint6 import setup_uks_calc
-                    #mf = run_scf(mol, 'UKS', functional = 'PBE')
+                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
                     #dm0 = mf.make_rdm1()
                     dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
                     mf = setup_uks_calc(mol, FUNCTIONAL)
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
-                    mf.init_guess = 'atom'
+                    #mf.init_guess = 'atom'
                     #mf.diis_start_cycle = 10
-                    from pyscf.scf.diis import ADIIS
-                    mf.DIIS = ADIIS
-                    mf.damp = 5
+                    #from pyscf.scf.diis import ADIIS
+                    #mf.DIIS = ADIIS
+                    #mf.damp = 5
+                    #mf.conv_tol = 1e-7
                     #mf.kernel()
                     #mo = uhf_internal(mf)
                     #dm0 = mf.make_rdm1(mo_coeff=mo, mo_occ=mf.mo_occ)
@@ -1337,6 +1338,12 @@ def get_run_total_energy(dirname):
     with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
         data = json.load(f)
     return data['e_tot']
+
+default_return_data = ['e_tot', 'nelectron']
+def get_run_data(dirname, return_data=default_return_data):
+    with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    return {name : data.get(name) for name in return_data}
 
 def get_accdb_data(formula, FUNCTIONAL, BASIS):
 

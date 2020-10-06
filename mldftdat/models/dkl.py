@@ -86,7 +86,7 @@ class FeatureNormalizer(torch.nn.Module):
         p, alpha = X[:,1]**2, X[:,2]
 
         fac = (6 * pi**2)**(2.0/3) / (16 * pi)
-        scale = torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
+        #scale = torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
         gammax = torch.exp(self.gammax)
         gamma1 = torch.exp(self.gamma1)
@@ -104,13 +104,13 @@ class FeatureNormalizer(torch.nn.Module):
 
         d1 = p * refs
         d2 = 2 / (1 + alpha**2) - 1.0
-        d3 = (X[:,4] - 2.0 / scale**3) * ref0a
+        d3 = X[:,4] * ref0a - gamma0a * 2 / (1 + gamma0a * 2)
         d4 = X[:,5]**2 * ref1
         d5 = X[:,8] * ref2
         d6 = X[:,12] * refs * torch.sqrt(ref2)
         d7 = X[:,6] * torch.sqrt(refs) * torch.sqrt(ref1)
-        d8 = (X[:,15] - 8.0 / scale**3) * ref0b
-        d9 = (X[:,16] - 0.5 / scale**3) * ref0c
+        d8 = X[:,15] * ref0b - gamma0b * 8 / (1 + gamma0b * 8)
+        d9 = X[:,16] * ref0c - gamma0c * 0.5 / (1 + gamma0c * 0.5)
         d10 = (X[:,13]) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
         #d11 = (X[:,14] * scale**9) * torch.sqrt(ref2) * ref1
 
