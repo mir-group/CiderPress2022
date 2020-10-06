@@ -161,7 +161,7 @@ class MLSCFCalc(FiretaskBase):
     optional_params = ['spin', 'charge', 'max_conv_tol',\
                        'mlfunc_c_file']
 
-    DEFAULT_MAX_CONV_TOL = 1e-7
+    DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])

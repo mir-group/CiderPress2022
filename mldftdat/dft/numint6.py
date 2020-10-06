@@ -10,6 +10,7 @@ from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
 import scipy.linalg
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
+from scipy.linalg import cho_factor, cho_solve
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
 from mldftdat.dft.correlation import eval_custom_corr, nr_rks_vv10
@@ -242,8 +243,8 @@ class NLNumInt(pyscf_numint.NumInt):
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
                                       (rdm1, rdm1))
-            vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
-                   vxc[2][:,0], vxc[3][:,0], vxc[4][:,:,0], vxc[5][0,:,:]]
+            vxc = [vxc[0][:,1], 0.5 * vxc[1][:,2] + 0.25 * vxc[1][:,1],\
+                   vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1], vxc[5][1,:,:]]
         else:
             print('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
@@ -322,7 +323,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
-        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin], ntup[spin])
+        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin], 2*ntup[spin])
         #F[spin][(ntup[spin]<1e-8)] = 0
         #dF[spin][(ntup[spin]<1e-8)] = 0
         exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
@@ -401,9 +402,15 @@ def setup_aux(mol):
     inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
     ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
     """
+    """
     aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
     inv_aug_J = np.linalg.inv(aug_J)
     ao_to_aux = np.dot(inv_aug_J, aux_e2)
+    ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+    """
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    c_and_lower = cho_factor(aug_J)
+    ao_to_aux = cho_solve(c_and_lower, aux_e2)
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
 
     return auxmol, ao_to_aux

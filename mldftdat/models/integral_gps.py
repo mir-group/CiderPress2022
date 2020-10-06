@@ -690,22 +690,22 @@ class AddEDMGPR2(EDMGPR):
             #             0.8821, 1.2929, 0.8559, 0.8274, 0.2809, 0.8953][:num_desc-1],
             #rbf = PartialARBF(order = order, length_scale = [0.3, 2*0.127, 0.123, 0.132, \
             #             0.147, 0.17, 2*0.305, 2*0.0609, 0.154][:num_desc-1],
-            rbf = PartialARBF(order = order, length_scale = [0.4, 0.2135, \
-                         0.3494, 0.2396, 0.3231, 0.3301, 0.1146, 0.2129, 0.2809][:num_desc-1],
+            rbf = PartialARBF(order = order, length_scale = [0.5, 0.2040, 0.3108, \
+                         0.2987, 0.5127, 0.4741, 0.1140, 0.2166, 0.4969][:num_desc-1],
                          #scale = [0.25100654, 0.01732103, 0.02348104],
-                         scale = [1e-2, 1e-2, 1e-2],
+                         scale = [1e-5, 1e-5, 1e-2],
                          #scale = [0.296135,  0.0289514, 0.1114619],
                          #length_scale_bounds='fixed', scale_bounds='fixed', start = 2)
                          #length_scale_bounds='fixed', start = 2)
                          #length_scale_bounds=(1.0e-2, 1.0e1), start = 2)
-                         length_scale_bounds=(1.0e-1, 1.0e1), scale_bounds=(1e-5, 1.0e1),
+                         length_scale_bounds=(6e-2, 1.0e0), scale_bounds=(1e-5, 1.0e0),
                          active_dims=[2,3,4,5,6,7,8,9,10])
         rhok1 = FittedDensityNoise(decay_rate = 46.8, decay_rate_bounds='fixed')
         rhok2 = FittedDensityNoise(decay_rate = 1e6, decay_rate_bounds='fixed')
-        wk = WhiteKernel(noise_level=2.5e-6, noise_level_bounds=(1e-06, 1.0e5))
+        wk = WhiteKernel(noise_level=1e-6, noise_level_bounds=(1e-06, 1.0e5))
         wk1 = WhiteKernel(noise_level = 0.000418)#, noise_level_bounds='fixed')#=(1e-05, 1.0e5))
         wk2 = WhiteKernel(noise_level = 0.168)#, noise_level_bounds='fixed')#(1e-05, 1.0e5))
-        cov_kernel = rbf * SingleRBF(length_scale=0.2, index = 1)#, length_scale_bounds='fixed')
+        cov_kernel = rbf * SingleRBF(length_scale=0.3, index = 1)#, length_scale_bounds='fixed')
         noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2# Exponentiation(rhok2, 2)
         init_kernel = cov_kernel + noise_kernel
         super(EDMGPR, self).__init__(num_desc,

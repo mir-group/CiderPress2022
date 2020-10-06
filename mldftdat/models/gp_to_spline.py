@@ -38,13 +38,15 @@ class Evaluator():
         self.get_descriptors = get_descriptors
         self.num = num
 
-    def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0):
+    def predict_from_desc(self, X, max_order = 3, vec_eval = False, subind = 0, min_order = 0):
         res = np.zeros(X.shape[0])
         if vec_eval:
             dres = np.zeros(X.shape)
         #print(np.max(X, axis=0))
         #print(np.min(X, axis=0))
         for t in range(self.nterms):
+            if type(self.ind_sets[t]) != int and len(self.ind_sets[t]) < min_order:
+                continue
             if (type(self.ind_sets[t]) == int) or len(self.ind_sets[t]) <= max_order:
                 #print(self.scale[t], self.ind_sets[t])
                 if subind > 0:
@@ -206,7 +208,7 @@ class EvaluatorSum():
         return self.y_to_xed(F, rho_data_u, rho_data_d)
 
 
-def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
+def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = None):
     print(length_scale, bound)
     mini = np.min(x) - buff
     maxi = np.max(x) + buff
@@ -214,6 +216,8 @@ def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None):
         mini, maxi = bound[0], bound[1]
     ran = maxi - mini
     ngrid = max(int(density * ran / length_scale) + 1, 3)
+    if max_ngrid is not None and ngrid > max_ngrid:
+        ngrid = max_ngrid
     return (mini, maxi, ngrid)
 
 def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = None,
@@ -239,21 +243,27 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
     aqrbf = gpr.gp.kernel_.k1.k1
     gradk = gpr.gp.kernel_.k1.k2
     if version == 'a':
-        dims = [get_dim(d0, gradk.length_scale, density = 4, bound = (0,1))]
+        dims = [get_dim(d0, gradk.length_scale, density = 6, bound = (0,1))]
     else:
-        dims = [get_dim(d0, gradk.length_scale, density = 4, bound = (0,np.max(d0)*2))]
+        dims = [get_dim(d0, gradk.length_scale, density = 6, bound = (0,np.max(d0)*2))]
     if isinstance(aqrbf, RBF):
         ndim, length_scale, scale = qarbf_args(gpr.gp.kernel_.k1.k1)
         scale = np.array(scale)
     else:
         scale = aqrbf.scale
     #dims = [(0, 1, 60)]
+    center0a = 0.48470667994514244
+    center0b = 0.8980790815244916
+    center0c = 0.15820823165989775
     bounds = [(0, 1),\
               (-1,1),\
               #(-2*0.5,1),\
               #(-2*0.1002,1),\
               #(-2*0.2167,1),\
-              (-2*0.1688,1),\
+              #(-2*0.1688,1),\
+              #(-2*0.3668,1),\
+              #(-2*0.4658,1),\
+              (-center0a,1-center0a),\
               (0,1),\
               (0,1),\
               (-1,1),\
@@ -261,17 +271,23 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
               #(-8*0.125,1),\
               #(-8*0.8350,1),\
               #(-8*1.0937,1),\
-              (-8*1.0167,1),\
+              #(-8*1.0167,1),\
+              #(-8*0.9966,1),\
+              #(-8*0.8318,1),\
+              (-center0b,1-center0b),\
               #(-0.5*2.0,1),\
               #(-0.5*0.2483,1),\
               #(-0.5*0.2365,1),\
-              (-0.5*0.2073,1),\
+              #(-0.5*0.2073,1),\
+              #(-0.5*0.2516,1),\
+              #(-0.5*0.3535,1),\
+              (-center0c,1-center0c),\
               (-1,1),
               (-1,1)][:d1.shape[1]+1]
     if version != 'a':
         bounds[0] = (0, np.max(d0) * 2)
     for i in range(X.shape[1] - 2):
-        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound=bounds[i+1]) )
+        dims.append( get_dim(d1[:,i], aqrbf.length_scale[i], density = 4, bound=bounds[i+1], max_ngrid=100) )
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(X.shape[1]-1)]
     k0s = []
@@ -279,7 +295,7 @@ def get_mapped_gp_evaluator(gpr, test_x = None, test_y = None, test_rho_data = N
     diff = (d0[:,np.newaxis] - grid[0][np.newaxis,:]) / gradk.length_scale
     k0s.append(np.exp(-0.5 * diff**2))
     for i in range(X.shape[1] - 2):
-        print(aqrbf.length_scale[i])
+        print(aqrbf.length_scale[i], np.min(d1[:,i]), np.max(d1[:,i]))
         diff = (d1[:,i:i+1] - grid[i+1][np.newaxis,:]) / aqrbf.length_scale[i]
         k0s.append(np.exp(-0.5 * diff**2))
     funcps = [np.dot(alpha, k0s[0])]
