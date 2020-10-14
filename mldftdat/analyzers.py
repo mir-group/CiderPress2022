@@ -22,7 +22,7 @@ class ElectronAnalyzer(ABC):
     calc_class = None
     calc_type = None
 
-    def __init__(self, calc, require_converged=True, max_mem=None):
+    def __init__(self, calc, require_converged=True, max_mem=None, grid_level = 3):
         # max_mem in MB
         if not isinstance(calc, self.calc_class):
             raise ValueError('Calculation must be instance of {}.'.format(self.calc_class))
@@ -35,6 +35,7 @@ class ElectronAnalyzer(ABC):
         self.conv_tol = self.calc.conv_tol
         self.converged = calc.converged
         self.max_mem = max_mem
+        self.grid_level = grid_level
         print('PRIOR TO POST PROCESS', psutil.virtual_memory().available // 1e6)
         self.post_process()
         print('FINISHED POST PROCESS', psutil.virtual_memory().available // 1e6)
@@ -106,6 +107,9 @@ class ElectronAnalyzer(ABC):
     def post_process(self):
         # The child post process function must set up the RDMs
         self.grid = get_grid(self.mol)
+        if self.grid_level != 3:
+            self.grid.level = self.grid_level
+            self.grid.kernel()
 
         self.e_tot = self.calc.e_tot
         self.mo_coeff = self.calc.mo_coeff
