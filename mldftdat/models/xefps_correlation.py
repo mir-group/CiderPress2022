@@ -744,17 +744,23 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
     mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
+
+    aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
+
+
     valset_bools_init = np.array([mol['valset'] for mol in mols])
+    valset_bools_init = np.append(valset_bools_init,
+                        np.zeros(len(mols), valset_bools_init.dtype))
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
@@ -778,41 +784,45 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     print(formulas, Z_to_ind)
 
     for i in range(num_vv10):
-        #E_vv10 = vv10[:,i]
-        E_dft = etot[:,0]
-        E_ccsd = etot[:,1]
-        E_x = mlx[:,0]
-        #E_x = mnc[:,-1]
-        E_xscan = mlx[:,1]
-        #print(E_x)
-        #print(E_xscan)
-        #print(E_x - E_xscan)
-        #print(E_ccsd - E_dft)
-        #print(E_vv10)
-        # 0, 1 -- Ex pred and Exscan
-        # 2:27 -- Eterms
-        # 27:37 -- Fterms
-        # 37:61 -- dvals
-        # 61:73 -- xvals
-        # 73 -- Ex exact
-        E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-        E_c = mlx[:,13:17]# - mlx[:,3:7] - mlx[:,8:12]
-        #E_c = np.zeros((mlx.shape[0],0))
-        E_c = np.append(E_c, mlx[:,18:22], axis=1)
-        E_c = np.append(E_c, mlx[:,23:27], axis=1)
-        E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
-        #E_c = np.append(E_c, mlx[:,37:43], axis=1)
-        E_c = np.append(E_c, mlx[:,43:49], axis=1)
-        E_c = np.append(E_c, mlx[:,49:55], axis=1)
-        E_c = np.append(E_c, mlx[:,55:61], axis=1)
-        E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
-        print("SHAPE", E_c.shape)
 
-        #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
-        diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
-        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
-        #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+        def get_terms(etot, mlx, vv10=None):
+            if vv10 is not None:
+                E_vv10 = vv10[:,i]
+            E_dft = etot[:,0]
+            E_ccsd = etot[:,1]
+            E_x = mlx[:,0]
+            E_xscan = mlx[:,1]
+            # 0, 1 -- Ex pred and Exscan
+            # 2:27 -- Eterms
+            # 27:37 -- Fterms
+            # 37:61 -- dvals
+            # 61:73 -- xvals
+            # 73 -- Ex exact
+            E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
+            E_c = mlx[:,13:17]# - mlx[:,3:7] - mlx[:,8:12]
+            #E_c = np.zeros((mlx.shape[0],0))
+            E_c = np.append(E_c, mlx[:,18:22], axis=1)
+            E_c = np.append(E_c, mlx[:,23:27], axis=1)
+            E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+            #E_c = np.append(E_c, mlx[:,37:43], axis=1)
+            E_c = np.append(E_c, mlx[:,43:49], axis=1)
+            E_c = np.append(E_c, mlx[:,49:55], axis=1)
+            E_c = np.append(E_c, mlx[:,55:61], axis=1)
+            E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
+            print("SHAPE", E_c.shape)
+
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
+            diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+
+            return E_c, diff, E_ccsd, E_dft
+
+        E_c, diff, E_ccsd, E_dft = get_terms(etot, mlx)
+        E_c2, diff2, _, _ = get_terms(aetot, amlx)
+        E_c = np.append(E_c, E_c2, axis=0)
+        diff = np.append(diff, diff2)
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -844,7 +854,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                 #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 weights.append(0.01 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
-
+        for i in range(len(mols), y.shape[0]):
+            weights.append(1 / mols[i].nelectron)
 
         weights = np.array(weights)
         
