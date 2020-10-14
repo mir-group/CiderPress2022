@@ -476,7 +476,8 @@ class SCFCalcConvergenceFixer(FiretaskBase):
 
         max_iter = 50 # extra safety catch
         iter_step = 0
-        diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        #diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        diis_types = [scf.diis.ADIIS, scf.diis.EDIIS, scf.diis.SCF_DIIS, None]
         init_guess_types = ['minao', 'atom', '1e']
         diis_options_list = [(8, 1), (14, 4)]
         while not calc.converged and calc.conv_tol <= max_conv_tol\

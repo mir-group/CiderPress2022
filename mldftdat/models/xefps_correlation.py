@@ -13,7 +13,8 @@ import numpy as np
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 DEFAULT_FUNCTIONAL = 'SCAN'
-DEFAULT_BASIS = 'aug-cc-pvtz'
+#DEFAULT_BASIS = 'aug-cc-pvtz'
+DEFAULT_BASIS = 'def2-qzvppd'
 
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
@@ -598,7 +599,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC,
-                                exact=True):
+                                exact=True, BASIS=DEFAULT_BASIS,
+                                mol_id_full=False):
 
     SIZE = 25+10+24+12+10+3
     X = np.zeros([0,SIZE])
@@ -607,11 +609,13 @@ def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
 
         print(mol_id)
 
-        if is_restricted:
-            dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS,
+        if mol_id_full:
+            dft_dir = mol_id
+        elif is_restricted:
+            dft_dir = get_save_dir(ROOT, 'RKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
         else:
-            dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
+            dft_dir = get_save_dir(ROOT, 'UKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
         sl_contribs = get_full_contribs(dft_dir, is_restricted,
@@ -639,7 +643,8 @@ def get_etot_contribs(dft_dir, ccsd_dir, restricted):
 
     return np.array([E_pbe, E_ccsd])
 
-def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
+def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
+                                 mol_id_full=False):
 
     # PBE, CCSD
     y = np.zeros([0, 2])
@@ -647,7 +652,10 @@ def store_total_energies_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST):
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
         print(mol_id)
 
-        if is_restricted:
+        if mol_id_full:
+            dft_dir = mol_id[0]
+            ccsd_dir = mol_id[1]
+        elif is_restricted:
             dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS,
                                    mol_id, functional = DEFAULT_FUNCTIONAL)
             ccsd_dir = get_save_dir(ROOT, 'CCSD', DEFAULT_BASIS, mol_id)
@@ -700,7 +708,7 @@ DEFAULT_NLC_COEFS = [[5.9, 0.0093], [6.0, 0.01], [6.3, 0.0089],\
                      [9.8, 0.0093], [14.0, 0.0093], [15.7, 0.0093]]
 
 def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
-                                NLC_COEFS=DEFAULT_NLC_COEFS):
+                                NLC_COEFS=DEFAULT_NLC_COEFS, mol_id_full=False):
 
     X = np.zeros([0, len(NLC_COEFS)])
 
@@ -708,14 +716,14 @@ def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
 
         print(mol_id)
 
-        if is_restricted:
+        if mol_id_full:
+            dft_dir = mol_id
+        elif is_restricted:
             dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS,
                                    mol_id, functional = DEFAULT_FUNCTIONAL)
-            ccsd_dir = get_save_dir(ROOT, 'CCSD', DEFAULT_BASIS, mol_id)
         else:
             dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS,
                                    mol_id, functional = DEFAULT_FUNCTIONAL)
-            ccsd_dir = get_save_dir(ROOT, 'UCCSD', DEFAULT_BASIS, mol_id)
 
         vv10_contribs = get_vv10_contribs(dft_dir, is_restricted, NLC_COEFS)
 
@@ -736,12 +744,15 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'betaml.npy'))
-    mlx0 = np.load(os.path.join(DATA_ROOT, 'lhlike.npy'))
-    mnc = np.load(os.path.join(DATA_ROOT, 'mnsf2.npy'))
-    vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
+    f.close()
+    f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
+    amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
     valset_bools_init = np.array([mol['valset'] for mol in mols])
     mols = [gto.mole.unpack(mol) for mol in mols]
@@ -761,12 +772,13 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     ecounts = np.array(ecounts)
 
     N = etot.shape[0]
-    num_vv10 = vv10.shape[-1]
+    #num_vv10 = vv10.shape[-1]
+    num_vv10 = 1
 
     print(formulas, Z_to_ind)
 
     for i in range(num_vv10):
-        E_vv10 = vv10[:,i]
+        #E_vv10 = vv10[:,i]
         E_dft = etot[:,0]
         E_ccsd = etot[:,1]
         E_x = mlx[:,0]
@@ -784,7 +796,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         # 61:73 -- xvals
         # 73 -- Ex exact
         E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-        E_c = mlx[:,13:17]
+        E_c = mlx[:,13:17]# - mlx[:,3:7] - mlx[:,8:12]
         #E_c = np.zeros((mlx.shape[0],0))
         E_c = np.append(E_c, mlx[:,18:22], axis=1)
         E_c = np.append(E_c, mlx[:,23:27], axis=1)
@@ -829,7 +841,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                 if mols[i].nelectron == 8:
                     oind = i
                     print(mols[i], E_ccsd[i], E_dft[i])
-                weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(0.01 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
 
 
@@ -902,7 +915,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     return coef_sets, scores
 
 
-def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None):
+def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None, mol_id_full=False):
     from pyscf import gto
     import yaml
 
@@ -910,11 +923,16 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None):
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
 
-        if is_restricted:
-            pbe_dir = get_save_dir(ROOT, 'RKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+        if mol_id_full:
+            if is_restricted:
+                pbe_analyzer = RHFAnalyzer.load(mol_id+'/data.hdf5')
+            else:
+                pbe_analyzer = UHFAnalyzer.load(mol_id+'/data.hdf5')
+        elif is_restricted:
+            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
             pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
         else:
-            pbe_dir = get_save_dir(ROOT, 'UKS', 'aug-cc-pvtz', mol_id, functional = 'PBE')
+            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
             pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
 
         mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
