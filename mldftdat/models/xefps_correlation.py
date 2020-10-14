@@ -7,6 +7,7 @@ from mldftdat.workflow_utils import get_save_dir
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
 from mldftdat.models.map_c2 import VSXCContribs
+from mldftdat.density import get_exchange_descriptors2
 import os
 import numpy as np
 
@@ -501,16 +502,17 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
     cvals = np.append(cvals[:5] + cvals[5:10], cvals[10:])
 
     numint0 = ProjNumInt(xterms = [], ssterms = [], osterms = [])
+    N = dft_analyzer.grid.weights.shape[0]
     if restricted:
         if exact:
             ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
         else:
-            desc  = np.zeros((N, len(model.desc_list)))
-            ddesc = np.zeros((N, len(model.desc_list)))
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
             xdesc = get_exchange_descriptors2(dft_analyzer, restricted=True)
-            for i, d in enumerate(model.desc_list):
+            for i, d in enumerate(mlfunc.desc_list):
                 desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
-            xef = model.get_F(desc)
+            xef = mlfunc.get_F(desc)
             ex = LDA_FACTOR * xef * rho_data[0]**(1.0/3)
         exu = ex
         exd = ex
@@ -530,11 +532,11 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
             for i, d in enumerate(mlfunc.desc_list):
                 desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_u, deriv = 1)
             xef = mlfunc.get_F(desc)
-            exu = LDA_FACTOR * xef * rho_data[0][0]**(1.0/3)
+            exu = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[0][0]**(1.0/3)
             for i, d in enumerate(mlfunc.desc_list):
                 desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_d, deriv = 1)
             xef = mlfunc.get_F(desc)
-            exd = LDA_FACTOR * xef * rho_data[1][0]**(1.0/3)
+            exd = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[1][0]**(1.0/3)
         rhou = 2 * rho_data[0][0]
         rhod = 2 * rho_data[1][0]
         rhot = rho_data[0][0] + rho_data[1][0]
@@ -751,16 +753,18 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
+    print ("SHAPES", mlx.shape, etot.shape, amlx.shape, aetot.shape) 
+
 
     valset_bools_init = np.array([mol['valset'] for mol in mols])
     valset_bools_init = np.append(valset_bools_init,
-                        np.zeros(len(mols), valset_bools_init.dtype))
+                        np.zeros(len(amols), valset_bools_init.dtype))
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
@@ -781,7 +785,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     #num_vv10 = vv10.shape[-1]
     num_vv10 = 1
 
-    print(formulas, Z_to_ind)
+    #print(formulas, Z_to_ind)
 
     for i in range(num_vv10):
 
@@ -817,12 +821,16 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
-            return E_c, diff, E_ccsd, E_dft
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x
 
-        E_c, diff, E_ccsd, E_dft = get_terms(etot, mlx)
-        E_c2, diff2, _, _ = get_terms(aetot, amlx)
+        E_c, diff, E_ccsd, E_dft, E_xscan, E_x = get_terms(etot, mlx)
+        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2 = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
+        E_ccsd = np.append(E_ccsd, E_ccsd2)
+        E_dft = np.append(E_dft, E_dft2)
+        E_xscan = np.append(E_xscan, E_xscan2)
+        E_x = np.append(E_x, E_x2)
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -852,9 +860,9 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     oind = i
                     print(mols[i], E_ccsd[i], E_dft[i])
                 #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                weights.append(0.01 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(0.0001 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
-        for i in range(len(mols), y.shape[0]):
+        for i in range(len(amols)):
             weights.append(1 / mols[i].nelectron)
 
         weights = np.array(weights)
@@ -882,7 +890,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         hind = indd[hind]
         waterind = indd[waterind]
 
-        noise = 5e-3
+        noise = 1e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
@@ -894,7 +902,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         coef = np.dot(A, B)
         #coef *= 0
 
-        E0 = E_x[inds] + mlx[inds,12] + mlx[inds,22]
+        mlxtmp = np.append(mlx[:,12] + mlx[:,22], amlx[:,12] + amlx[:,22])
+        E0 = E_x[inds] + mlxtmp[inds]
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))

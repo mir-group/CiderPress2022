@@ -298,7 +298,7 @@ class VSXCContribs():
         return y, dydx2, dydz, dydgamma
 
     def get_separate_xef_terms(self, f):
-        fterm0 = np.exp(-0.5 * f**2)
+        fterm0 = np.exp(-1.0 * f**2)
         return np.array([fterm0 * f**i for i in range(5)])
 
     def grad_terms(self, x2, gamma, c):
@@ -314,10 +314,10 @@ class VSXCContribs():
     def xef_terms(self, f, c):
         y = 0
         d = 0
-        fterm0 = np.exp(-2 * f**2)
+        fterm0 = np.exp(-1.0 * f**2)
         for i in range(4):
             y += c[i] * f**(i+1)
-            d += c[i] * ((i+1) * f**i - 4 * f**(i+2))
+            d += c[i] * ((i+1) * f**i - 2 * f**(i+2))
         return y * fterm0, d * fterm0
 
     def get_x2(self, n, g2):
@@ -459,7 +459,7 @@ class VSXCContribs():
 
             vxc[0][:,0] += dldaxu * amix * yau
             vxc[0][:,1] += dldaxd * amix * yad
-            tmp = ldaxu * yau + ldaxd  yad
+            tmp = ldaxu * yau + ldaxd * yad
             fill_vxc_os_(vxc, tmp * vxcmix[0],
                          tmp * vxcmix[1],
                          tmp * vxcmix[2])
