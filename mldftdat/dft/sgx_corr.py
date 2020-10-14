@@ -22,9 +22,10 @@
 from pyscf.sgx.sgx import *
 from pyscf.sgx.sgx_jk import *
 from pyscf.dft.numint import eval_ao, eval_rho
+from mldftdat.models.map_c6 import VSXCContribs
 
 
-def sgx_fit_corr(mf, auxbasis=None, with_df=None):
+def sgx_fit_corr(mf, xc_coeff, auxbasis=None, with_df=None):
     # needs to:
     # 1. Wrap in typical SGX but with get get_jkc function
     #    instead of the normal get_jk function
@@ -40,13 +41,63 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
     assert(isinstance(mf, scf.hf.SCF))
 
     if with_df is None:
-        with_df = SGX(mf.mol)
+        with_df = SGXCorr(mf.mol, xc_coeff)
         with_df.max_memory = mf.max_memory
         with_df.stdout = mf.stdout
         with_df.verbose = mf.verbose
         with_df.auxbasis = auxbasis
 
     return sgx_fit(mf, auxbasis=auxbasis, with_df=with_df)
+
+
+def _eval_corr(corr_model, mol, rho_data, F):
+    import time
+
+    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+
+    chkpt = time.monotonic()
+
+    density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]),\
+               np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[1]))
+    auxmol = mol.auxmol
+    naux = auxmol.nao_nr()
+    ao_to_aux = mol.ao_to_aux
+    N = grid.weights.shape[0]
+
+    desc = [0,0]
+    dEddesc = [0, 0]
+
+    rhou = rho_data[0][0]
+    g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
+    tu = rho_data[0][5]
+    rhod = rho_data[1][0]
+    g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
+    td = rho_data[1][5]
+    ntup = (rhou, rhod)
+    gtup = (g2u, g2d)
+    ttup = (tu, td)
+    rhot = rhou + rhod
+    g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
+
+    vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
+            np.zeros((N,2)), np.zeros((N,2))]
+
+    exc = 0
+        
+    tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
+                                      tu, td, F[0], F[1])
+
+    exc += tot
+    vtot[0][:,:] += vxc[0]
+    vtot[0][:,0] += vxc[3][:,0] * -4 * F[0] / (3 * rhou)
+    vtot[0][:,1] += vxc[3][:,1] * -4 * F[1] / (3 * rhod)
+    vtot[1][:,:] += vxc[1]
+    vtot[3][:,:] += vxc[2]
+    vtot[4][:,:] += vxc[3]
+    vtot[4][:,0] += vxc[3][:,0] / (LDA_FACTOR * rhou**(4.0/3))
+    vtot[4][:,1] += vxc[3][:,1] / (LDA_FACTOR * rhod**(4.0/3))
+
+    return exc / (rhot + 1e-20), vtot, None, None
 
 
 def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
@@ -142,7 +193,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
                 ex += lib.einsum('gu,gu->g', fg/wt, gv[i]/wt)
             FX = ex / (LDA_FACTOR * rhogs**(4.0/3))
             FXtmp[i0:i1] = FX
-            # vc = (vrho, vsigma, vlapl, vtau, vx)
+            # vc = (vrho, vsigma, vlapl, vtau, vxdens)
             ec, vctmp = sgx.eval_corr(rho_data, FX)
             Ec += numpy.dot(ec * rhogs, grids.weights[i0:i1])
             for i in range(nset):

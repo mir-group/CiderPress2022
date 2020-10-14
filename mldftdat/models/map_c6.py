@@ -368,7 +368,15 @@ class VSXCContribs():
 
         return amix, vxclim
 
-    def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
+    def single_corr(self, x2, z, alpha, d):
+        gamma = self.gammafunc(x2, z, alpha)
+        corrfunc = self.corrfunc(x2, z, gamma[0], d)
+        return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
+                            corrfunc[2] + corrfunc[3] * gamma[2]
+
+    def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd,
+             include_baseline=True, include_aug_sl=True,
+             include_aug_nl=True):
 
         g2 = g2u + g2d + 2 * g2o
         nt = nu + nd
@@ -377,28 +385,100 @@ class VSXCContribs():
         co *= nt
         cx *= nt
         Do = self.get_D(nu+nd, g2, tu+td)
-        tot = co + (cx - co) * (1 - Do[0])
+        cm = (cx - co) * (1 - Do[0])
+        ldaxm = (ldaxu * amix, ldaxd * amix)
+        amix, vxcmix = self.get_amix(nu, nd, g2u, g2o, g2d, Do)
         N = cu.shape[0]
         vxc = [np.zeros((N,2)),
                np.zeros((N,3)),
                np.zeros((N,2)),
                np.zeros((N,2))]
-        tmp = (co - cx)
-        fill_vxc_os_(vxc, tmp * Do[1],
-                     tmp * do[2],
-                     tmp * Do[3])
-        fill_vxc_base_os_(vxc, vo, Do[0])
-        fill_vxc_base_os_(vxc, vx, (1-Do[0]))
+        if include_baseline:
+            tot = co + cm
+            tmp = (co - cx)
+            fill_vxc_os_(vxc, tmp * Do[1],
+                         tmp * Do[2],
+                         tmp * Do[3])
+            fill_vxc_base_os_(vxc, vo, Do[0])
+            fill_vxc_base_os_(vxc, vx, (1-Do[0]))
+        else:
+            tot = 0
 
-        """
-        cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
-        cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
-        cfm = self.single_corr(x2[0], z[0], alphaos, self.dm)
+        if include_aug_sl:
+            cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
+            cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
+            cfm = self.single_corr(x2[0], z[0], alphaos, self.dm)
+            cfau = self.single_corr(x2u[0], zu[0], alphax, self.da)
+            cfad = self.single_corr(x2d[0], zd[0], alphax, self.da)
 
-        for c, cf in zip([co, cx, (cx-co) * (1-Do[0])], [cfo, cfx, cfm]):
-            fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
-                         c * (cf[1] * x2[2]),
-                         c * (xf[2] * z[2]))
-        """
+            tot += cfo[0] * co
+            tot += cfx[0] * cx
+            tot += cfm[0] * cm
+            tot += ldaxm[0] * cfau[0]
+            tot += ldaxm[1] * cfad[0]
 
+            tmp = (co - cx) * cfm[0]
+            fill_vxc_base_os_(vxc, vo, cfo[0] - cfm[0] * (1 - Do[0]))
+            fill_vxc_base_os_(vxc, vx, cfx[0] + cfm[0] * (1 - Do[0]))
+            fill_vxc_os_(vxc, tmp * Do[1],
+                         tmp * Do[2],
+                         tmp * Do[3])
+
+            vxc[0][:,0] += dldaxu * amix * cfau[0]
+            vxc[0][:,1] += dldaxd * amix * cfad[0]
+            tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
+            fill_vxc_os_(vxc, tmp * vxcmix[0],
+                         tmp * vxcmix[1],
+                         tmp * vxcmix[2])
+
+            for c, cf in zip([co, cx, (cx-co) * (1-Do[0]), ldaxm[0], ldaxm[1]],
+                             [cfo, cfx, cfm, cfau, cfad]):
+                fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
+                             c * (cf[1] * x2[2]),
+                             c * (xf[2] * z[2]))
+
+        if include_aug_nl:
+            yo, derivo = self.xef_terms(ft, self.cos)
+            ym, derivm = self.xef_terms(ft, self.cm)
+            yx, derivx = self.xef_terms(ft, self.cx)
+            yau, derivau = self.xef_terms(fu, self.ca)
+            yad, derivad = self.xef_terms(fd, self.ca)
+
+            tot += yo * co
+            tot += yx * cx
+            tot += ym * cm
+            tot += yau * ldaxm[0]
+            tot += yad * ldaxm[1]
+
+            tmp = (co - cx) * ym
+            fill_vxc_base_os_(vxc, vo, yo - ym * (1 - Do[0]))
+            fill_vxc_base_os_(vxc, vx, yx + ym * (1 - Do[0]))
+            fill_vxc_os_(vxc, tmp * Do[1],
+                         tmp * Do[2],
+                         tmp * Do[3])
+
+            vxc[0][:,0] += dldaxu * amix * yau
+            vxc[0][:,1] += dldaxd * amix * yad
+            tmp = ldaxu * yau + ldaxd  yad
+            fill_vxc_os_(vxc, tmp * vxcmix[0],
+                         tmp * vxcmix[1],
+                         tmp * vxcmix[2])
+
+            tmp = co * derivo + cx * deriv + cm * derivm
+            vxc[0][:,0] += tmp * dftdnu
+            vxc[0][:,1] += tmp * dftdnd
+            vxc[3][:,0] += tmp * dftdfu + ldaxu * derivau
+            vxc[3][:,1] += tmp * dftdfd + ldaxd * derivad
+
+        rhou, rhod = nu, nd
+        vxc[0][rhou<1e-8,0] = 0
+        vxc[1][rhou<1e-8,0] = 0
+        vxc[2][rhou<1e-8,0] = 0
+        vxc[3][rhou<1e-8,0] = 0
+        vxc[0][rhod<1e-8,1] = 0
+        vxc[1][rhod<1e-8,2] = 0
+        vxc[2][rhod<1e-8,1] = 0
+        vxc[3][rhod<1e-8,1] = 0
+        vxc[1][np.minimum(rhou,rhod)<1e-8,1] = 0
+        
         return tot, vxc
