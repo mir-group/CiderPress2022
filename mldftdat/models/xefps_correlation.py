@@ -935,6 +935,214 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     return coef_sets, scores
 
 
+def solve_from_stored_ae_ml(DATA_ROOT):
+
+    import yaml
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    from sklearn.metrics import r2_score
+    from pyscf import gto
+
+    coef_sets = []
+    scores = []
+
+    etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
+    #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
+    mols = yaml.load(f, Loader = yaml.Loader)
+    f.close()
+
+    aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
+    f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
+    amols = yaml.load(f, Loader = yaml.Loader)
+    f.close()
+
+    print ("SHAPES", mlx.shape, etot.shape, amlx.shape, aetot.shape) 
+
+
+    valset_bools_init = np.array([mol['valset'] for mol in mols])
+    valset_bools_init = np.append(valset_bools_init,
+                        np.zeros(len(amols), valset_bools_init.dtype))
+    mols = [gto.mole.unpack(mol) for mol in mols]
+    for mol in mols:
+        mol.build()
+
+    Z_to_ind = {}
+    formulas = {}
+    ecounts = []
+    for i, mol in enumerate(mols):
+        ecounts.append(mol.nelectron)
+        if len(mol._atom) == 1:
+            Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
+        else:
+            atoms = [atomic_numbers[a[0]] for a in mol._atom]
+            formulas[i] = Counter(atoms)
+    ecounts = np.array(ecounts)
+
+    N = etot.shape[0]
+    #num_vv10 = vv10.shape[-1]
+    num_vv10 = 1
+
+    #print(formulas, Z_to_ind)
+
+    for i in range(num_vv10):
+
+        def get_terms(etot, mlx, vv10=None):
+            if vv10 is not None:
+                E_vv10 = vv10[:,i]
+            E_dft = etot[:,0]
+            E_ccsd = etot[:,1]
+            E_x = mlx[:,0]
+            E_xscan = mlx[:,1]
+            # 0, 1 -- Ex pred and Exscan
+            # 2:27 -- Eterms
+            # 27:37 -- Fterms
+            # 37:61 -- dvals
+            # 61:73 -- xvals
+            # 73:83 -- exchange contribs
+            # 73 -- Ex exact
+            E_c = mlx[:,13:17]
+            E_c = np.append(E_c, mlx[:,18:22], axis=1)
+            E_c = np.append(E_c, mlx[:,23:27], axis=1)
+            E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+            E_c = np.append(E_c, mlx[:,43:49], axis=1)
+            E_c = np.append(E_c, mlx[:,49:55], axis=1)
+            E_c = np.append(E_c, mlx[:,55:61], axis=1)
+            E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
+            E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
+            print("SHAPE", E_c.shape)
+
+            diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x
+
+        def get_ex_terms(etot, mlx, vv10=None):
+            if vv10 is not None:
+                E_vv10 = vv10[:,i]
+            E_dft = etot[:,0]
+            E_ccsd = etot[:,1]
+            E_x = mlx[:,0]
+            E_xscan = mlx[:,1]
+
+            E_c = mlx[:,13:17]
+            E_c = np.append(E_c, mlx[:,18:22], axis=1)
+            E_c = np.append(E_c, mlx[:,23:27], axis=1)
+            E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+            E_c = np.append(E_c, mlx[:,43:49], axis=1)
+            E_c = np.append(E_c, mlx[:,49:55], axis=1)
+            E_c = np.append(E_c, mlx[:,55:61], axis=1)
+            E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
+            E_c *= 0
+            E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
+
+            diff = mlx[:,-1] - E_x # exact exchange - ml exchange
+
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x
+
+        E_c, diff, E_ccsd, E_dft, E_xscan, E_x = get_terms(etot, mlx)
+        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2 = get_terms(aetot, amlx)
+        E_c = np.append(E_c, E_c2, axis=0)
+        diff = np.append(diff, diff2)
+        E_ccsd = np.append(E_ccsd, E_ccsd2)
+        E_dft = np.append(E_dft, E_dft2)
+        E_xscan = np.append(E_xscan, E_xscan2)
+        E_x = np.append(E_x, E_x2)
+
+        xdiff = np.append(mlx[:,-1], amlx[:,-1]) - np.append(mlx[:,0], amlx[:,0])
+        E_cx = E_c.copy()
+        E_cx[:,:-8] = 0
+
+        E_c = np.append(E_c, E_cx)
+        diff = np.append(diff, xdiff)
+
+        # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
+        # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
+        # not an exact relationship, but should give a decent fit
+        X = E_c.copy()
+        y = diff.copy()
+        Ecc = E_ccsd.copy()
+        Edf = E_dft.copy()
+        weights = []
+        for i in range(len(mols)):
+            if i in formulas.keys():
+                weights.append(1.0)
+                formula = formulas[i]
+                if formula.get(1) == 2 and formula.get(8) == 1 and len(list(formula.keys()))==2:
+                    waterind = i
+                    print(formula, E_ccsd[i], E_dft[i])
+                for Z in list(formula.keys()):
+                    X[i,:] -= formula[Z] * X[Z_to_ind[Z],:]
+                    y[i] -= formula[Z] * y[Z_to_ind[Z]]
+                    Ecc[i] -= formula[Z] * Ecc[Z_to_ind[Z]]
+                    Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
+               # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
+            else:
+                if mols[i].nelectron == 1:
+                    hind = i
+                if mols[i].nelectron == 8:
+                    oind = i
+                    print(mols[i], E_ccsd[i], E_dft[i])
+                #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(0.0001 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                #weights.append(0.0)
+        for i in range(len(amols)):
+            weights.append(1 / mols[i].nelectron)
+
+        weights = np.array(weights)
+
+        inds = np.arange(len(y))
+        cond1 = weights > 0
+        cond2 = np.append(cond1, cond1)
+        valset_bools = valset_bools_init[weights > 0]
+        valset_bools = np.append(valset_bools, valset_bools)
+        X = X[cond2, :]
+        y = y[cond2 > 0]
+        Ecc = Ecc[cond1]
+        Edf = Edf[cond1]
+        weights = weights[cond1]
+
+        noise = 1e-3
+        trset_bools = np.logical_not(valset_bools)
+        Xtr = X[trset_bools]
+        Xts = X[valset_bools]
+        ytr = y[trset_bools]
+        yts = y[valset_bools]
+        weights = np.append(weights, weights)
+        wtr = weights[trset_bools]
+        A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + noise * np.identity(Xtr.shape[1]))
+        B = np.dot(Xtr.T, wtr * ytr)
+        coef = np.dot(A, B)
+        #coef *= 0
+
+        mlxtmp = np.append(mlx[:,12] + mlx[:,22], amlx[:,12] + amlx[:,22])
+        E0 = E_x[inds] + mlxtmp[inds]
+
+        valset_bools = valset_bools[:valset_bools.shape[0]//2]
+
+        score = r2_score(yts, np.dot(Xts, coef))
+        score0 = r2_score(yts, np.dot(Xts, 0 * coef))
+        print(score, score0)
+        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
+        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
+                          np.mean((Ecc-Edf)[valset_bools]))
+        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))),
+                        np.mean(y - np.dot(X, coef)))
+        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))),
+                        np.mean(yts - np.dot(Xts, coef)))
+        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)[weights > 0]))
+        print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
+
+        coef_sets.append(coef)
+        scores.append(score)
+
+        break
+
+    return coef_sets, scores
+
+
 def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None, mol_id_full=False):
     from pyscf import gto
     import yaml
