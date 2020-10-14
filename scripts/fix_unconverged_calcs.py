@@ -8,6 +8,8 @@ new_fws = []
 unknown_fail_reasons = []
 num_fws_added = 0
 MAX_NUM_FWS_ADDED = 1000
+#fw_ids = [5665, 5668, 5676]
+fw_ids = [5665, 5668, 5917, 5947, 6133, 6136]
 
 for fw_id in fw_ids:
     fw = lpad.get_fw_by_id(fw_id)
@@ -18,7 +20,7 @@ for fw_id in fw_ids:
         exception = fw.launches[-1].action.stored_data['_exception']['_stacktrace']
     if isinstance(task, SCFCalc) and\
             ('did not converge' in exception)\
-            and ('SCF' in exception):
+            and ('CCSD' in exception):
         print(fw_id, 'did not converge')
         task.pop('_fw_name')
         new_task = SCFCalcConvergenceFixer(**task)
