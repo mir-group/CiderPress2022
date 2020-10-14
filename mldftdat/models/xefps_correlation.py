@@ -907,6 +907,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
+        print(Xts.shape, yts.shape)
         print(score, score0)
         print((y - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
@@ -924,7 +925,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
         print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)))
-        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)[weights > 0]))
+        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
         print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
 
         coef_sets.append(coef)
@@ -1055,7 +1056,7 @@ def solve_from_stored_ae_ml(DATA_ROOT):
         E_cx = E_c.copy()
         E_cx[:,:-8] = 0
 
-        E_c = np.append(E_c, E_cx)
+        E_c = np.append(E_c, E_cx, axis=0)
         diff = np.append(diff, xdiff)
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
@@ -1106,24 +1107,20 @@ def solve_from_stored_ae_ml(DATA_ROOT):
 
         noise = 1e-3
         trset_bools = np.logical_not(valset_bools)
+        valset_bools = valset_bools[:valset_bools.shape[0]//2]
         Xtr = X[trset_bools]
-        Xts = X[valset_bools]
+        Xts = X[:X.shape[0]//2][valset_bools]
         ytr = y[trset_bools]
-        yts = y[valset_bools]
+        yts = y[:y.shape[0]//2][valset_bools]
         weights = np.append(weights, weights)
         wtr = weights[trset_bools]
         A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + noise * np.identity(Xtr.shape[1]))
         B = np.dot(Xtr.T, wtr * ytr)
         coef = np.dot(A, B)
-        #coef *= 0
-
-        mlxtmp = np.append(mlx[:,12] + mlx[:,22], amlx[:,12] + amlx[:,22])
-        E0 = E_x[inds] + mlxtmp[inds]
-
-        valset_bools = valset_bools[:valset_bools.shape[0]//2]
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
+        print(Xts.shape, yts.shape)
         print(score, score0)
         print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
         print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
@@ -1132,7 +1129,7 @@ def solve_from_stored_ae_ml(DATA_ROOT):
                         np.mean(y - np.dot(X, coef)))
         print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))),
                         np.mean(yts - np.dot(Xts, coef)))
-        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)[weights > 0]))
+        print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
         print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
 
         coef_sets.append(coef)
