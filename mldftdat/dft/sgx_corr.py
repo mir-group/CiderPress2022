@@ -25,6 +25,66 @@ from pyscf.dft.numint import eval_ao, eval_rho
 from mldftdat.models.map_c6 import VSXCContribs
 
 
+def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
+    if mol is None: mol = ks.mol
+    if dm i sNone: dm = ks.make_rdm1()
+    t0 = (time.clock(), time.time())
+
+    ground_state = (isinstance(dm, numpy.ndarray) and dm.ndim == 2)
+
+    if ks.grids.coords is None:
+        ks.grids.build(with_non0tab=True)
+        if ks.small_rho_cutoff > 1e-20 and ground_state:
+            ks.grids = prune_small_rho_grids_(ks, mol, dm, ks.grids)
+        t0 = logger.timer(ks, 'setting up grids', *t0)
+
+    if ks.nlc != '':
+        if ks.nlcgrids.coords is None:
+            ks.nlcgrids.build(with_non0tab=True)
+            if ks.small_rho_cutoff > 1e-20 and ground_state:
+                # Filter grids the first time setup grids
+                ks.nlcgrids = prune_small_rho_grids_(ks, mol, dm, ks.nlcgrids)
+            t0 = logger.timer(ks, 'setting up nlc grids', *t0)
+
+    ni = ks._numint
+    if hermi == 2:  # because rho = 0
+        n, exc, vxc = 0, 0, 0
+    else:
+        max_memory = ks.max_memory - lib.current_memory()[0]
+        n, exc, vxc = ni.nr_rks(mol, ks.grids, ks.xc, dm, max_memory=max_memory)
+        if ks.nlc != '':
+            assert('VV10' in ks.nlc.upper())
+            _, enlc, vnlc = ni.nr_rks(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm,
+                                      max_memory=max_memory)
+            exc += enlc
+            vxc += vnlc
+        logger.debug(ks, 'nelec by numeric integration = %s', n)
+        t0 = logger.timer(ks, 'vxc', *t0)
+
+    vj, vk = ks.get_jk(mol, dm, hermi)
+    vk *= hyb
+    if abs(omega) > 1e-10:
+        vklr = ks.get_k(mol, dm, hermi, omega=omega)
+        vklr *= (alpha - hyb)
+        vk += vklr
+    vxc += vj - vk * .5
+    # vk array must be tagged with these attributes,
+    # vc_contrib and ec_contrib
+    vxc += vk.vc_contrib
+    exc += vk.ec_contrib
+
+    if ground_state:
+        exc -= numpy.einsum('ij,ji', dm, vk).real * .5 * .5
+
+    if ground_state:
+        ecoul = numpy.einsum('ij,ji', dm, vj).real * .5
+    else:
+        ecoul = None
+
+    vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
+    return vxc
+
+
 def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10):
     Ktime = (time.clock(), time.time())
     grids = dft.gen_grid.Grids(mol)
@@ -73,7 +133,11 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
     mf._numint.sgx = with_df
     with_dft.corr_model = mf._numint.corr_model
 
-    return sgx_fit(mf, auxbasis=auxbasis, with_df=with_df)
+    new_mf = sgx_fit(mf, auxbasis=auxbasis, with_df=with_df)
+
+    new_mf.get_veff = get_veff
+
+    return new_mf
 
 
 def _eval_corr_uks(corr_model, rho_data, F):
@@ -310,9 +374,8 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         vk = (vk + vk.transpose(0,2,1))*.5
     logger.timer(mol, "vj and vk", *t0)
 
-    sgx.current_fx = FXtmp
-    sgx.current_ec = Ec
-    sgx.current_vc = vc.reshape(dm_shape)
+    vk = lib.tag_array(vk, vc_contrib=vc.reshape(dm_shape), ec_contrib=Ec)
+
     return vj.reshape(dm_shape), vk.reshape(dm_shape)
 
 
@@ -372,7 +435,7 @@ class HFCNumInt(pyscf_numint.NumInt):
                                 mol, grids, xc_code, dms,
                                 relativity, hermi,
                                 max_memory, verbose)
-        return nelec, excsum + sgx.current_ec, vmat + sgx.current_vc
+        return nelec, excsum, vmat
 
     def nr_uks(self, mol, grids, xc_code, dms, relativity=0, hermi=0,
                max_memory=2000, verbose=None):
@@ -380,7 +443,7 @@ class HFCNumInt(pyscf_numint.NumInt):
                                 mol, grids, xc_code, dms,
                                 relativity, hermi,
                                 max_memory, verbose)
-        return nelec, excsum + sgx.current_ec, vmat + sgx.current_vc
+        return nelec, excsum, vmat
 
     def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
                 verbose=None):
