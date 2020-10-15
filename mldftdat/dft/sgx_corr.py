@@ -21,9 +21,11 @@
 
 from pyscf.sgx.sgx import *
 from pyscf.sgx.sgx_jk import *
+from pyscf.sgx.sgx import _make_opt
 from pyscf.dft.numint import eval_ao, eval_rho
 from mldftdat.models.map_c6 import VSXCContribs
-
+from pyscf import __config__
+import pyscf.dft.numint as pyscf_numint
 
 def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     if mol is None: mol = ks.mol
@@ -131,7 +133,7 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
         with_df.auxbasis = auxbasis
 
     mf._numint.sgx = with_df
-    with_dft.corr_model = mf._numint.corr_model
+    with_df.corr_model = mf._numint.corr_model
 
     new_mf = sgx_fit(mf, auxbasis=auxbasis, with_df=with_df)
 
@@ -179,7 +181,7 @@ def _eval_corr_rks(corr_model, rho_data, F):
     exc, vxc = _eval_corr_uks(corr_model, rho_data, F)[:2]
     vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
            vxc[2][:,0], vxc[3][:,0], vxc[4][:,0]]
-           return exc, vxc, None, None
+    return exc, vxc, None, None
 
 from pyscf.dft.numint import _rks_gga_wv0, _uks_gga_wv0
 
@@ -188,7 +190,7 @@ def _contract_corr_rks(vmat, mol, vxc, weight, ao, rho, mask):
     ngrid = weight.size
     shls_slice = (0, mol.nbas)
     ao_loc = mol.nao_loc_nr()
-    aow = np.ndarray(ao[0].shpa,e order='F')
+    aow = np.ndarray(ao[0].shape, order='F')
     vrho, vsigma, vlap, vtau = vxc[:4]
     den = rho[0]*weight
     excsum += np.dot(den, exc)
@@ -414,14 +416,13 @@ class SGXCorr(SGX):
 
 class HFCNumInt(pyscf_numint.NumInt):
 
-    def __init__(self, mlfunc_x, css, cos, cx, cm, ca,
+    def __init__(self, css, cos, cx, cm, ca,
                  dss, dos, dx, dm, da, vv10_coeff = None):
-        super(NLNumInt, self).__init__()
-        self.mlfunc_x = mlfunc_x
-        from mldftdat.models import map_c4
-        self.mlfunc_x.corr_model = map_c4.VSXCContribs(
-                                    css, cos, cx, cm, ca,
-                                    dss, dos, dx, dm, da)
+        super(HFCNumInt, self).__init__()
+        from mldftdat.models import map_c6
+        self.corr_model = map_c6.VSXCContribs(
+                                css, cos, cx, cm, ca,
+                                dss, dos, dx, dm, da)
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -431,7 +432,7 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def nr_rks(self, mol, grids, xc_code, dms, relativity=0, hermi=0,
                max_memory=2000, verbose=None):
-        nelec, excsum, vmat = super(NLNumInt, self).nr_rks(
+        nelec, excsum, vmat = super(HFCNumInt, self).nr_rks(
                                 mol, grids, xc_code, dms,
                                 relativity, hermi,
                                 max_memory, verbose)
@@ -439,7 +440,7 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def nr_uks(self, mol, grids, xc_code, dms, relativity=0, hermi=0,
                max_memory=2000, verbose=None):
-        nelec, excsum, vmat = super(NLNumInt, self).nr_uks(
+        nelec, excsum, vmat = super(HFCNumInt, self).nr_uks(
                                 mol, grids, xc_code, dms,
                                 relativity, hermi,
                                 max_memory, verbose)
@@ -464,7 +465,7 @@ class HFCNumInt(pyscf_numint.NumInt):
         vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
                 np.zeros((N,2))]
             
-        exc, vxc = corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
+        exc, vxc = self.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                    tu, td, None, None,
                                    include_baseline=True,
                                    include_aug_sl=True,
@@ -493,26 +494,26 @@ DEFAULT_DM = [-0.00164101,  0.13828657,  0.1658308,\
 DEFAULT_DA = [5.63601128e-02,  1.09165704e-03,  1.45389821e-02,\
               -2.59986804e-05,  3.03803288e-04, -6.17802303e-04]
 
-def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+    rks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
     return sgx_fit_corr(rks)
 
-def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+    uks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
     return sgx_fit_corr(uks)
