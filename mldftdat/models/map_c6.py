@@ -408,7 +408,7 @@ class VSXCContribs():
                np.zeros((N,2)),
                np.zeros((N,2))]
         if include_baseline:
-            tot = co + Do[0] + cx * (1 - Do[0])
+            tot = co * Do[0] + cx * (1 - Do[0])
             tmp = (co - cx)
             fill_vxc_os_(vxc, tmp * Do[1],
                          tmp * Do[2],
@@ -448,16 +448,17 @@ class VSXCContribs():
             vxc[0][:,1] += dldaxd * amix * cfad[0]
             tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
             fill_vxc_base_os_(vxc, vxcmix, tmp)
-
-            for c, cf in zip([co * Do[0], cx, ldaxm[0], ldaxm[1]],
-                             [cfo, cfx, cfau, cfad]):
+            """
+            for c, cf, x2, z in zip([co * Do[0], cx, ldaxm[0], ldaxm[1]],
+                                    [cfo, cfx, cfau, cfad],
+                                    [x2, x2, x2u, x2d],
+                                    [z, z, zu, zd]):
                 fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
                              c * (cf[1] * x2[2]),
-                             c * (x2[2] * z[2]))
-
+                             c * (cf[2] * z[2]))
+            """
         if include_aug_nl:
             yo, derivo = self.xef_terms(ft, self.cos)
-            ym, derivm = self.xef_terms(ft, self.cm)
             yx, derivx = self.xef_terms(ft, self.cx)
             yau, derivau = self.xef_terms(fu, self.ca)
             yad, derivad = self.xef_terms(fd, self.ca)
