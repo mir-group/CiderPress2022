@@ -479,7 +479,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
     dvals[6:12] *= cd * Do
     dvals[12:18] *= ct * Do
     dvals[18:24] *= cx
-    dvals[24:30] *= (cx - ct) * (1 - Do)
+    dvals[24:30] *= cx * (1 - Do)
     dvals = np.dot(dvals, weights)
     dvals = np.append(dvals[:6] + dvals[6:12], dvals[12:])
     cvals = np.zeros((25, weights.shape[0]))
@@ -497,7 +497,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
     cvals[5:10] *= cd * Dd
     cvals[15:20] *= cx
     cvals[10:15] *= ct * Do
-    cvals[20:25] *= (cx - ct) * (1 - Do)
+    cvals[20:25] *= cx * (1 - Do)
     cvals = np.dot(cvals, weights)
     cvals = np.append(cvals[:5] + cvals[5:10], cvals[10:])
 
@@ -557,7 +557,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
     Eterms = np.array([Ex, Exscan])
 
     for rho, ex, c in zip([rhou, rhod, rhot, rhot, rhot], [exu, exd, exo, exo, exo],
-                          [cu * Du, cd * Dd, ct * Do, cx, (cx - ct) * (1 - Do)]):
+                          [cu * Du, cd * Dd, ct * Do, cx, cx * (1 - Do)]):
         elda = LDA_FACTOR * rho**(1.0/3) - 1e-20
         Fx = ex / elda
         E_tmp = corr_model.get_separate_xef_terms(Fx)
@@ -746,14 +746,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ml.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ml.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
@@ -779,6 +779,13 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         else:
             atoms = [atomic_numbers[a[0]] for a in mol._atom]
             formulas[i] = Counter(atoms)
+    #        if formulas[i]['C'] == 4 and formulas[i]['H'] == 9 and len(mol._atom) == 13:
+    #            badind = i
+    #mlx = np.append(mlx[:i], mlx[i+1:], axis=0)
+    #mols = mols[:i] + mols[i+1:]
+    #ecounts = ecounts[:i] + ecounts[i+1:]
+    #valset_bools_init = np.append(valset_bools_init[:i], valset_bools_init[i+1:])
+
     ecounts = np.array(ecounts)
 
     N = etot.shape[0]
@@ -802,16 +809,13 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
             # 37:61 -- dvals
             # 61:73 -- xvals
             # 73 -- Ex exact
-            E_c = np.append(mlx[:,3:7] + mlx[:,8:12], mlx[:,13:17], axis=1)
-            E_c = mlx[:,13:17]# - mlx[:,3:7] - mlx[:,8:12]
-            #E_c = np.zeros((mlx.shape[0],0))
+            E_c = mlx[:,13:17]
             E_c = np.append(E_c, mlx[:,18:22], axis=1)
-            E_c = np.append(E_c, mlx[:,23:27], axis=1)
+            #E_c = np.append(E_c, mlx[:,23:27], axis=1)
             E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
-            #E_c = np.append(E_c, mlx[:,37:43], axis=1)
             E_c = np.append(E_c, mlx[:,43:49], axis=1)
             E_c = np.append(E_c, mlx[:,49:55], axis=1)
-            E_c = np.append(E_c, mlx[:,55:61], axis=1)
+            #E_c = np.append(E_c, mlx[:,55:61], axis=1)
             E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
             print("SHAPE", E_c.shape)
 
@@ -860,7 +864,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     oind = i
                     print(mols[i], E_ccsd[i], E_dft[i])
                 #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                weights.append(0.0001 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
             weights.append(1 / mols[i].nelectron)
@@ -890,7 +894,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         hind = indd[hind]
         waterind = indd[waterind]
 
-        noise = 1e-3
+        noise = 5e-3
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
@@ -948,14 +952,14 @@ def solve_from_stored_ae_ml(DATA_ROOT):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ml.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ml.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
@@ -1007,11 +1011,9 @@ def solve_from_stored_ae_ml(DATA_ROOT):
             # 73 -- Ex exact
             E_c = mlx[:,13:17]
             E_c = np.append(E_c, mlx[:,18:22], axis=1)
-            E_c = np.append(E_c, mlx[:,23:27], axis=1)
             E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
             E_c = np.append(E_c, mlx[:,43:49], axis=1)
             E_c = np.append(E_c, mlx[:,49:55], axis=1)
-            E_c = np.append(E_c, mlx[:,55:61], axis=1)
             E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
             E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
             print("SHAPE", E_c.shape)

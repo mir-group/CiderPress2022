@@ -21,15 +21,22 @@
 
 from pyscf.sgx.sgx import *
 from pyscf.sgx.sgx_jk import *
+from pyscf.sgx.sgx_jk import _gen_jk_direct
 from pyscf.sgx.sgx import _make_opt
 from pyscf.dft.numint import eval_ao, eval_rho
+from pyscf.dft.gen_grid import make_mask, BLKSIZE
 from mldftdat.models.map_c6 import VSXCContribs
 from pyscf import __config__
 import pyscf.dft.numint as pyscf_numint
+from pyscf.dft.numint import _scale_ao, _dot_ao_ao
+from pyscf.dft.rks import prune_small_rho_grids_
+np = numpy
+
+LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     if mol is None: mol = ks.mol
-    if dm i sNone: dm = ks.make_rdm1()
+    if dm is None: dm = ks.make_rdm1()
     t0 = (time.clock(), time.time())
 
     ground_state = (isinstance(dm, numpy.ndarray) and dm.ndim == 2)
@@ -64,11 +71,6 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
         t0 = logger.timer(ks, 'vxc', *t0)
 
     vj, vk = ks.get_jk(mol, dm, hermi)
-    vk *= hyb
-    if abs(omega) > 1e-10:
-        vklr = ks.get_k(mol, dm, hermi, omega=omega)
-        vklr *= (alpha - hyb)
-        vk += vklr
     vxc += vj - vk * .5
     # vk array must be tagged with these attributes,
     # vc_contrib and ec_contrib
@@ -137,13 +139,17 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
 
     new_mf = sgx_fit(mf, auxbasis=auxbasis, with_df=with_df)
 
-    new_mf.get_veff = get_veff
+    cls = new_mf.__class__
+    cls.get_veff = get_veff
+
+    new_mf = cls(mf, with_df, auxbasis)
 
     return new_mf
 
 
 def _eval_corr_uks(corr_model, rho_data, F):
-    N = rho_data.shape[1]
+    N = rho_data.shape[-1]
+    print(rho_data.shape)
     rhou = rho_data[0][0]
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
     tu = rho_data[0][5]
@@ -173,30 +179,30 @@ def _eval_corr_uks(corr_model, rho_data, F):
     vtot[4][:,0] += vxc[3][:,0] / (LDA_FACTOR * rhou**(4.0/3))
     vtot[4][:,1] += vxc[3][:,1] / (LDA_FACTOR * rhod**(4.0/3))
 
-    return exc / (rhot + 1e-20), vtot, None, None
+    return exc / (rhot + 1e-20), vtot
 
 def _eval_corr_rks(corr_model, rho_data, F):
-    rho_data = np.stack([rho_data, rho_data])
-    F = np.stack([F, F])
+    rho_data = np.stack([rho_data, rho_data], axis=0)
+    F = np.stack([F, F], axis=0)
     exc, vxc = _eval_corr_uks(corr_model, rho_data, F)[:2]
     vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
            vxc[2][:,0], vxc[3][:,0], vxc[4][:,0]]
-    return exc, vxc, None, None
+    return exc, vxc
 
 from pyscf.dft.numint import _rks_gga_wv0, _uks_gga_wv0
 
-def _contract_corr_rks(vmat, mol, vxc, weight, ao, rho, mask):
+def _contract_corr_rks(vmat, mol, exc, vxc, weight, ao, rho, mask):
 
     ngrid = weight.size
     shls_slice = (0, mol.nbas)
-    ao_loc = mol.nao_loc_nr()
+    ao_loc = mol.ao_loc_nr()
     aow = np.ndarray(ao[0].shape, order='F')
     vrho, vsigma, vlap, vtau = vxc[:4]
     den = rho[0]*weight
-    excsum += np.dot(den, exc)
+    excsum = np.dot(den, exc)
 
     wv = _rks_gga_wv0(rho, vxc, weight)
-    aow = _scal_ao(ao[:4], wv)
+    aow = _scale_ao(ao[:4], wv)
     vmat += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
 
     wv = (0.5 * 0.5 * weight * vtau).reshape(-1,1)
@@ -208,7 +214,7 @@ def _contract_corr_rks(vmat, mol, vxc, weight, ao, rho, mask):
 
     return excsum, vmat
 
-def _contract_corr_uks(vmat, mol, vxc, weight, ao, rho, mask):
+def _contract_corr_uks(vmat, mol, exc, vxc, weight, ao, rho, mask):
 
     ngrid = weight.size
     shls_slice = (0, mol.nbas)
@@ -218,7 +224,7 @@ def _contract_corr_uks(vmat, mol, vxc, weight, ao, rho, mask):
     rho_b = rho[1]
     vrho, vsigma, vlpal, vtau = vxc[:4]
     den = rho_a[0]*weight
-    excsum += np.dot(den, exc)
+    excsum = np.dot(den, exc)
     den = rho_b[0]*weight
     excsum += np.dot(den, exc)
 
@@ -303,7 +309,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     Ec = 0
     tnuc = 0, 0
     for i0, i1 in lib.prange(0, ngrids, blksize):
-        non0 = non0tab[ip0//BLKSIZE:]
+        non0 = non0tab[i0//BLKSIZE:]
         coords = grids.coords[i0:i1]
         ao = mol.eval_gto('GTOval', coords)
         wao = ao * grids.weights[i0:i1,None]
@@ -318,6 +324,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
             ao = ao[mask]
             fg = fg[:,mask]
             coords = coords[mask]
+            weights = weights[mask]
 
         if with_j:
             rhog = numpy.einsum('xgu,gu->xg', fg, ao)
@@ -326,11 +333,9 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         rhogs = numpy.einsum('xgu,gu->g', fg, ao)
         ex = numpy.zeros(rhogs.shape)
         FX = numpy.zeros(rhogs.shape)
-        ao_data = eval_ao(mol, coords, deriv=1, non0tab=non0)
+        ao_data = eval_ao(mol, coords, deriv=2, non0tab=non0)
         # should make mask for rho_data in the future.
         rho_data = eval_rho(mol, ao_data, dm, non0tab=non0, xctype='MGGA')
-        if rho_data.ndim == 2:
-            rho_data = np.stack([rho_data, rho_data], axis=0)
 
         if sgx.debug:
             tnuc = tnuc[0] - time.clock(), tnuc[1] - time.time()
@@ -351,16 +356,19 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         if with_k:
             for i in range(nset):
                 vk[i] += lib.einsum('gu,gv->uv', ao, gv[i])
-                ex += lib.einsum('gu,gu->g', fg/wt, gv[i]/wt)
+                print(ex.shape, fg.shape, gv[i].shape, weights.shape)
+                ex += lib.einsum('gu,gu->g', fg[i]/weights[:,None], gv[i]/weights[:,None])
             FX = ex / (LDA_FACTOR * rhogs**(4.0/3))
-            FXtmp[i0:i1] = FX
             # vctmp = (vrho, vsigma, vlapl, vtau, vxdens)
             ec, vctmp = eval_corr(sgx.corr_model, rho_data, FX)
-            Ec += numpy.dot(ec * rhogs, grids.weights[i0:i1])
-            contract_corr(vc, mol, vctmp[:-1], weights,
+            Ec += numpy.dot(ec * rhogs, weights)
+            contract_corr(vc, mol, ec, vctmp[:-1], weights,
                           ao_data, rho_data, non0)
-            for i in range(nset):
-                vc[i] += lib.einsum('gu,gv->uv', ao, gv[i] * vx)
+            if nset == 1:
+                vc[i] += lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None])
+            else:
+                for i in range(nset):
+                    vc[i] += lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None])
 
         jpart = gv = None
 
@@ -376,9 +384,10 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         vk = (vk + vk.transpose(0,2,1))*.5
     logger.timer(mol, "vj and vk", *t0)
 
+    vk = vk.reshape(dm_shape)
     vk = lib.tag_array(vk, vc_contrib=vc.reshape(dm_shape), ec_contrib=Ec)
 
-    return vj.reshape(dm_shape), vk.reshape(dm_shape)
+    return vj.reshape(dm_shape), vk
 
 
 class SGXCorr(SGX):
@@ -493,6 +502,22 @@ DEFAULT_DM = [-0.00164101,  0.13828657,  0.1658308,\
               -0.00233602, -0.0014921,  0.00958348]
 DEFAULT_DA = [5.63601128e-02,  1.09165704e-03,  1.45389821e-02,\
               -2.59986804e-05,  3.03803288e-04, -6.17802303e-04]
+
+DEFAULT_CSS = [ 0.02998153,  0.01425883,  0.00153324, -0.00833031]
+DEFAULT_COS = [ 0.02998153,  0.01425883,  0.00153324, -0.00833031]
+DEFAULT_CX = [ 0.04210004,  0.02443222,  0.00670981, -0.01179005]
+DEFAULT_CM = [ 0.01760277,  0.00800291, -0.00301552, -0.01607583]
+DEFAULT_CA = [ 0.55147254,  0.16954026, -0.20233279, -0.5658417 ]
+DEFAULT_DSS = [-0.00015354, -0.04104503,  0.01645352,  0.01053866, -0.03183361,
+          0.02084576]
+DEFAULT_DOS = [-0.00015354, -0.04104503,  0.01645352,  0.01053866, -0.03183361,
+          0.02084576]
+DEFAULT_DX = [ 0.00303295,  0.12077108, -0.14213823, -0.01925808,  0.05181688,
+         -0.03015293]
+DEFAULT_DM = [ 0.00338073, -0.03094218, -0.05883046,  0.01798933, -0.05114612,
+          0.03740167]
+DEFAULT_DA = [ 5.17640771e-02,  2.48192100e-04,  2.52453647e-02,  9.75650924e-06,
+          1.12403805e-04, -5.04248191e-04]
 
 def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
