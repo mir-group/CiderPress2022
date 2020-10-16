@@ -393,7 +393,6 @@ class VSXCContribs():
         dftdnu = (4*2**0.3333333333333333*(-(fd*nd**1.3333333333333333) + fu*nd*nu**0.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
         dftdnd = (4*2**0.3333333333333333*(fd*nd**0.3333333333333333*nu - fu*nu**1.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
 
-
         g2 = g2u + g2d + 2 * g2o
         nt = nu + nd
         co, vo = self.os_baseline(nu, nd, g2, type=1)
@@ -401,7 +400,6 @@ class VSXCContribs():
         co *= nt
         cx *= nt
         Do = self.get_D(nu+nd, g2, tu+td)
-        cm = (cx - co) * (1 - Do[0])
         amix, vxcmix = self.get_amix(nu, nd, g2, Do)
         ldaxm = (ldaxu * amix, ldaxd * amix)
         N = co.shape[0]
@@ -410,7 +408,7 @@ class VSXCContribs():
                np.zeros((N,2)),
                np.zeros((N,2))]
         if include_baseline:
-            tot = co + cm
+            tot = co + Do[0] + cx * (1 - Do[0])
             tmp = (co - cx)
             fill_vxc_os_(vxc, tmp * Do[1],
                          tmp * Do[2],
@@ -431,19 +429,17 @@ class VSXCContribs():
             x2[1][:] /= 2**(1.0/3)
             cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
             cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
-            cfm = self.single_corr(x2[0], z[0], alphaos, self.dm)
             cfau = self.single_corr(x2u[0], zu[0], alphax, self.da)
             cfad = self.single_corr(x2d[0], zd[0], alphax, self.da)
 
-            tot += cfo[0] * co
+            tot += cfo[0] * co * Do[0]
             tot += cfx[0] * cx
-            tot += cfm[0] * cm
             tot += ldaxm[0] * cfau[0]
             tot += ldaxm[1] * cfad[0]
 
-            tmp = (co - cx) * cfm[0]
-            fill_vxc_base_os_(vxc, vo, cfo[0] - cfm[0] * (1 - Do[0]))
-            fill_vxc_base_os_(vxc, vx, cfx[0] + cfm[0] * (1 - Do[0]))
+            tmp = co * cfo[0]
+            fill_vxc_base_os_(vxc, vo, cfo[0] * Do[0])
+            fill_vxc_base_os_(vxc, vx, cfx[0])
             fill_vxc_os_(vxc, tmp * Do[1],
                          tmp * Do[2],
                          tmp * Do[3])
@@ -453,8 +449,8 @@ class VSXCContribs():
             tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
             fill_vxc_base_os_(vxc, vxcmix, tmp)
 
-            for c, cf in zip([co, cx, (cx-co) * (1-Do[0]), ldaxm[0], ldaxm[1]],
-                             [cfo, cfx, cfm, cfau, cfad]):
+            for c, cf in zip([co * Do[0], cx, ldaxm[0], ldaxm[1]],
+                             [cfo, cfx, cfau, cfad]):
                 fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
                              c * (cf[1] * x2[2]),
                              c * (x2[2] * z[2]))
@@ -466,15 +462,14 @@ class VSXCContribs():
             yau, derivau = self.xef_terms(fu, self.ca)
             yad, derivad = self.xef_terms(fd, self.ca)
 
-            tot += yo * co
+            tot += yo * co * Do[0]
             tot += yx * cx
-            tot += ym * cm
             tot += yau * ldaxm[0]
             tot += yad * ldaxm[1]
 
-            tmp = (co - cx) * ym
-            fill_vxc_base_os_(vxc, vo, yo - ym * (1 - Do[0]))
-            fill_vxc_base_os_(vxc, vx, yx + ym * (1 - Do[0]))
+            tmp = yo * co
+            fill_vxc_base_os_(vxc, vo, yo * Do[0])
+            fill_vxc_base_os_(vxc, vx, yx)
             fill_vxc_os_(vxc, tmp * Do[1],
                          tmp * Do[2],
                          tmp * Do[3])
@@ -484,21 +479,21 @@ class VSXCContribs():
             tmp = ldaxu * yau + ldaxd * yad
             fill_vxc_base_os_(vxc, vxcmix, tmp)
 
-            tmp = co * derivo + cx * derivx + cm * derivm
+            tmp = co * Do[0] * derivo + cx * derivx
             vxc[0][:,0] += tmp * dftdnu
             vxc[0][:,1] += tmp * dftdnd
             vxc[3][:,0] += tmp * dftdfu + ldaxu * derivau
             vxc[3][:,1] += tmp * dftdfd + ldaxd * derivad
 
         rhou, rhod = nu, nd
-        vxc[0][rhou<1e-8,0] = 0
-        vxc[1][rhou<1e-8,0] = 0
-        vxc[2][rhou<1e-8,0] = 0
-        vxc[3][rhou<1e-8,0] = 0
-        vxc[0][rhod<1e-8,1] = 0
-        vxc[1][rhod<1e-8,2] = 0
-        vxc[2][rhod<1e-8,1] = 0
-        vxc[3][rhod<1e-8,1] = 0
-        vxc[1][np.minimum(rhou,rhod)<1e-8,1] = 0
+        vxc[0][rhou<1e-7,0] = 0
+        vxc[1][rhou<1e-7,0] = 0
+        vxc[2][rhou<1e-7,0] = 0
+        vxc[3][rhou<1e-7,0] = 0
+        vxc[0][rhod<1e-7,1] = 0
+        vxc[1][rhod<1e-7,2] = 0
+        vxc[2][rhod<1e-7,1] = 0
+        vxc[3][rhod<1e-7,1] = 0
+        vxc[1][np.minimum(rhou,rhod)<1e-7,1] = 0
         
         return tot, vxc
