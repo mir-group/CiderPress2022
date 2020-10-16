@@ -49,12 +49,12 @@ print('CCSD_T Q-zeta:', ae, en, atoms)
 #mol.build()
 #mlfunc = load('mlfunc10c.joblib')
 #mlfunc.y_to_f_mul = None
-mlfunc = (load('mlfunc10map_heg_v47_2.joblib'), load('mlfunc_corr13g.joblib'))
+mlfunc = (load('mlfunc10map_heg_v47_clean.joblib'), load('mlfunc_corr13g.joblib'))
 #mlfunc = load('mlfunc10map_lam1.joblib')
 #from mldftdat.dft.xc_models import PBEFunctional, SCANFunctional
 #mlfunc = PBEFunctional()
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'RKS', 'def2-tzvppd', 'qm9/3-H2O', FUNCTIONAL=mlfunc[0], mol = mol)
+        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL=mlfunc[0], mol = mol)
 #        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL=mlfunc[0], mol = mol)
 print('ML:', ae, en, atoms)
 

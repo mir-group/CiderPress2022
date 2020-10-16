@@ -298,8 +298,11 @@ class VSXCContribs():
         return y, dydx2, dydz, dydgamma
 
     def get_separate_xef_terms(self, f):
+        f = f - 1
         fterm0 = np.exp(-1.0 * f**2)
-        return np.array([fterm0 * f**i for i in range(5)])
+        res = np.array([fterm0 * f**i for i in range(5)])
+        res[0,:] = 1
+        return res
 
     def grad_terms(self, x2, gamma, c):
         y = 0
@@ -314,6 +317,7 @@ class VSXCContribs():
     def xef_terms(self, f, c):
         y = 0
         d = 0
+        f = f - 1
         fterm0 = np.exp(-1.0 * f**2)
         for i in range(4):
             y += c[i] * f**(i+1)
@@ -327,7 +331,7 @@ class VSXCContribs():
 
     def get_s2(self, n, g2):
         a, b, c = self.get_x2(n, g2)
-        return a / sprefac**2, b / sprefac**2, c / sprefac**2
+        return a / sprefac**2 + 1e-10, b / sprefac**2, c / sprefac**2
 
     def get_z(self, n, t):
         return -2*CF + (2*t)/n**1.6666666666666667,\
@@ -378,6 +382,18 @@ class VSXCContribs():
              include_baseline=True, include_aug_sl=True,
              include_aug_nl=True):
 
+        ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3)
+        dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
+        ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3)
+        dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
+        ldaxt = LDA_FACTOR * (nu+nd)**(4.0/3)
+        ft = (fu * ldaxu + fd * ldaxd) / ldaxt
+        dftdfu = (2**0.3333333333333333*nu**1.3333333333333333)/(nd + nu)**1.3333333333333333
+        dftdfd = (2**0.3333333333333333*nd**1.3333333333333333)/(nd + nu)**1.3333333333333333
+        dftdnu = (4*2**0.3333333333333333*(-(fd*nd**1.3333333333333333) + fu*nd*nu**0.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
+        dftdnd = (4*2**0.3333333333333333*(fd*nd**0.3333333333333333*nu - fu*nu**1.3333333333333333))/(3.*(nd + nu)**2.3333333333333335)
+
+
         g2 = g2u + g2d + 2 * g2o
         nt = nu + nd
         co, vo = self.os_baseline(nu, nd, g2, type=1)
@@ -386,9 +402,9 @@ class VSXCContribs():
         cx *= nt
         Do = self.get_D(nu+nd, g2, tu+td)
         cm = (cx - co) * (1 - Do[0])
+        amix, vxcmix = self.get_amix(nu, nd, g2, Do)
         ldaxm = (ldaxu * amix, ldaxd * amix)
-        amix, vxcmix = self.get_amix(nu, nd, g2u, g2o, g2d, Do)
-        N = cu.shape[0]
+        N = co.shape[0]
         vxc = [np.zeros((N,2)),
                np.zeros((N,3)),
                np.zeros((N,2)),
@@ -405,6 +421,14 @@ class VSXCContribs():
             tot = 0
 
         if include_aug_sl:
+            x2u = self.get_x2(nu, g2u)
+            x2d = self.get_x2(nd, g2d)
+            x2 = self.get_x2((nu+nd)/2**(1.0/3), g2)
+            zu = self.get_z(nu, tu)
+            zd = self.get_z(nd, td)
+            z = self.get_z((nu+nd)/2**(2.0/3), tu+td)
+            z[1][:] /= 2**(2.0/3)
+            x2[1][:] /= 2**(1.0/3)
             cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
             cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
             cfm = self.single_corr(x2[0], z[0], alphaos, self.dm)
@@ -427,15 +451,13 @@ class VSXCContribs():
             vxc[0][:,0] += dldaxu * amix * cfau[0]
             vxc[0][:,1] += dldaxd * amix * cfad[0]
             tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
-            fill_vxc_os_(vxc, tmp * vxcmix[0],
-                         tmp * vxcmix[1],
-                         tmp * vxcmix[2])
+            fill_vxc_base_os_(vxc, vxcmix, tmp)
 
             for c, cf in zip([co, cx, (cx-co) * (1-Do[0]), ldaxm[0], ldaxm[1]],
                              [cfo, cfx, cfm, cfau, cfad]):
                 fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
                              c * (cf[1] * x2[2]),
-                             c * (xf[2] * z[2]))
+                             c * (x2[2] * z[2]))
 
         if include_aug_nl:
             yo, derivo = self.xef_terms(ft, self.cos)
@@ -460,11 +482,9 @@ class VSXCContribs():
             vxc[0][:,0] += dldaxu * amix * yau
             vxc[0][:,1] += dldaxd * amix * yad
             tmp = ldaxu * yau + ldaxd * yad
-            fill_vxc_os_(vxc, tmp * vxcmix[0],
-                         tmp * vxcmix[1],
-                         tmp * vxcmix[2])
+            fill_vxc_base_os_(vxc, vxcmix, tmp)
 
-            tmp = co * derivo + cx * deriv + cm * derivm
+            tmp = co * derivo + cx * derivx + cm * derivm
             vxc[0][:,0] += tmp * dftdnu
             vxc[0][:,1] += tmp * dftdnd
             vxc[3][:,0] += tmp * dftdfu + ldaxu * derivau
