@@ -76,6 +76,7 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     # vc_contrib and ec_contrib
     vxc += vk.vc_contrib
     exc += vk.ec_contrib
+    print ('CUSTOM EC', vk.ec_contrib, np.linalg.norm(vk.vc_contrib))
 
     if ground_state:
         exc -= numpy.einsum('ij,ji', dm, vk).real * .5 * .5
@@ -144,18 +145,20 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
 
     new_mf = cls(mf, with_df, auxbasis)
 
+    print(new_mf._numint)
+
     return new_mf
 
 
 def _eval_corr_uks(corr_model, rho_data, F):
     N = rho_data.shape[-1]
     print(rho_data.shape)
-    rhou = rho_data[0][0]
+    rhou = rho_data[0][0] + 1e-20
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-    tu = rho_data[0][5]
-    rhod = rho_data[1][0]
+    tu = rho_data[0][5] + 1e-20
+    rhod = rho_data[1][0] + 1e-20
     g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-    td = rho_data[1][5]
+    td = rho_data[1][5] + 1e-20
     ntup = (rhou, rhod)
     gtup = (g2u, g2d)
     ttup = (tu, td)
@@ -164,25 +167,29 @@ def _eval_corr_uks(corr_model, rho_data, F):
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
             np.zeros((N,2)), np.zeros((N,2))]
-        
+    print (rho_data.shape, F.shape)
     exc, vxc = corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                tu, td, F[0], F[1],
                                include_baseline=False,
-                               include_aug_sl=False,
+                               include_aug_sl=True,
                                include_aug_nl=True)
 
     vtot[0][:,:] += vxc[0]
-    vtot[0][:,0] += vxc[3][:,0] * -4 * F[0] / (3 * rhou)
-    vtot[0][:,1] += vxc[3][:,1] * -4 * F[1] / (3 * rhod)
+    cond = rhou > 1e-7
+    vtot[0][cond,0] += vxc[3][cond,0] * -4 * F[0][cond] / (3 * rhou[cond])
+    vtot[4][cond,0] += vxc[3][cond,0] / (2**(1.0/3) * LDA_FACTOR * rhou[cond]**(4.0/3))
+    cond = rhod > 1e-7
+    vtot[0][cond,1] += vxc[3][cond,1] * -4 * F[1][cond] / (3 * rhod[cond])
+    vtot[4][cond,1] += vxc[3][cond,1] / (2**(1.0/3) * LDA_FACTOR * rhod[cond]**(4.0/3))
     vtot[1][:,:] += vxc[1]
     vtot[3][:,:] += vxc[2]
-    vtot[4][:,0] += vxc[3][:,0] / (LDA_FACTOR * rhou**(4.0/3))
-    vtot[4][:,1] += vxc[3][:,1] / (LDA_FACTOR * rhod**(4.0/3))
+
+    print('EXC VXC', np.linalg.norm(exc), np.linalg.norm(vtot[0]), np.linalg.norm(F[0]), np.linalg.norm(F[1]))
 
     return exc / (rhot + 1e-20), vtot
 
 def _eval_corr_rks(corr_model, rho_data, F):
-    rho_data = np.stack([rho_data, rho_data], axis=0)
+    rho_data = np.stack([rho_data/2, rho_data/2], axis=0)
     F = np.stack([F, F], axis=0)
     exc, vxc = _eval_corr_uks(corr_model, rho_data, F)[:2]
     vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
@@ -202,15 +209,13 @@ def _contract_corr_rks(vmat, mol, exc, vxc, weight, ao, rho, mask):
     excsum = np.dot(den, exc)
 
     wv = _rks_gga_wv0(rho, vxc, weight)
-    aow = _scale_ao(ao[:4], wv)
+    aow = _scale_ao(ao[:4], wv, out=aow)
     vmat += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
 
     wv = (0.5 * 0.5 * weight * vtau).reshape(-1,1)
     vmat += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
     vmat += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
     vmat += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
-
-    vmat = vmat + vmat.T
 
     return excsum, vmat
 
@@ -244,9 +249,6 @@ def _contract_corr_uks(vmat, mol, exc, vxc, weight, ao, rho, mask):
     vmat[1] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
     vmat[1] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
 
-    vmat[0] = vmat[0] + vmat[0].T
-    vmat[1] = vmat[1] + vmat[1].T
-
     return excsum, vmat
 
 
@@ -261,6 +263,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     mol = sgx.mol
     nao = mol.nao_nr()
     grids = sgx.grids
+    print ('GRID!!!', grids.level)
     non0tab = grids.non0tab
     if non0tab is None:
         raise ValueError('Grids object must have non0tab!')
@@ -305,9 +308,9 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         eval_corr = _eval_corr_uks
     else:
         raise ValueError('Can only call sgx correlation model with nset=1,2')
-    FXtmp = numpy.zeros(ngrids)
     Ec = 0
     tnuc = 0, 0
+    fxtot = 0
     for i0, i1 in lib.prange(0, ngrids, blksize):
         non0 = non0tab[i0//BLKSIZE:]
         coords = grids.coords[i0:i1]
@@ -332,10 +335,10 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
             rhog = None
         rhogs = numpy.einsum('xgu,gu->g', fg, ao)
         ex = numpy.zeros(rhogs.shape)
-        FX = numpy.zeros(rhogs.shape)
         ao_data = eval_ao(mol, coords, deriv=2, non0tab=non0)
         # should make mask for rho_data in the future.
         rho_data = eval_rho(mol, ao_data, dm, non0tab=non0, xctype='MGGA')
+        #rho_data = eval_rho(mol, ao_data, dm, xctype='MGGA')
 
         if sgx.debug:
             tnuc = tnuc[0] - time.clock(), tnuc[1] - time.time()
@@ -354,21 +357,27 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         if with_j:
             vj += jpart
         if with_k:
+            if nset == 2:
+                FX = [0,0]
             for i in range(nset):
                 vk[i] += lib.einsum('gu,gv->uv', ao, gv[i])
                 print(ex.shape, fg.shape, gv[i].shape, weights.shape)
-                ex += lib.einsum('gu,gu->g', fg[i]/weights[:,None], gv[i]/weights[:,None])
-            FX = ex / (LDA_FACTOR * rhogs**(4.0/3))
+                ex += lib.einsum('gu,gu->g', fg[i]/weights[:,None], gv[i]/weights[:,None]) / 4
+                if nset == 1:
+                    FX = -ex / (LDA_FACTOR * rho_data[0]**(4.0/3))
+                else:
+                    FX[i] = -ex / (LDA_FACTOR * rho_data[0]**(4.0/3) * 2**(1.0/3))
             # vctmp = (vrho, vsigma, vlapl, vtau, vxdens)
+            fxtot += np.dot(ex, weights)
             ec, vctmp = eval_corr(sgx.corr_model, rho_data, FX)
-            Ec += numpy.dot(ec * rhogs, weights)
+            Ec += numpy.dot(ec, rho_data[0] * weights)
             contract_corr(vc, mol, ec, vctmp[:-1], weights,
                           ao_data, rho_data, non0)
             if nset == 1:
-                vc[i] += lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None])
+                vc[0] -= lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None]) / 4
             else:
                 for i in range(nset):
-                    vc[i] += lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None])
+                    vc[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 4
 
         jpart = gv = None
 
@@ -382,10 +391,13 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         lib.hermi_triu(vj[i], inplace=True)
     if with_k and hermi == 1:
         vk = (vk + vk.transpose(0,2,1))*.5
+        vc = vc + vc.conj().transpose(0,2,1)
     logger.timer(mol, "vj and vk", *t0)
 
     vk = vk.reshape(dm_shape)
     vk = lib.tag_array(vk, vc_contrib=vc.reshape(dm_shape), ec_contrib=Ec)
+
+    print ('TOTAL EX FROM DENS', fxtot)
 
     return vj.reshape(dm_shape), vk
 
@@ -441,11 +453,11 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def nr_rks(self, mol, grids, xc_code, dms, relativity=0, hermi=0,
                max_memory=2000, verbose=None):
-        nelec, excsum, vmat = super(HFCNumInt, self).nr_rks(
-                                mol, grids, xc_code, dms,
+        nelec, excsum, vmat = super(HFCNumInt, self).nr_uks(
+                                mol, grids, xc_code, np.stack([dms/2, dms/2]),
                                 relativity, hermi,
                                 max_memory, verbose)
-        return nelec, excsum, vmat
+        return nelec, excsum, vmat[0]
 
     def nr_uks(self, mol, grids, xc_code, dms, relativity=0, hermi=0,
                max_memory=2000, verbose=None):
@@ -457,8 +469,9 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
                 verbose=None):
+        print('YO CUSTOM EVAL XC')
         rho_data = rho
-        N = rho_data.shape[1]
+        N = rho_data[0].shape[-1]
         rhou = rho_data[0][0]
         g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
         tu = rho_data[0][5]
@@ -473,16 +486,17 @@ class HFCNumInt(pyscf_numint.NumInt):
 
         vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
                 np.zeros((N,2))]
-            
+        F = np.ones(N)    
         exc, vxc = self.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
-                                   tu, td, None, None,
+                                   tu, td, F, F,
                                    include_baseline=True,
-                                   include_aug_sl=True,
+                                   include_aug_sl=False,
                                    include_aug_nl=False)
 
         vtot[0][:,:] += vxc[0]
         vtot[1][:,:] += vxc[1]
         vtot[3][:,:] += vxc[2]
+        print(np.linalg.norm(vtot[0]), np.linalg.norm(exc))
 
         return exc / (rhot + 1e-20), vtot, None, None
 
@@ -506,7 +520,7 @@ def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     rks = dft.RKS(mol)
-    rks.xc = None
+    rks.xc = 'SCAN'
     rks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
@@ -518,7 +532,7 @@ def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
                    vv10_coeff = None):
     uks = dft.UKS(mol)
-    uks.xc = None
+    uks.xc = 'SCAN'
     uks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)

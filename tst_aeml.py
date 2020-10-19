@@ -42,7 +42,8 @@ rho_hf = rho_data_from_calc(calc_rhf, grid, is_ccsd = False)
 print(density_similarity(rho_pbe, rho_ccsd, grid, mol))
 
 mol, ae, en, atoms, _, _ = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'CCSD_T', 'aug-cc-pvqz', 'qm9/3-H2O', mol = mol)
+        'CCSD_T', 'def2-qzvppd', 'qm9/3-H2O', mol = mol)
+        #'CCSD_T', 'aug-cc-pvqz', 'qm9/3-H2O', mol = mol)
 print('CCSD_T Q-zeta:', ae, en, atoms)
 
 #mol.basis = 'aug-cc-pvtz'

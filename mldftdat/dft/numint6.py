@@ -350,8 +350,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     vtot[0][:,:] += vxc[0]
     vtot[1][:,:] += vxc[1]
     vtot[3][:,:] += vxc[2]
-    #dEddesc[0] += 2 * vxc[3][:,0,np.newaxis] * dF[0]
-    #dEddesc[1] += 2 * vxc[3][:,1,np.newaxis] * dF[1]
+    dEddesc[0] += 2 * vxc[3][:,0,np.newaxis] * dF[0]
+    dEddesc[1] += 2 * vxc[3][:,1,np.newaxis] * dF[1]
     
 
     print('desc setup and run GP', time.monotonic() - chkpt)
@@ -430,7 +430,7 @@ DEFAULT_CM = None
 DEFAULT_DM = None
 DEFAULT_CSS = None
 DEFAULT_DSS = None
-"""
+
 DEFAULT_COS = [-0.03569016,  0.00124141, -0.00101882,  0.00017673]
 DEFAULT_CX = [ 0.01719458, -0.00963045, -0.00879279, -0.0057004 ]
 DEFAULT_CA = [-0.71581393, -0.36932482, -0.19691875, -0.12507637]
@@ -440,7 +440,7 @@ DEFAULT_DX = [-0.00363218,  0.00021466,  0.08919607,  0.00117978, -0.00894649,
           0.0114701 ]
 DEFAULT_DA = [-7.59229970e-03,  2.63563397e-03,  7.46369471e-03, -3.94199066e-06,
           1.43406887e-04, -5.03764720e-04]
-"""
+
 def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,

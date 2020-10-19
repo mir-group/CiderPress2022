@@ -448,15 +448,19 @@ class VSXCContribs():
             vxc[0][:,1] += dldaxd * amix * cfad[0]
             tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
             fill_vxc_base_os_(vxc, vxcmix, tmp)
-            """
-            for c, cf, x2, z in zip([co * Do[0], cx, ldaxm[0], ldaxm[1]],
-                                    [cfo, cfx, cfau, cfad],
-                                    [x2, x2, x2u, x2d],
-                                    [z, z, zu, zd]):
+            
+            for c, cf in zip([co * Do[0], cx],
+                             [cfo, cfx]):
                 fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
                              c * (cf[1] * x2[2]),
                              c * (cf[2] * z[2]))
-            """
+            fill_vxc_ss_(vxc, 0, ldaxm[0] * (cfau[1] * x2u[1] + cfau[2] * zu[1]),
+                         ldaxm[0] * cfau[1] * x2u[2],
+                         ldaxm[0] * cfau[2] * zu[2])
+            fill_vxc_ss_(vxc, 1, ldaxm[1] * (cfad[1] * x2d[1] + cfad[2] * zd[1]),
+                         ldaxm[1] * cfad[1] * x2d[2],
+                         ldaxm[1] * cfad[2] * zd[2])
+            
         if include_aug_nl:
             yo, derivo = self.xef_terms(ft, self.cos)
             yx, derivx = self.xef_terms(ft, self.cx)
@@ -483,8 +487,8 @@ class VSXCContribs():
             tmp = co * Do[0] * derivo + cx * derivx
             vxc[0][:,0] += tmp * dftdnu
             vxc[0][:,1] += tmp * dftdnd
-            vxc[3][:,0] += tmp * dftdfu + ldaxu * derivau
-            vxc[3][:,1] += tmp * dftdfd + ldaxd * derivad
+            vxc[3][:,0] += tmp * dftdfu + ldaxm[0] * derivau
+            vxc[3][:,1] += tmp * dftdfd + ldaxm[1] * derivad
 
         rhou, rhod = nu, nd
         vxc[0][rhou<1e-7,0] = 0
