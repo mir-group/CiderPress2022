@@ -21,7 +21,7 @@
 
 from pyscf.sgx.sgx import *
 from pyscf.sgx.sgx_jk import *
-from pyscf.sgx.sgx_jk import _gen_jk_direct
+from pyscf.sgx.sgx_jk import _gen_jk_direct, _gen_batch_nuc
 from pyscf.sgx.sgx import _make_opt
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.dft.gen_grid import make_mask, BLKSIZE
@@ -109,13 +109,13 @@ def get_uveff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     if ks.grids.coords is None:
         ks.grids.build(with_non0tab=True)
         if ks.small_rho_cutoff > 1e-20 and ground_state:
-            ks.grids = rks.prune_small_rho_grids_(ks, mol, dm[0]+dm[1], ks.grids)
+            ks.grids = prune_small_rho_grids_(ks, mol, dm[0]+dm[1], ks.grids)
         t0 = logger.timer(ks, 'setting up grids', *t0)
     if ks.nlc != '':
         if ks.nlcgrids.coords is None:
             ks.nlcgrids.build(with_non0tab=True)
             if ks.small_rho_cutoff > 1e-20 and ground_state:
-                ks.nlcgrids = rks.prune_small_rho_grids_(ks, mol, dm[0]+dm[1], ks.nlcgrids)
+                ks.nlcgrids = prune_small_rho_grids_(ks, mol, dm[0]+dm[1], ks.nlcgrids)
             t0 = logger.timer(ks, 'setting up nlc grids', *t0)
 
     ni = ks._numint
@@ -246,10 +246,10 @@ def _eval_corr_uks(corr_model, rho_data, F):
                                include_aug_nl=True)
 
     vtot[0][:,:] += vxc[0]
-    cond = rhou > 1e-7
+    cond = rhou > 1e-6
     vtot[0][cond,0] += vxc[3][cond,0] * -4 * F[0][cond] / (3 * rhou[cond])
     vtot[4][cond,0] += vxc[3][cond,0] / (2**(1.0/3) * LDA_FACTOR * rhou[cond]**(4.0/3))
-    cond = rhod > 1e-7
+    cond = rhod > 1e-6
     vtot[0][cond,1] += vxc[3][cond,1] * -4 * F[1][cond] / (3 * rhod[cond])
     vtot[4][cond,1] += vxc[3][cond,1] / (2**(1.0/3) * LDA_FACTOR * rhod[cond]**(4.0/3))
     vtot[1][:,:] += vxc[1]
@@ -316,6 +316,7 @@ def _contract_corr_uks(vmat, mol, exc, vxc, weight, ao, rho, mask):
     vmat[0] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
     vmat[0] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
     vmat[0] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
+    wv = (.25 * weight * vtau[:,1]).reshape(-1,1)
     vmat[1] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
     vmat[1] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
     vmat[1] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
@@ -409,8 +410,9 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         ao_data = eval_ao(mol, coords, deriv=2, non0tab=non0)
         # should make mask for rho_data in the future.
         if nset == 1:
-            rho_data = eval_rho(mol, ao_data, dm, non0tab=non0, xctype='MGGA')
+            rho_data = eval_rho(mol, ao_data, dms[0], non0tab=non0, xctype='MGGA')
         else:
+            print (dms.shape)
             rho_data_0 = eval_rho(mol, ao_data, dms[0], non0tab=non0, xctype='MGGA')
             rho_data_1 = eval_rho(mol, ao_data, dms[1], non0tab=non0, xctype='MGGA')
             rho_data = np.stack([rho_data_0, rho_data_1], axis=0)
@@ -444,8 +446,8 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
                 else:
                     FX[i] = -ex / (LDA_FACTOR * rho_data[i][0]**(4.0/3) * 2**(1.0/3) - 1e-20)
                     print(FX[i])
-            # vctmp = (vrho, vsigma, vlapl, vtau, vxdens)
-            #fxtot += np.dot(ex, weights)
+                # vctmp = (vrho, vsigma, vlapl, vtau, vxdens)
+                fxtot += np.dot(ex, weights)
             ec, vctmp = eval_corr(sgx.corr_model, rho_data, FX)
             if nset == 1:
                 Ec += numpy.dot(ec, rho_data[0] * weights)
@@ -486,8 +488,8 @@ class SGXCorr(SGX):
 
     def __init__(self, mol, auxbasis=None):
         super(SGXCorr, self).__init__(mol, auxbasis)
-        self.grids_level_i = 1
-        self.grids_level_f = 2
+        self.grids_level_i = 3
+        self.grids_level_f = 3
 
     def build(self, level=None):
         if level is None:
@@ -571,10 +573,13 @@ class HFCNumInt(pyscf_numint.NumInt):
                                    include_baseline=True,
                                    include_aug_sl=False,
                                    include_aug_nl=False)
-
+        
         vtot[0][:,:] += vxc[0]
         vtot[1][:,:] += vxc[1]
         vtot[3][:,:] += vxc[2]
+        for i in [0,1,3]:
+            vtot[i][rhou<3e-9,0] = 0
+            vtot[i][rhod<3e-9,1] = 0
         print(np.linalg.norm(vtot[0]), np.linalg.norm(exc))
 
         return exc / (rhot + 1e-20), vtot, None, None
@@ -603,7 +608,9 @@ def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
     rks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
-    return sgx_fit_corr(rks)
+    rks = sgx_fit_corr(rks)
+    rks.with_df.debug = True
+    return rks
 
 def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
@@ -615,4 +622,6 @@ def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
     uks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
-    return sgx_fit_corr(uks)
+    uks = sgx_fit_corr(uks)
+    uks.with_df.debug = True
+    return uks

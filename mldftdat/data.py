@@ -1177,6 +1177,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             print ('Check if triples correction available.')
             analyzer = Analyzer.load(path.replace('CCSD_T', 'CCSD'))
             if analyzer.e_tri is None and mol.nelectron > 2:
+                print ('Calculating triples')
                 analyzer.calc_pert_triples()
             elif mol.nelectron < 3:
                 analyzer.e_tri = 0
@@ -1283,7 +1284,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
-        analyzer = Analyzer.load(mol_path)
+        analyzer = Analyzer.load(mol_path.replace('CCSD_T', 'CCSD'))
         mol = analyzer.mol
     mol.basis = BASIS
     mol.build() 
