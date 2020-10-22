@@ -43,6 +43,11 @@ def _uks_gga_wv0a(rho, vxc, weight):
     wvb[1:]+= weight * vgrad[:,:,1]
     return wva, wvb
 
+class QuickGrid():
+    def __init__(self, coords, weights):
+        self.coords = coords
+        self.weights = weights
+
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
@@ -63,7 +68,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         for idm in range(nset):
             print('dm shape', dms.shape)
             rho = make_rho(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(xc_code, mol, rho, grids, dms,
+            exc, vxc = ni.eval_xc(xc_code, mol, rho, QuickGrid(coords, weight), dms,
                                   0, relativity, 1,
                                   verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
@@ -133,7 +138,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             rho_a = make_rhoa(idm, ao, mask, 'MGGA')
             rho_b = make_rhob(idm, ao, mask, 'MGGA')
             exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
-                                  grids, (dma, dmb),
+                                  QuickGrid(coords, weight), (dma, dmb),
                                   1, relativity, 1, verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
             den = rho_a[0]*weight
