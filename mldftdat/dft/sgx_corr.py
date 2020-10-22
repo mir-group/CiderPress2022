@@ -152,7 +152,6 @@ def sgx_fit_corr(mf, auxbasis=None, with_df=None):
 
 def _eval_corr_uks(corr_model, rho_data, F):
     N = rho_data.shape[-1]
-    print(rho_data.shape)
     rhou = rho_data[0][0] + 1e-20
     g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
     tu = rho_data[0][5] + 1e-20
@@ -167,7 +166,6 @@ def _eval_corr_uks(corr_model, rho_data, F):
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
             np.zeros((N,2)), np.zeros((N,2))]
-    print (rho_data.shape, F.shape)
     exc, vxc = corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
                                tu, td, F[0], F[1],
                                include_baseline=False,
@@ -223,7 +221,7 @@ def _contract_corr_uks(vmat, mol, exc, vxc, weight, ao, rho, mask):
 
     ngrid = weight.size
     shls_slice = (0, mol.nbas)
-    ao_loc = mol.nao_loc_nr()
+    ao_loc = mol.ao_loc_nr()
     aow = np.ndarray(ao[0].shape, order='F')
     rho_a = rho[0]
     rho_b = rho[1]
@@ -337,7 +335,12 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         ex = numpy.zeros(rhogs.shape)
         ao_data = eval_ao(mol, coords, deriv=2, non0tab=non0)
         # should make mask for rho_data in the future.
-        rho_data = eval_rho(mol, ao_data, dm, non0tab=non0, xctype='MGGA')
+        if nset == 1:
+            rho_data = eval_rho(mol, ao_data, dm, non0tab=non0, xctype='MGGA')
+        else:
+            rho_data_0 = eval_rho(mol, ao_data, dms[0], non0tab=non0, xctype='MGGA')
+            rho_data_1 = eval_rho(mol, ao_data, dms[1], non0tab=non0, xctype='MGGA')
+            rho_data = np.stack([rho_data_0, rho_data_1], axis=0)
         #rho_data = eval_rho(mol, ao_data, dm, xctype='MGGA')
 
         if sgx.debug:
@@ -361,23 +364,27 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
                 FX = [0,0]
             for i in range(nset):
                 vk[i] += lib.einsum('gu,gv->uv', ao, gv[i])
-                print(ex.shape, fg.shape, gv[i].shape, weights.shape)
-                ex += lib.einsum('gu,gu->g', fg[i]/weights[:,None], gv[i]/weights[:,None]) / 4
+                print("CHECK", rho_data.shape, ex.shape, fg.shape, gv[i].shape, weights.shape)
+                ex = lib.einsum('gu,gu->g', fg[i]/weights[:,None], gv[i]/weights[:,None]) / 4 * nset
                 if nset == 1:
-                    FX = -ex / (LDA_FACTOR * rho_data[0]**(4.0/3))
+                    FX = -ex / (LDA_FACTOR * rho_data[0]**(4.0/3) - 1e-20)
                 else:
-                    FX[i] = -ex / (LDA_FACTOR * rho_data[0]**(4.0/3) * 2**(1.0/3))
+                    FX[i] = -ex / (LDA_FACTOR * rho_data[i][0]**(4.0/3) * 2**(1.0/3) - 1e-20)
+                    print(FX[i])
             # vctmp = (vrho, vsigma, vlapl, vtau, vxdens)
-            fxtot += np.dot(ex, weights)
+            #fxtot += np.dot(ex, weights)
             ec, vctmp = eval_corr(sgx.corr_model, rho_data, FX)
-            Ec += numpy.dot(ec, rho_data[0] * weights)
+            if nset == 1:
+                Ec += numpy.dot(ec, rho_data[0] * weights)
+            else:
+                Ec += numpy.dot(ec, (rho_data[0][0] + rho_data[1][0]) * weights)
             contract_corr(vc, mol, ec, vctmp[:-1], weights,
                           ao_data, rho_data, non0)
             if nset == 1:
                 vc[0] -= lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None]) / 4
             else:
                 for i in range(nset):
-                    vc[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 4
+                    vc[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 2
 
         jpart = gv = None
 
@@ -469,15 +476,14 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
                 verbose=None):
-        print('YO CUSTOM EVAL XC')
         rho_data = rho
         N = rho_data[0].shape[-1]
-        rhou = rho_data[0][0]
+        rhou = rho_data[0][0] + 1e-20
         g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-        tu = rho_data[0][5]
-        rhod = rho_data[1][0]
+        tu = rho_data[0][5] + 1e-20
+        rhod = rho_data[1][0] + 1e-20
         g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-        td = rho_data[1][5]
+        td = rho_data[1][5] + 1e-20
         ntup = (rhou, rhod)
         gtup = (g2u, g2d)
         ttup = (tu, td)
