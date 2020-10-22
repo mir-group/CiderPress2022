@@ -1173,6 +1173,16 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
             else:
                 return analyzer.calc.e_tot, analyzer.calc
+        elif ('CCSD_T' in path) and os.path.isfile(path.replace('CCSD_T', 'CCSD')):
+            print ('Check if triples correction available.')
+            analyzer = Analyzer.load(path.replace('CCSD_T', 'CCSD'))
+            if analyzer.e_tri is None and mol.nelectron > 2:
+                analyzer.calc_pert_triples()
+            elif mol.nelectron < 3:
+                analyzer.e_tri = 0
+            else:
+                print ('Triples correction already calculated.')
+            return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
 
         else:
             if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
@@ -1199,6 +1209,20 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 calc = mycc
             elif FUNCTIONAL is None:
                 mf = run_scf(mol, calc_type)
+                e_tot = mf.e_tot
+                calc = mf
+            elif type(FUNCTIONAL) == str and 'SGXCorr' in FUNCTIONAL:
+                if 'RKS' in path:
+                    from mldftdat.dft.sgx_corr import setup_rks_calc
+                    mf = setup_rks_calc(mol)
+                    mf.xc = None
+                else:
+                    from mldftdat.dft.sgx_corr import setup_uks_calc
+                    mf = setup_uks_calc(mol)
+                    mf.xc = None
+                mf.kernel()
+                if mol.spin > 0:
+                    uhf_internal(mf)
                 e_tot = mf.e_tot
                 calc = mf
             elif type(FUNCTIONAL) == str:
