@@ -593,6 +593,7 @@ class SCFCalcConvergenceFixer(FiretaskBase):
         return FWAction(update_spec = update_spec)
 
 
+@explicit_serialize
 class MLSCFCalcConvergenceFixer(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type',\
@@ -640,6 +641,8 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
             else:
                 calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
 
+        calc = scf.addons.remove_linear_dep_(calc)
+
         start_time = time.monotonic()
         calc.kernel()
         stop_time = time.monotonic()
@@ -656,7 +659,7 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
             print ("Did not converge SCF, changing params.")
 
             calc.max_cycle = 100
-            calc.direct_scf = False
+            calc.direct_scf = True
             for DIIS, init_guess, diis_opts in product(diis_types,
                                                        init_guess_types,
                                                        diis_options_list):

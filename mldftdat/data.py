@@ -1215,14 +1215,12 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 if 'RKS' in path:
                     from mldftdat.dft.sgx_corr import setup_rks_calc
                     mf = setup_rks_calc(mol)
-                    mf.xc = None
                 else:
                     from mldftdat.dft.sgx_corr import setup_uks_calc
                     mf = setup_uks_calc(mol)
-                    mf.xc = None
                 mf.kernel()
-                if mol.spin > 0:
-                    uhf_internal(mf)
+                #if mol.spin > 0:
+                #    uhf_internal(mf)
                 e_tot = mf.e_tot
                 calc = mf
             elif type(FUNCTIONAL) == str:
