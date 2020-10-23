@@ -67,7 +67,8 @@ class VSXCContribs():
 
     def __init__(self, css, cos, cx, cm, ca,
                  dss, dos, dx, dm, da,
-                 bx=None, bss=None, bos=None):
+                 bx=None, bss=None, bos=None,
+                 fterm_scale=1.0):
         self.cx = cx
         self.css = css
         self.cos = cos
@@ -90,7 +91,7 @@ class VSXCContribs():
             self.bos = [0] * 4
         else:
             self.bos = bos
-        #print(len(self.dss), len(self.dos))
+        self.cf = fterm_scale
 
     def get_rs(self, n):
         rs = (4 * np.pi * n / 3)**(-1.0/3)
@@ -255,12 +256,9 @@ class VSXCContribs():
         if type == 0:
             e, dedrs, dedzeta, deds2 = self.baseline0(rs, zeta, s2)
         else:
-            print(zeta.shape)
             lda, dldadrs, dldadzeta = self.pw92(rs, zeta)
             e, dedlda, dedrs, dedzeta, deds2 = self.baseline1(lda, rs, zeta, s2)
             dedrs += dedlda * dldadrs
-            print(dedzeta.shape)
-            print(dldadzeta.shape)
             dedzeta += dedzeta * dldadzeta
         vxc = [np.zeros((N,2)), np.zeros((N,3)), None, None]
         vxc[0][:,0] = dedrs * drs + dedzeta * dzetau + deds2 * ds2n
@@ -288,7 +286,6 @@ class VSXCContribs():
                          z**2 / gamma**3])
 
     def corrfunc(self, x2, z, gamma, d):
-        #print(d)
         d0, d1, d2, d3, d4, d5 = d
         # NOTE: 0 in HEG limit
         y = d0*(-1 + 1/gamma) + (d1*x2 + d2*z)/gamma**2 + (d3*x2**2 + d4*x2*z + d5*z**2)/gamma**3
@@ -299,7 +296,7 @@ class VSXCContribs():
 
     def get_separate_xef_terms(self, f):
         f = f - 1
-        fterm0 = np.exp(-1.0 * f**2)
+        fterm0 = np.exp(-self.cf * f**2)
         res = np.array([fterm0 * f**i for i in range(5)])
         res[0,:] = 1
         return res
@@ -318,10 +315,10 @@ class VSXCContribs():
         y = 0
         d = 0
         f = f - 1
-        fterm0 = np.exp(-1.0 * f**2)
+        fterm0 = np.exp(-self.cf * f**2)
         for i in range(4):
             y += c[i] * f**(i+1)
-            d += c[i] * ((i+1) * f**i - 2 * f**(i+2))
+            d += c[i] * ((i+1) * f**i - 2 * self.cf * f**(i+2))
         return y * fterm0, d * fterm0
 
     def get_x2(self, n, g2):
@@ -514,12 +511,12 @@ class VSXCContribs():
         dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
         ldaxt = LDA_FACTOR * nt**(4.0/3)
         fu = exu / ldaxu
-        fd = exu / ldaxd
+        fd = exd / ldaxd
         ft = (exu + exd) / ldaxt
         dfudxu = 1 / ldaxu
         dfudnu = -4 * fu / (3 * nu)
         dfddxd = 1 / ldaxd
-        dfddxd = -4 * fd / (3 * nd)
+        dfddnd = -4 * fd / (3 * nd)
         dftdxu = 1 / ldaxt
         dftdxd = 1 / ldaxt
         dftdnu = -4 * ft / (3 * nt)
@@ -621,15 +618,16 @@ class VSXCContribs():
             vxc[3][:,0] += tmp * dftdxu + ldaxm[0] * derivau * dfudxu
             vxc[3][:,1] += tmp * dftdxd + ldaxm[1] * derivad * dfddxd
 
+        thr = 1e-8
         rhou, rhod = nu, nd
-        vxc[0][rhou<1e-7,0] = 0
-        vxc[1][rhou<1e-7,0] = 0
-        vxc[2][rhou<1e-7,0] = 0
-        vxc[3][rhou<1e-7,0] = 0
-        vxc[0][rhod<1e-7,1] = 0
-        vxc[1][rhod<1e-7,2] = 0
-        vxc[2][rhod<1e-7,1] = 0
-        vxc[3][rhod<1e-7,1] = 0
-        vxc[1][np.minimum(rhou,rhod)<1e-7,1] = 0
+        vxc[0][rhou<thr,0] = 0
+        vxc[1][rhou<thr,0] = 0
+        vxc[2][rhou<thr,0] = 0
+        vxc[3][rhou<thr,0] = 0
+        vxc[0][rhod<thr,1] = 0
+        vxc[1][rhod<thr,2] = 0
+        vxc[2][rhod<thr,1] = 0
+        vxc[3][rhod<thr,1] = 0
+        vxc[1][np.sqrt(rhou*rhod)<thr,1] = 0
         
         return tot, vxc

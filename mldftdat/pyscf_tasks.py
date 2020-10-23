@@ -478,6 +478,12 @@ class TrainingDataCollector(FiretaskBase):
             Analyzer = analyzer_module.CCSDAnalyzer
         elif type(calc) == cc.uccsd.UCCSD:
             Analyzer = analyzer_module.UCCSDAnalyzer
+        elif isinstance(calc, scf.hf.RHF):
+            print ('Other restricted SCF class')
+            Analyzer = analyzer_module.RHFAnalyzer
+        elif isinstance(calc, scf.uhf.UHF):
+            print ('Other unrestricted SCF class')
+            Analyzer = analyzer_module.UHFAnalyzer
         else:
             raise NotImplementedError(
                 'Training data collection not supported for {}'.format(type(calc)))

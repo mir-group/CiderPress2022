@@ -356,7 +356,8 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
     from mldftdat.models import map_c6
 
     corr_model = map_c6.VSXCContribs(None, None, None, None, None,
-                                     None, None, None, None, None)
+                                     None, None, None, None, None,
+                                     fterm_scale=2.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -746,14 +747,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc2_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc2_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
