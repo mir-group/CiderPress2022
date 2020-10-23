@@ -245,15 +245,20 @@ def _eval_corr_uks(corr_model, rho_data, F):
                                include_aug_sl=True,
                                include_aug_nl=True)
 
-    vtot[0][:,:] += vxc[0]
     cond = rhou > 1e-6
+    vtot[0][cond,0] += vxc[0][cond,0]
     vtot[0][cond,0] += vxc[3][cond,0] * -4 * F[0][cond] / (3 * rhou[cond])
+    vtot[1][cond,0] += vxc[1][cond,0]
+    vtot[3][cond,0] += vxc[2][cond,0]
     vtot[4][cond,0] += vxc[3][cond,0] / (2**(1.0/3) * LDA_FACTOR * rhou[cond]**(4.0/3))
     cond = rhod > 1e-6
+    vtot[0][cond,1] += vxc[0][cond,1]
     vtot[0][cond,1] += vxc[3][cond,1] * -4 * F[1][cond] / (3 * rhod[cond])
+    vtot[1][cond,2] += vxc[1][cond,2]
+    vtot[3][cond,1] += vxc[2][cond,1]
     vtot[4][cond,1] += vxc[3][cond,1] / (2**(1.0/3) * LDA_FACTOR * rhod[cond]**(4.0/3))
-    vtot[1][:,:] += vxc[1]
-    vtot[3][:,:] += vxc[2]
+    cond = np.sqrt(rhou * rhod) > 1e-6
+    vtot[1][cond,1] += vxc[1][cond,1]
 
     print('EXC VXC', np.linalg.norm(exc), np.linalg.norm(vtot[0]), np.linalg.norm(F[0]), np.linalg.norm(F[1]))
 
@@ -335,7 +340,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     mol = sgx.mol
     nao = mol.nao_nr()
     grids = sgx.grids
-    print ('GRID!!!', grids.level)
+    print ('GRID!!!', grids.level, with_k, hermi)
     non0tab = grids.non0tab
     if non0tab is None:
         raise ValueError('Grids object must have non0tab!')
@@ -372,6 +377,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     vj = numpy.zeros_like(dms)
     vk = numpy.zeros_like(dms)
     vc = numpy.zeros_like(dms)
+    vc2 = numpy.zeros_like(dms)
     if nset == 1:
         contract_corr = _contract_corr_rks
         eval_corr = _eval_corr_rks
@@ -456,10 +462,11 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
             contract_corr(vc, mol, ec, vctmp[:-1], weights,
                           ao_data, rho_data, non0)
             if nset == 1:
-                vc[0] -= lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None]) / 4
+                vc2[0] -= lib.einsum('gu,gv->uv', ao, gv[0] * vctmp[-1][:,None]) / 4
+                print ('vc', np.linalg.norm(vc))
             else:
                 for i in range(nset):
-                    vc[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 2
+                    vc2[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 2
 
         jpart = gv = None
 
@@ -473,7 +480,9 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         lib.hermi_triu(vj[i], inplace=True)
     if with_k and hermi == 1:
         vk = (vk + vk.transpose(0,2,1))*.5
-        vc = vc + vc.conj().transpose(0,2,1)
+        vc = (vc + vc.transpose(0,2,1))
+        vc += (vc2 + vc2.transpose(0,2,1))
+        print ('vc final', np.linalg.norm(vc))
     logger.timer(mol, "vj and vk", *t0)
 
     vk = vk.reshape(dm_shape)
@@ -577,9 +586,9 @@ class HFCNumInt(pyscf_numint.NumInt):
         vtot[0][:,:] += vxc[0]
         vtot[1][:,:] += vxc[1]
         vtot[3][:,:] += vxc[2]
-        for i in [0,1,3]:
-            vtot[i][rhou<3e-9,0] = 0
-            vtot[i][rhod<3e-9,1] = 0
+        for i in range(4):
+            vtot[i][rhou<1e-9,0] = 0
+            vtot[i][rhod<1e-9,1] = 0
         print(np.linalg.norm(vtot[0]), np.linalg.norm(exc))
 
         return exc / (rhot + 1e-20), vtot, None, None
