@@ -746,14 +746,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ml.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'desc_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ml.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
@@ -913,9 +913,8 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(Xts.shape, yts.shape)
         print(score, score0)
-        print((y - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
+        print((Ecc - y + np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
-        print((np.dot(E_c[inds], coef) + E0)[[hind, oind, waterind]])
         print('20', (np.dot(E_c[inds,:20], coef[:20]) + E0)[[hind, oind, waterind]])
         print('26', (np.dot(E_c[inds,:26], coef[:26]) + E0)[[hind, oind, waterind]])
         print('32', (np.dot(E_c[inds,:32], coef[:32]) + E0)[[hind, oind, waterind]])
