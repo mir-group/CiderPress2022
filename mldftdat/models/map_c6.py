@@ -618,7 +618,7 @@ class VSXCContribs():
             vxc[3][:,0] += tmp * dftdxu + ldaxm[0] * derivau * dfudxu
             vxc[3][:,1] += tmp * dftdxd + ldaxm[1] * derivad * dfddxd
 
-        thr = 1e-8
+        thr = 1e-6
         rhou, rhod = nu, nd
         vxc[0][rhou<thr,0] = 0
         vxc[1][rhou<thr,0] = 0

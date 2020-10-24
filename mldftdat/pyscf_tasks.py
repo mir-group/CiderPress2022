@@ -263,6 +263,10 @@ class SGXCorrCalc(FiretaskBase):
         else:
             calc = numint.setup_uks_calc(mol, **settings)
 
+        calc.DIIS = scf.diis.ADIIS
+        print ("Removing linear dep")
+        calc = scf.addons.remove_linear_dep_(calc)
+
         start_time = time.monotonic()
         calc.kernel()
         stop_time = time.monotonic()
