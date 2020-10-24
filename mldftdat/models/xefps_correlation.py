@@ -865,7 +865,10 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     oind = i
                     print(mols[i], E_ccsd[i], E_dft[i])
                 #weights.append(1.0 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
-                weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
+                if mols[i].nelectron == 3:
+                    weights.append(1e-8 / 3)
+                else:
+                    weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
             weights.append(1 / mols[i].nelectron)

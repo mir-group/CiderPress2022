@@ -588,7 +588,17 @@ DEFAULT_DX = [ 0.00225735,  0.1098632 , -0.28697265, -0.00159427,  0.00498835,
          -0.00549777]
 DEFAULT_DA = [ 1.50175274e-02, -2.45387696e-03,  3.01268545e-02,  3.90737069e-05,
           2.57511213e-05, -3.90349785e-04]
-
+"""
+DEFAULT_COS = [-2.39744286e-02,  1.75450797e-03, -2.42249328e-04,  6.97484137e-05]
+DEFAULT_CX = [-0.03658478, -0.00711547, -0.00381782, -0.00216612]
+DEFAULT_CA = [-0.58796507, -0.07989303, -0.05758388, -0.03791681]
+DEFAULT_DOS = [-0.00019688, -0.02070159,  0.05712587,  0.00092075, -0.00387164,
+          0.00739471]
+DEFAULT_DX = [ 0.00214469,  0.118391  , -0.30686047, -0.00179011,  0.00568496,
+         -0.00611958]
+DEFAULT_DA = [ 9.86513001e-03, -2.74320674e-03,  3.13055397e-02,  3.85063943e-05,
+          3.93533240e-05, -4.02402091e-04]
+"""
 def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
@@ -600,7 +610,7 @@ def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
     rks = sgx_fit_corr(rks)
-    rks.with_df.debug = True
+    rks.with_df.debug = False
     return rks
 
 def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
