@@ -501,13 +501,15 @@ class SGXCorr(SGX):
 class HFCNumInt(pyscf_numint.NumInt):
 
     def __init__(self, css, cos, cx, cm, ca,
-                 dss, dos, dx, dm, da, vv10_coeff = None):
+                 dss, dos, dx, dm, da, vv10_coeff = None,
+                 fterm_scale=2.0):
+        print ("FTERM SCALE", fterm_scale)
         super(HFCNumInt, self).__init__()
         from mldftdat.models import map_c6
         self.corr_model = map_c6.VSXCContribs(
                                 css, cos, cx, cm, ca,
                                 dss, dos, dx, dm, da,
-                                fterm_scale=2.0)
+                                fterm_scale=fterm_scale)
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -603,12 +605,13 @@ def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None):
+                   vv10_coeff = None, fterm_scale=2.0):
     rks = dft.RKS(mol)
     rks.xc = 'SCAN'
     rks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
-                           vv10_coeff)
+                           vv10_coeff=vv10_coeff,
+                           fterm_scale=fterm_scale)
     rks = sgx_fit_corr(rks)
     rks.with_df.debug = False
     return rks
@@ -617,12 +620,13 @@ def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None):
+                   vv10_coeff = None, fterm_scale=2.0):
     uks = dft.UKS(mol)
     uks.xc = 'SCAN'
     uks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
-                           vv10_coeff)
+                           vv10_coeff=vv10_coeff,
+                           fterm_scale=fterm_scale)
     uks = sgx_fit_corr(uks)
     uks.with_df.debug = True
     return uks
