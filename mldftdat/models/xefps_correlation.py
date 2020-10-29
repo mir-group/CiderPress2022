@@ -606,7 +606,7 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
 
     corr_model = map_c6.VSXCContribs(None, None, None, None, None,
                                      None, None, None, None, None,
-                                     fterm_scale=2.0)
+                                     fterm_scale=1.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -798,6 +798,9 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
     Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
              * (rho_data_u[0] + rho_data_d[0])
     Exscan = np.dot(Exscan, weights)
+    Ecscan = eval_xc(',MGGA_C_REVSCAN', (rho_data_u, rho_data_d), spin = 1)[0] \
+                     * (rho_data_u[0] + rho_data_d[0])
+    Ecscan = np.dot(Ecscan, weights)
 
     print('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
     if (np.abs(Ex - dft_analyzer.fx_total) > 1e-7):
@@ -809,8 +812,8 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
     exu *= rhou
     exd *= rhod
     exo *= rhot
-    ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) + 1e-20
-    ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) + 1e-20
+    ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
+    ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
     ldaxt = ldaxu + ldaxd
 
     for elda, ex, c in zip([ldaxu, ldaxd, ldaxt, ldaxt, ldaxt],
@@ -827,7 +830,7 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
     for elda, ex in zip([ldaxu, ldaxd], [exu, exd]):
         Fx = ex / elda
         E_tmp = corr_model.get_separate_xef_terms(Fx)
-        E_tmp *= elda * amix * rho / 2
+        E_tmp *= elda * amix
         E_tmp = np.dot(E_tmp, weights)
         Fterms = np.append(Fterms, E_tmp)
 
@@ -836,7 +839,7 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
     for elda, ex in zip([ldaxu, ldaxd], [exu, exd]):
         Fx = ex / elda
         E_tmp = corr_model.get_separate_xef_terms(Fx)
-        E_tmp *= elda * rho / 2
+        E_tmp *= elda
         E_tmp = np.dot(E_tmp, weights)
         Fterms2 = np.append(Fterms2, E_tmp)
 
@@ -852,14 +855,15 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
 
     #                      25      10      24     12,    10
     return np.concatenate([Eterms, Fterms, dvals, xvals, Fterms2,
-                          [dft_analyzer.fx_total]], axis=0)
+                          [Ecscan, dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC,
                                 exact=True, BASIS=DEFAULT_BASIS,
                                 mol_id_full=False):
 
-    SIZE = 25+10+24+12+10+3
+    #SIZE = 25+10+24+12+10+3
+    SIZE = 25+10+24+12+10+4
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1001,14 +1005,14 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'desc2_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_desc2_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
@@ -1058,38 +1062,42 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
             E_ccsd = etot[:,1]
             E_x = mlx[:,0]
             E_xscan = mlx[:,1]
+            E_cscan = mlx[:,-2]
             # 0, 1 -- Ex pred and Exscan
             # 2:27 -- Eterms
             # 27:37 -- Fterms
             # 37:61 -- dvals
             # 61:73 -- xvals
             # 73 -- Ex exact
-            E_c = mlx[:,13:17]
-            E_c = np.append(E_c, mlx[:,18:22], axis=1)
-            #E_c = np.append(E_c, mlx[:,23:27], axis=1)
+            E_c = mlx[:,13:14]
+            #E_c = mlx[:,13:17]
+            #E_c = np.append(E_c, mlx[:,18:22], axis=1)
+            ###E_c = np.append(E_c, mlx[:,23:27], axis=1)
             E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
             E_c = np.append(E_c, mlx[:,43:49], axis=1)
             E_c = np.append(E_c, mlx[:,49:55], axis=1)
-            #E_c = np.append(E_c, mlx[:,55:61], axis=1)
+            ###E_c = np.append(E_c, mlx[:,55:61], axis=1)
             E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
             print("SHAPE", E_c.shape)
 
             #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
             diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
-            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
-        E_c, diff, E_ccsd, E_dft, E_xscan, E_x = get_terms(etot, mlx)
-        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2 = get_terms(aetot, amlx)
+        E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
+        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
         E_ccsd = np.append(E_ccsd, E_ccsd2)
         E_dft = np.append(E_dft, E_dft2)
         E_xscan = np.append(E_xscan, E_xscan2)
         E_x = np.append(E_x, E_x2)
+        E_cscan = np.append(E_cscan, E_cscan2)
 
         # E_{tot,PBE} + diff + Evv10 + dot(c, sl_contribs) = E_{tot,CCSD(T)}
         # dot(c, sl_contribs) = E_{tot,CCSD(T)} - E_{tot,PBE} - diff - Evv10
@@ -1166,6 +1174,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
 
         mlxtmp = np.append(mlx[:,12] + mlx[:,22], amlx[:,12] + amlx[:,22])
         E0 = E_x[inds] + mlxtmp[inds]
+        #E0 = E_x[inds] + E_cscan[inds]
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
