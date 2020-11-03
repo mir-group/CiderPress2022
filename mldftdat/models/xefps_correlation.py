@@ -910,25 +910,10 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
 
     co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
     co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
-    cu1, vu1 = corr_model.ss_baseline(rhou, g2u)[:2]
-    cd1, vd1 = corr_model.ss_baseline(rhod, g2d)[:2]
-    ecldau = eval_xc('LDA_C_PW_MOD', (rhou, 0*rhou), spin=1)[0]
-    ecldad = eval_xc('LDA_C_PW_MOD', (rhod, 0*rhod), spin=1)[0]
-    ecldao = eval_xc('LDA_C_PW_MOD', (rhou, rhod), spin=1)[0]
-    escan0 = eval_xc('MGGA_C_SCAN', (rho_data_u_0, rho_data_d_0), spin=1)[0]
-    escan1 = eval_xc('MGGA_C_SCAN', (rho_data_u_1, rho_data_d_1), spin=1)[0]
     co0 *= rhot
     cu1 *= rhou
     cd1 *= rhod
-    co1 = co1 * rhot - cu1 - cd1
-    cu = cu1
-    cd = cd1
-    co = co1
     cx = co0
-    ct = cu1 + cd1 + co1
-    A = 2.74
-    B = 132
-    sprefac = 2 * (3 * np.pi**2)**(1.0/3)
 
     nu, nd = rhou, rhod
 
