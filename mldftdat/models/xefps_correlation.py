@@ -575,6 +575,7 @@ def get_full_contribs(dft_dir, restricted, mlfunc, exact=True):
             E_tmp *= elda * amix * rho / 2
             E_tmp = np.dot(E_tmp, weights)
             Fterms = np.append(Fterms, E_tmp)
+    print("FTERMS", Fterms)
 
     Fterms2 = np.array([])
 
@@ -809,9 +810,9 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
 
     Eterms = np.array([Ex, Exscan])
 
-    exu *= rhou
-    exd *= rhod
-    exo *= rhot
+    exu = exu * rhou
+    exd = exd * rhod
+    exo = exo * rhot
     ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
     ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
     ldaxt = ldaxu + ldaxd
@@ -833,6 +834,7 @@ def get_full_contribs2(dft_dir, restricted, mlfunc, exact=True):
         E_tmp *= elda * amix
         E_tmp = np.dot(E_tmp, weights)
         Fterms = np.append(Fterms, E_tmp)
+    print("FTERMS", Fterms)
 
     Fterms2 = np.array([])
 
@@ -1069,21 +1071,22 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
             # 37:61 -- dvals
             # 61:73 -- xvals
             # 73 -- Ex exact
-            E_c = mlx[:,13:14]
             #E_c = mlx[:,13:17]
+            E_c = mlx[:,18:22]
             #E_c = np.append(E_c, mlx[:,18:22], axis=1)
             ###E_c = np.append(E_c, mlx[:,23:27], axis=1)
             E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
-            E_c = np.append(E_c, mlx[:,43:49], axis=1)
+            #E_c = np.append(E_c, mlx[:,43:49], axis=1)
             E_c = np.append(E_c, mlx[:,49:55], axis=1)
             ###E_c = np.append(E_c, mlx[:,55:61], axis=1)
             E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
+            #E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
             print("SHAPE", E_c.shape)
 
             #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
-            diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
+            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+            diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
             #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
 
