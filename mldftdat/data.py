@@ -1215,10 +1215,10 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             elif type(FUNCTIONAL) == str and 'SGXCorr' in FUNCTIONAL:
                 if 'RKS' in path:
                     from mldftdat.dft.sgx_corr import setup_rks_calc
-                    mf = setup_rks_calc(mol)
+                    mf = setup_rks_calc(mol, fterm_scale=2.0)
                 else:
                     from mldftdat.dft.sgx_corr import setup_uks_calc
-                    mf = setup_uks_calc(mol)
+                    mf = setup_uks_calc(mol, fterm_scale=2.0)
                 mf.kernel()
                 #if mol.spin > 0:
                 #    uhf_internal(mf)
@@ -1368,16 +1368,42 @@ def get_run_data(dirname, return_data=default_return_data):
         data = json.load(f)
     return {name : data.get(name) for name in return_data}
 
-def get_accdb_data(formula, FUNCTIONAL, BASIS):
+def read_accdb_structure(struct_id):
+    ACCDB_DIR = os.environ.get('ACCDB')
+    fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
+    with open(fname, 'r') as f:
+        print(fname)
+        lines = f.readlines()
+        natom = int(lines[0])
+        charge_and_spin = lines[1].split()
+        charge = int(charge_and_spin[0].strip().strip(','))
+        spin = int(charge_and_spin[1].strip().strip(',')) - 1
+        symbols = []
+        coords = []
+        for i in range(natom):
+            line = lines[2+i]
+            symbol, x, y, z = line.split()
+            if symbol.isdigit():
+                symbol = int(symbol)
+            else:
+                symbol = symbol[0] + symbol[1:].lower()
+            symbols.append(symbol)
+            coords.append([x,y,z])
+        struct = Atoms(symbols, positions = coords)
+        print(charge, spin, struct)
+    return struct, os.path.join('ACCDB', struct_id), spin, charge
 
+from ase import Atoms
+
+def get_accdb_data(formula, FUNCTIONAL, BASIS):
     pred_energy = 0
-    for sname, count in zip(formula[structs], formula[counts]):
-        struct, mol_id, spin, charge = read_accdb_struct(sname)
+    for sname, count in zip(formula['structs'], formula['counts']):
+        struct, mol_id, spin, charge = read_accdb_structure(sname)
         if spin == 0:
             CALC_TYPE = 'RKS'
         else:
             CALC_TYPE = 'UKS'
-        dname = get_save_dir(ROOT, CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
+        dname = get_save_dir(os.environ['MLDFTDB'], CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
         pred_energy += count * get_run_total_energy(dname)
 
     return pred_energy, formula['energy']
@@ -1400,3 +1426,40 @@ def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
     if single:
         return result[data_point_names[0]]
     return result
+
+
+def get_accdb_formulas(dataset_eval_name):
+    with open(dataset_eval_name, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            lines[i] = line.split(',')
+        formulas = {}
+        for line in lines:
+            counts = line[1:-1:2]
+            structs = line[2:-1:2]
+            energy = float(line[-1])
+            counts = [int(c) for c in counts]
+            formulas[line[0]] = {'structs': structs, 'counts': counts, 'energy': energy}
+    return formulas
+
+def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
+    formulas = get_accdb_formulas(dataset_eval_name)    
+    result = {}
+    errs = []
+    for data_point_name, formula in list(formulas.items()):
+        if not ('HTBH' in data_point_name):
+            continue
+        #parts = data_point_name.split('_')
+        #if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
+        #    continue
+        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
+        result[data_point_name] = {
+            'pred' : pred_energy,
+            'true' : energy
+        }
+        errs.append(pred_energy-energy)
+    errs = np.array(errs)
+    print(errs.shape)
+    mae = np.mean(np.abs(errs))
+    rmse = np.sqrt(np.mean(errs**2))
+    return mae, rmse, result
