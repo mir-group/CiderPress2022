@@ -31,9 +31,9 @@ class FeatureExtractor(torch.nn.Sequential):
         super(FeatureExtractor, self).__init__()
         self.add_module('linear1', torch.nn.Linear(10, 6))
         self.add_module('sigmoid1', torch.nn.Sigmoid())
-        self.add_module('linear2', torch.nn.Linear(6, 3))
+        self.add_module('linear2', torch.nn.Linear(6, 4))
         self.add_module('sigmoid2', torch.nn.Sigmoid())
-        self.add_module('linear3', torch.nn.Linear(3, 3))
+        self.add_module('linear3', torch.nn.Linear(4, 4))
         self.add_module('sigmoid3', torch.nn.Sigmoid())
 
 class GPRModel(gpytorch.models.ExactGP):
@@ -41,8 +41,8 @@ class GPRModel(gpytorch.models.ExactGP):
         super(GPRModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=3),
-            num_dims = 3, grid_size = 16
+            gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=4),
+            num_dims = 4, grid_size = 20
         ))
         self.feature_extractor = FeatureExtractor()
         self.feature_normalizer = FeatureNormalizer(ndim=10)
@@ -357,23 +357,25 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
    
     print(optimizer.state_dict())
 
-    torch.manual_seed(0)
-    settings = [\
-    gpytorch.settings.max_root_decomposition_size(1000),\
-    gpytorch.settings.fast_pred_var(state=False),\
-    gpytorch.settings.fast_pred_samples(state=False),\
-    gpytorch.settings.debug(state=True),\
-    gpytorch.settings.max_cg_iterations(10000),\
-    gpytorch.settings.cg_tolerance(0.01),\
-    gpytorch.settings.max_cholesky_size(150000),\
-    gpytorch.settings.lazily_evaluate_kernels(state=True),\
-    gpytorch.settings.use_toeplitz(state=False),\
-    gpytorch.settings.num_trace_samples(0),\
-    gpytorch.settings.fast_computations(covar_root_decomposition = False, log_prob = False, solves = False),\
-    gpytorch.settings.skip_logdet_forward(state=False),\
-    ]
-    for setting in settings:
-        setting.__enter__()
+    if not isinstance(model, GPRModel):
+        torch.manual_seed(0)
+        settings = [\
+        gpytorch.settings.max_root_decomposition_size(1000),\
+        gpytorch.settings.fast_pred_var(state=False),\
+        gpytorch.settings.fast_pred_samples(state=False),\
+        gpytorch.settings.debug(state=True),\
+        gpytorch.settings.max_cg_iterations(10000),\
+        gpytorch.settings.cg_tolerance(0.01),\
+        gpytorch.settings.max_cholesky_size(150000),\
+        gpytorch.settings.lazily_evaluate_kernels(state=True),\
+        gpytorch.settings.use_toeplitz(state=False),\
+        gpytorch.settings.num_trace_samples(0),\
+        gpytorch.settings.fast_computations(covar_root_decomposition=False,
+                                            log_prob=False, solves=False),\
+        gpytorch.settings.skip_logdet_forward(state=False),\
+        ]
+        for setting in settings:
+            setting.__enter__()
 
     print('off', gpytorch.settings.fast_computations.log_prob.off())
     print('off', gpytorch.settings.fast_computations.solves.off())
@@ -430,7 +432,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
         preds = model(test_x)
     print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - test_y))))
 
-    for setting in settings:
-        setting.__exit__()
+    if not isinstance(model, GPRModel):
+        for setting in settings:
+            setting.__exit__()
 
     return model, min_loss
