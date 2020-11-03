@@ -509,7 +509,8 @@ class VSXCContribs():
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
         ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3)
         dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
-        ldaxt = LDA_FACTOR * nt**(4.0/3)
+        #ldaxt = LDA_FACTOR * nt**(4.0/3)
+        ldaxt = ldaxu + ldaxd
         fu = exu / ldaxu
         fd = exd / ldaxd
         ft = (exu + exd) / ldaxt
@@ -519,8 +520,10 @@ class VSXCContribs():
         dfddnd = -4 * fd / (3 * nd)
         dftdxu = 1 / ldaxt
         dftdxd = 1 / ldaxt
-        dftdnu = -4 * ft / (3 * nt)
-        dftdnd = -4 * ft / (3 * nt)
+        #dftdnu = -4 * ft / (3 * nt)
+        #dftdnd = -4 * ft / (3 * nt)
+        dftdnu = -ft / ldaxt * dldaxu
+        dftdnd = -ft / ldaxt * dldaxd
 
         g2 = g2u + g2d + 2 * g2o
         co, vo = self.os_baseline(nu, nd, g2, type=1)
