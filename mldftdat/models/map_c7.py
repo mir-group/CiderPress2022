@@ -171,6 +171,8 @@ class VSXCContribs():
         return elim, dedphi*dphi, deds2
 
     def baseline_inf(self, nu, nd, g2, D):
+        # WARNING: derivs not implemented for this version
+        D = [D]
         N = nu.shape[0]
         s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2 + 1e-30)
         zeta, dzetau, dzetad = self.get_zeta(nu, nd)
@@ -182,9 +184,9 @@ class VSXCContribs():
         tmp = e1lim - e0lim
         vxc = [np.zeros((N,2)), np.zeros((N,3)),
                np.zeros((N,2))]
-        fill_vxc_os_(vxc, tmp * D[1],
-                     tmp * D[2],
-                     tmp * D[3])
+        #fill_vxc_os_(vxc, tmp * D[1],
+        #             tmp * D[2],
+        #             tmp * D[3])
         vxc[0][:,0] += dedzeta * dzetau + deds2 * ds2n
         vxc[0][:,1] += dedzeta * dzetad + deds2 * ds2n
         vxc[1][:,0] += deds2 * ds2g2
@@ -355,6 +357,7 @@ class VSXCContribs():
 
     def get_amix(self, n, zeta, x2, chi):
         zeta = np.minimum(zeta, 1-1e-6)
+        zeta = np.maximum(zeta, -1+1e-6)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
         num = 1 - chi * zeta**2
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
@@ -368,6 +371,32 @@ class VSXCContribs():
         dfdx2 = dfdt2 * (np.pi / 3)**(1./3) / (16 * phi**2) * n**(1./3)
         dfdn = dfdt2 * (-1./3) * t2 / n
         return f, dfdn, dfdz, dfdx2, dfdchi
+
+    def get_amix(self, rhou, rhod, g2, chi):
+        rhot = rhou + rhod
+
+        Do = 0.5 * (1 - np.cos(2 * np.pi * chi))
+
+        elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
+
+        exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
+        exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
+        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2 * (rhou + rhod)
+        dinvldau += 1 / exlda
+        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2 * (rhou + rhod)
+        dinvldad += 1 / exlda
+        exlda /= (rhot)
+        u = elim / exlda
+        amix = 1 - 1/(1 + A*np.log(1 + B*u))
+        damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
+        vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
+        vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
+        vxclim[1] /= exlda[:,np.newaxis]
+        vxclim[2] /= exlda[:,np.newaxis]
+        for i in range(3):
+            vxclim[i] *= damix[:,np.newaxis]
+
+        return amix, vxclim
 
     def single_corr(self, x2, z, alpha, d):
         gamma = self.gammafunc(x2, z, alpha)
