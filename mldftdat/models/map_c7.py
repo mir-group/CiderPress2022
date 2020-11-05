@@ -6,7 +6,7 @@ LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 alphax = 0.001867
 alphass, alphaos = 0.00515088, 0.00304966
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
-CFC = 2 * CF
+CFC = 0.3 * (3 * np.pi**2)**(2.0/3)
 
 A = 2.74
 B = 132
@@ -282,9 +282,9 @@ class VSXCContribs():
         return res
 
     def get_separate_sl_terms(self, x2, chi, gamma):
-        desc = np.zeros(11,x2.shape[0])
-        dx2 = np.zeros(11,x2.shape[0])
-        dchi = np.zeros(11,x2.shape[0])
+        desc = np.zeros((11,x2.shape[0]))
+        dx2 = np.zeros((11,x2.shape[0]))
+        dchi = np.zeros((11,x2.shape[0]))
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
         a0, a1, da0, da1 = self.get_chi_desc(chi)
@@ -327,22 +327,26 @@ class VSXCContribs():
                (-8*g2)/(3.*n**3.6666666666666665),\
                n**(-2.6666666666666665)
 
+    def get_s2(self, n, g2):
+        a, b, c = self.get_x2(n, g2)
+        return a / sprefac**2 + 1e-10, b / sprefac**2, c / sprefac**2
+
     def get_alpha(self, n, zeta, g2, t):
         d = 0.5 * ((1+zeta)**(5./3) + (1-zeta)**(5./3))
         dd = (5./6) * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
         alpha = (t - g2/(8*n)) / (CFC*n**(5./3)*d)
-        return alpha,
-               -0.6 * alpha / n + g2/(C*n**(11./3)),
-               -alpha / d * dd
-               -1.0 / (8 * C * n**(8./3)),
-               1.0 / (C * n**(5./3))
+        return alpha,\
+               -0.6 * alpha / n + g2/(CFC*n**(11./3)),\
+               -alpha / d * dd,\
+               -1.0 / (8 * CFC * n**(8./3)),\
+               1.0 / (CFC * n**(5./3))
 
     def get_chi(self, alpha):
         chi = 1 / (1 + alpha**2)
         return chi, -2 * alpha * chi**2
 
     def get_chi_desc(self, chi):
-        return np.cos(np.pi * chi), 0.5 * (1 + np.cos(2*np.pi*chi)),
+        return np.cos(np.pi * chi), 0.5 * (1 + np.cos(2*np.pi*chi)),\
                -np.pi * np.sin(np.pi*chi), -np.pi * np.sin(2*np.pi*chi)
 
     def get_D(self, n, g2, t):
@@ -359,6 +363,7 @@ class VSXCContribs():
         zeta = np.minimum(zeta, 1-1e-6)
         zeta = np.maximum(zeta, -1+1e-6)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
+        chi = 0.5 * (1 - np.cos(2*np.pi*chi))
         num = 1 - chi * zeta**2
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
