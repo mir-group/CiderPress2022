@@ -24,17 +24,27 @@ class Predictor(mldftdat.models.nn.Predictor):
         with torch.no_grad(), gpytorch.settings.use_toeplitz(False), gpytorch.settings.fast_pred_var():
             X = torch.tensor(self.get_descriptors(X))
             F = self.model(X).mean.numpy().flatten()
-        return self.y_to_xed(F, rho_data[0])
+        return self.y_to_xed(F, rho_data)
 
 class FeatureExtractor(torch.nn.Sequential):
     def __init__(self):
         super(FeatureExtractor, self).__init__()
-        self.add_module('linear1', torch.nn.Linear(10, 6))
-        self.add_module('sigmoid1', torch.nn.Sigmoid())
-        self.add_module('linear2', torch.nn.Linear(6, 4))
-        self.add_module('sigmoid2', torch.nn.Sigmoid())
-        self.add_module('linear3', torch.nn.Linear(4, 4))
-        self.add_module('sigmoid3', torch.nn.Sigmoid())
+        self.add_module('linear1', torch.nn.Linear(10, 10))
+        torch.nn.init.eye_(self.linear1.weight)
+        torch.nn.init.zeros_(self.linear1.bias)
+        self.add_module('sigmoid1', torch.nn.CELU())
+        self.add_module('linear2', torch.nn.Linear(10, 7))
+        torch.nn.init.eye_(self.linear2.weight)
+        torch.nn.init.zeros_(self.linear2.bias)
+        self.add_module('sigmoid2', torch.nn.CELU())
+        self.add_module('linear3', torch.nn.Linear(7, 4))
+        torch.nn.init.eye_(self.linear3.weight)
+        torch.nn.init.zeros_(self.linear3.bias)
+        self.add_module('sigmoid3', torch.nn.CELU())
+        self.add_module('linear4', torch.nn.Linear(4, 4))
+        torch.nn.init.eye_(self.linear4.weight)
+        torch.nn.init.zeros_(self.linear4.bias)
+        self.add_module('sigmoid4', torch.nn.Sigmoid())
 
 class GPRModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
@@ -42,8 +52,13 @@ class GPRModel(gpytorch.models.ExactGP):
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=4),
-            num_dims = 4, grid_size = 20
+            #num_dims = 4, grid_size = 60
+            num_dims = 4, grid_size = 48
         ))
+        self.covar_module.base_kernel.base_kernel.lengthscale = \
+                torch.tensor([[0.2, 0.2, 0.12, 0.12]], dtype=torch.float64)
+                #torch.tensor([[0.12, 0.12, 0.08, 0.08]], dtype=torch.float64)
+        self.covar_module.base_kernel.outputscale = 1.0
         self.feature_extractor = FeatureExtractor()
         self.feature_normalizer = FeatureNormalizer(ndim=10)
 
@@ -286,7 +301,8 @@ class CorrGPR(gpytorch.models.ExactGP):
 
 
 def train(train_x, train_y, test_x, test_y, model_type = 'DKL', 
-          fixed_noise = None, lfbgs = False, veclength = None):
+          fixed_noise = None, lfbgs = False, veclength = None,
+          model=None):
 
     train_x = torch.tensor(train_x)
     train_y = torch.tensor(train_y).squeeze()
@@ -301,14 +317,18 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
 
     print(train_x.size(), train_y.size())
 
-    if fixed_noise is None:
+    if model is not None:
+        likelihood = model.likelihood
+    elif fixed_noise is None:
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
     else:
         print('using fixed noise')
         likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
                 torch.tensor(fixed_noise, dtype=torch.float64))
 
-    if model_type == 'DKL':
+    if model is not None:
+        pass
+    elif model_type == 'DKL':
         model = GPRModel(train_x[::2], train_y[::2], likelihood)
     elif model_type == 'ADD':
         model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 3, ndim = 10)
@@ -336,22 +356,28 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
         training_iterations = 100
     else:
         training_iterations = 100
+    if isinstance(model, GPRModel):
+        training_iterations = 500
 
     model.train()
     likelihood.train()
 
     if not lfbgs:
-        """
         optimizer = torch.optim.SGD([
-            #{'params': model.feature_extractor.parameters()},
-            #{'params': model.covar_module.parameters(), 'lr': 1e-30},
-            #{'params': model.mean_module.parameters()},
-            #{'params': model.likelihood.parameters()},
-        ], lr=1e-30)
+            {'params': model.feature_extractor.parameters(), 'lr': 1e-5},
+            {'params': model.covar_module.parameters(), 'lr': 1e-3},
+            {'params': model.mean_module.parameters(), 'lr': 1e-5},
+            {'params': model.likelihood.parameters(), 'lr': 1e-3},
+            {'params': model.feature_normalizer.parameters(), 'lr': 1e-4}
+        ])
         """
+        lr = 2e-3 if isinstance(model, GPRModel) else 4e-2
+        lr = 2e-4 if isinstance(model, GPRModel) else 4e-2
         optimizer = torch.optim.Adam([
+        #optimizer = torch.optim.SGD([
                 {'params': model.parameters()},  # Includes GaussianLikelihood parameters
-                ], lr=4e-2)
+                ], lr=lr)
+        """
     else:
         optimizer = torch.optim.LBFGS(model.parameters(), lr = 0.1, max_iter = 200, history_size=200)
    

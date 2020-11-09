@@ -952,7 +952,7 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
 def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['MGGA_X_GVT4', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
+    models = ['GGA_X_CHACHIYO', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -1235,7 +1235,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_rks_calc(mol, FUNCTIONAL)
+                    mf = setup_rks_calc(mol, FUNCTIONAL, grid_level=1)
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
                 else:
@@ -1244,7 +1244,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     #dm0 = mf.make_rdm1()
                     dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_uks_calc(mol, FUNCTIONAL)
+                    mf = setup_uks_calc(mol, FUNCTIONAL, grid_level=1)
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
                     #mf.init_guess = 'atom'
