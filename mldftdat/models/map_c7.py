@@ -172,7 +172,7 @@ class VSXCContribs():
 
     def baseline_inf(self, nu, nd, g2, D):
         # WARNING: derivs not implemented for this version
-        D = [D]
+        #D = [D]
         N = nu.shape[0]
         s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2 + 1e-30)
         zeta, dzetau, dzetad = self.get_zeta(nu, nd)
@@ -278,34 +278,43 @@ class VSXCContribs():
         f = f - 1
         fterm0 = np.exp(-self.cf * f**2)
         res = np.array([fterm0 * f**i for i in range(5)])
-        res[0,:] = 1
+        res[0,:] -= 1
         return res
 
     def get_separate_sl_terms(self, x2, chi, gamma):
-        desc = np.zeros((11,x2.shape[0]))
-        dx2 = np.zeros((11,x2.shape[0]))
-        dchi = np.zeros((11,x2.shape[0]))
+        desc = np.zeros((14,x2.shape[0]))
+        dx2 = np.zeros((14,x2.shape[0]))
+        dchi = np.zeros((14,x2.shape[0]))
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
-        a0, a1, da0, da1 = self.get_chi_desc(chi)
+        a0, a1, a2, da0, da1, da2 = self.get_chi_desc(chi)
         ind = 0
-        for i in range(3):
-            desc[ind] = u**(i+1)
-            dx2[ind] = (i+1) * u**i
+        for i in range(4):
+            diff = u**(i+1) - u**(i+2)
+            ddiff = (i+1) * u**(i) - (i+2) * u**(i+1)
+            desc[ind] = diff
+            dx2[ind] = (i+1) * ddiff
             ind += 1
-            desc[ind] = u**(i+1) * a0
-            dx2[ind] = (i+1) * u**i * a0
-            dchi[ind] = u**(i+1) * da0 
+            desc[ind] = diff * a0
+            dx2[ind] = ddiff * a0
+            dchi[ind] = diff * da0 
             ind += 1
-            desc[ind] = u**(i+1) * a1
-            dx2[ind] = (i+1) * u**i * a1
-            dchi[ind] = u**(i+1) * da1
+            desc[ind] = diff * a1
+            dx2[ind] = ddiff * a1
+            dchi[ind] = diff * da1
             ind += 1
+            #desc[ind] = u**(i+1) * a2
+            #dx2[ind] = (i+1) * u**i * a2
+            #dchi[ind] = u**(i+1) * da2
+            #ind += 1
         desc[ind] = a0
         dchi[ind] = da0
         ind += 1
         desc[ind] = a1
         dchi[ind] = da1
+        #ind += 1
+        #desc[ind] = a2
+        #dchi[ind] = da2
         return desc, dx2, dchi
 
     def sl_terms(self, x2, chi, gamma, c):
@@ -342,12 +351,16 @@ class VSXCContribs():
                1.0 / (CFC * n**(5./3))
 
     def get_chi(self, alpha):
+        chi = 1 / (1 + alpha)
+        return chi, -chi**2
         chi = 1 / (1 + alpha**2)
         return chi, -2 * alpha * chi**2
 
     def get_chi_desc(self, chi):
-        return np.cos(np.pi * chi), 0.5 * (1 + np.cos(2*np.pi*chi)),\
-               -np.pi * np.sin(np.pi*chi), -np.pi * np.sin(2*np.pi*chi)
+        chip = 2 * chi - 1
+        return chip, chip**2, chip**3, 2, 4*chip, 6*chip**2
+        #return np.cos(np.pi * chi), 0.5 * (1 + np.cos(2*np.pi*chi)),\
+        #       -np.pi * np.sin(np.pi*chi), -np.pi * np.sin(2*np.pi*chi)
 
     def get_D(self, n, g2, t):
         y = 1 - g2/(8.*n*t)
@@ -360,15 +373,15 @@ class VSXCContribs():
         return y, dy * dydn, dy * dydg2, dy * dydt
 
     def get_amix(self, n, zeta, x2, chi):
-        zeta = np.minimum(zeta, 1-1e-6)
-        zeta = np.maximum(zeta, -1+1e-6)
+        zeta = np.minimum(zeta, 1-1e-8)
+        zeta = np.maximum(zeta, -1+1e-8)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
-        chi = 0.5 * (1 - np.cos(2*np.pi*chi))
-        num = 1 - chi * zeta**2
+        chi = 0.5 * (1 + np.cos(np.pi*(2*chi-1)**4))
+        num = 1 - chi * zeta**12
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
         f = num / den
-        dfdchi = -zeta**2 / den
+        dfdchi = -zeta**12 / den
         dfdz = -2 * zeta * chi / den
         dfdt2 = -0.5 * num / den**2
         dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) + (1-zeta)**(-1./3))
@@ -377,6 +390,7 @@ class VSXCContribs():
         dfdn = dfdt2 * (-1./3) * t2 / n
         return f, dfdn, dfdz, dfdx2, dfdchi
 
+    """
     def get_amix(self, rhou, rhod, g2, chi):
         rhot = rhou + rhod
 
@@ -402,6 +416,42 @@ class VSXCContribs():
             vxclim[i] *= damix[:,np.newaxis]
 
         return amix, vxclim
+    """
+    """
+    def get_D(self, n, g2, t):
+        y = 1 - g2/(8.*n*t)
+        dydn = g2/(8.*n**2*t)
+        dydg2 = -1/(8.*n*t)
+        dydt = g2/(8.*n*t**2)
+        dy = 0.5 * np.pi * np.sin(np.pi * y)
+        dy = 0
+        y = 0.5 * (1 - np.cos(np.pi * y))
+        return y, dy * dydn, dy * dydg2, dy * dydt
+
+    def get_amix(self, rhou, rhod, g2, Do):
+        rhot = rhou + rhod
+
+        elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
+
+        exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
+        exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
+        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2 * (rhou + rhod)
+        dinvldau += 1 / exlda
+        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2 * (rhou + rhod)
+        dinvldad += 1 / exlda
+        exlda /= (rhot)
+        u = elim / exlda
+        amix = 1 - 1/(1 + A*np.log(1 + B*u))
+        damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
+        vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
+        vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
+        vxclim[1] /= exlda[:,np.newaxis]
+        vxclim[2] /= exlda[:,np.newaxis]
+        for i in range(3):
+            vxclim[i] *= damix[:,np.newaxis]
+
+        return amix, vxclim
+    """
 
     def single_corr(self, x2, z, alpha, d):
         gamma = self.gammafunc(x2, z, alpha)
