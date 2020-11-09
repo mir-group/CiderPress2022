@@ -865,7 +865,7 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
 
     corr_model = map_c7.VSXCContribs(None, None, None, None, None,
                                      None, None, None, None, None,
-                                     fterm_scale=1.0)
+                                     fterm_scale=2.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -911,9 +911,12 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
     co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
     co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
     co0 *= rhot
-    cu1 *= rhou
-    cd1 *= rhod
+    co1 *= rhot
     cx = co0
+    co = co1
+
+    #D = corr_model.get_D(rhou+rhot, g2, tu+td)
+    #amix = corr_model.get_amix(rhou, rhod, g2, D)[0]
 
     nu, nd = rhou, rhod
 
@@ -979,31 +982,46 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
     ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
     ldaxt = ldaxu + ldaxd
 
-    gamma = 2**(2./3) * 0.006
-    alpha = corr_model.get_alpha(rhot, zeta, g2, tu + td)[0]
+    gamma = 2**(2./3) * 0.05
+    gammass = 0.05
+    alpha = corr_model.get_alpha(rhot + 1e-16, zeta, g2, tu + td)[0]
+    alphau = corr_model.get_alpha(rhou + 1e-16, 1, g2u, tu)[0]
+    alphad = corr_model.get_alpha(rhod + 1e-16, 1, g2d, td)[0]
     chi = corr_model.get_chi(alpha)[0]
+    #co *= (1-chi)*chi*4
+    co *= 1 - (2 * chi - 1)**4
+    chiu = corr_model.get_chi(alphau)[0]
+    chid = corr_model.get_chi(alphad)[0]
     x2 = corr_model.get_x2(nu+nd, g2)[0]
+    x2u = corr_model.get_x2(nu, g2u)[0]
+    x2d = corr_model.get_x2(nd, g2d)[0]
     amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
+    #ratio = 0.5 * (1 - g2 / (8 * rhot * (tu + td) + 1e-16))
+    #amix = corr_model.get_amix(rhou, rhod, g2, ratio)[0]
     Fx = exo / ldaxt
-    E_tmp = corr_model.get_separate_xef_terms(Fx)
-    E_tmp *= cx
+    Fxu = exu / ldaxu
+    Fxd = exd / ldaxd
+    E_tmp = corr_model.get_separate_xef_terms(Fx) * cx
     Eterms = np.dot(E_tmp, weights)
-    E_tmp = corr_model.get_separate_xef_terms(Fx)
-    E_tmp *= ldaxt
+    E_tmp = corr_model.get_separate_xef_terms(Fx) * co
+    Etermso = np.dot(E_tmp, weights)
+    E_tmp = corr_model.get_separate_xef_terms(Fxu) * ldaxu
+    E_tmp += corr_model.get_separate_xef_terms(Fxd) * ldaxd
     Fterms2 = np.dot(E_tmp, weights)
     E_tmp *= amix
     Fterms = np.dot(E_tmp, weights)
-    E_tmp = corr_model.get_separate_sl_terms(x2, chi, gamma)
-    E_tmp *= cx
+    E_tmp = corr_model.get_separate_sl_terms(x2, chi, gamma)[0] * cx
     dvals = np.dot(E_tmp, weights)
-    E_tmp = corr_model.get_separate_sl_terms(x2, chi, gamma)
-    E_tmp *= ldaxt
+    E_tmp = corr_model.get_separate_sl_terms(x2, chi, gamma)[0] * co
+    dvalso = np.dot(E_tmp, weights)
+    E_tmp = corr_model.get_separate_sl_terms(x2u, chiu, gammass)[0] * ldaxu
+    E_tmp += corr_model.get_separate_sl_terms(x2d, chid, gammass)[0] * ldaxd
     xvals2 = np.dot(E_tmp, weights)
     E_tmp *= amix
     xvals = np.dot(E_tmp, weights)
 
-    #                                    3       3       11     11,    3,       11,
-    return np.concatenate([[Ex, Exscan], Eterms, Fterms, dvals, xvals, Fterms2, xvals2,
+    #                                    5       5       11     11,    5,       11,
+    return np.concatenate([[Ex, Exscan], Eterms, Fterms, dvals, xvals, Etermso, dvalso,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
@@ -1041,7 +1059,8 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                exact=True, BASIS=DEFAULT_BASIS,
                                mol_id_full=False):
 
-    SIZE = 2+3+3+11+11+3+11+2
+    XSIZE = 14
+    SIZE = 2+5+5+3*XSIZE+5+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1059,7 +1078,8 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
 
         sl_contribs = get_new_contribs(dft_dir, is_restricted,
                                        MLFUNC, exact=exact)
-
+        print(sl_contribs)
+        assert (not np.isnan(sl_contribs).any())
         X = np.vstack([X, sl_contribs])
 
     np.save(FNAME, X)
@@ -1171,7 +1191,7 @@ def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     np.save(FNAME, X)
 
 
-def solve_from_stored_ae(DATA_ROOT, v2 = False):
+def solve_from_stored_ae(DATA_ROOT, alpha=True):
 
     import yaml
     from collections import Counter
@@ -1183,14 +1203,16 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha_ex.npy'))
+    #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha_ex.npy'))
+    #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
@@ -1236,35 +1258,54 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         def get_terms(etot, mlx, vv10=None):
             if vv10 is not None:
                 E_vv10 = vv10[:,i]
-            E_dft = etot[:,0]
-            E_ccsd = etot[:,1]
-            E_x = mlx[:,0]
-            E_xscan = mlx[:,1]
-            E_cscan = mlx[:,-2]
-            # 0, 1 -- Ex pred and Exscan
-            # 2:27 -- Eterms
-            # 27:37 -- Fterms
-            # 37:61 -- dvals
-            # 61:73 -- xvals
-            # 73 -- Ex exact
-            #E_c = mlx[:,13:17]
-            E_c = mlx[:,18:22]
-            #E_c = np.append(E_c, mlx[:,18:22], axis=1)
-            ###E_c = np.append(E_c, mlx[:,23:27], axis=1)
-            E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
-            #E_c = np.append(E_c, mlx[:,43:49], axis=1)
-            E_c = np.append(E_c, mlx[:,49:55], axis=1)
-            ###E_c = np.append(E_c, mlx[:,55:61], axis=1)
-            E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
-            #E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
-            print("SHAPE", E_c.shape)
+            if not alpha:
+                E_dft = etot[:,0]
+                E_ccsd = etot[:,1]
+                E_x = mlx[:,0]
+                E_xscan = mlx[:,1]
+                E_cscan = mlx[:,-2]
+                # 0, 1 -- Ex pred and Exscan
+                # 2:27 -- Eterms
+                # 27:37 -- Fterms
+                # 37:61 -- dvals
+                # 61:73 -- xvals
+                # 73 -- Ex exact
+                E_c = mlx[:,13:17]
+                #E_c = mlx[:,18:22]
+                E_c = np.append(E_c, mlx[:,18:22], axis=1)
+                ###E_c = np.append(E_c, mlx[:,23:27], axis=1)
+                E_c = np.append(E_c, mlx[:,28:32] + mlx[:,33:37], axis=1)
+                E_c = np.append(E_c, mlx[:,43:49], axis=1)
+                E_c = np.append(E_c, mlx[:,49:55], axis=1)
+                ###E_c = np.append(E_c, mlx[:,55:61], axis=1)
+                E_c = np.append(E_c, mlx[:,61:67] + mlx[:,67:73], axis=1)
+                #E_c = np.append(E_c, mlx[:,74:78] + mlx[:,79:83], axis=1)
+                print("SHAPE", E_c.shape)
 
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
-            diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
-            #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+                #diff = E_ccsd - (E_dft - E_xscan + E_x + E_vv10 + mlx[:,2] + mlx[:,7] + mlx[:,12])
+                #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,9] + mlx[:,16] + mlx[:,30])
+                #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,12] + mlx[:,22])
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
+                #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
+                #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
+            else:
+                E_dft = etot[:,0]
+                E_ccsd = etot[:,1]
+                E_x = mlx[:,0]
+                E_xscan = mlx[:,1]
+                E_cscan = mlx[:,-2]
+                # 0, 1 -- Ex pred and EXscan
+                # 2:7 -- Eterms
+                # 7:12 -- Fterms
+                # 12:23 -- dvals
+                # 23:34 -- xvals
+                # 34:39 -- Etermso
+                # 39:50 -- dvalso
+                E_c = np.append(mlx[:,3:7], mlx[:,8:12], axis=1)
+                E_c = np.append(E_c, mlx[:,12:40] * 100, axis=1)
+                E_c = np.append(E_c, mlx[:,41:45], axis=1)
+                E_c = np.append(E_c, mlx[:,45:59] * 20, axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
@@ -1312,7 +1353,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(1 / mols[i].nelectron)
+            weights.append(10 / mols[i].nelectron)
 
         weights = np.array(weights)
         
@@ -1339,7 +1380,7 @@ def solve_from_stored_ae(DATA_ROOT, v2 = False):
         hind = indd[hind]
         waterind = indd[waterind]
 
-        noise = 5e-3
+        noise = 1e-5
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
