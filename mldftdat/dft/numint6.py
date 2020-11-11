@@ -450,22 +450,26 @@ def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None):
+                   vv10_coeff = None, grid_level=3):
     rks = dft.RKS(mol)
     rks.xc = None
     rks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
+    rks.grids.level = grid_level
+    rks.grids.build()
     return rks
 
 def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
                    cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
                    dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
                    dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None):
+                   vv10_coeff = None, grid_level=3):
     uks = dft.UKS(mol)
     uks.xc = None
     uks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
+    uks.grids.level = grid_level
+    uks.grids.build()
     return uks
