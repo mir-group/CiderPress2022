@@ -499,131 +499,134 @@ class VSXCContribs():
               include_baseline=True, include_aug_sl=True,
               include_aug_nl=True):
 
-        nt = nu + nd
         ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3)
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
         ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3)
         dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
         ldaxt = ldaxu + ldaxd
+        ft = (exu + exd) / ldaxt
         fu = exu / ldaxu
         fd = exd / ldaxd
-        ft = (exu + exd) / ldaxt
-        dfudxu = 1 / ldaxu
-        dfudnu = -4 * fu / (3 * nu)
-        dfddxd = 1 / ldaxd
-        dfddnd = -4 * fd / (3 * nd)
         dftdxu = 1 / ldaxt
         dftdxd = 1 / ldaxt
-        # double check these
+        # double check these derivatives
         dftdnu = -ft / ldaxt * dldaxu
         dftdnd = -ft / ldaxt * dldaxd
 
+        dfudnu = -fu / ldaxu * dldaxu
+        dfddnd = -fd / ldaxd * dldaxd
+        dfudxu = 1 / ldaxu
+        dfddxd = 1 / ldaxd
+
         g2 = g2u + g2d + 2 * g2o
-        co, vo = self.os_baseline(nu, nd, g2, type=1)
-        cx, vx = self.os_baseline(nu, nd, g2, type=0)
-        co *= nt
-        cx *= nt
-        Do = self.get_D(nu+nd, g2, tu+td)
-        amix, vxcmix = self.get_amix(nu, nd, g2, Do)
+        nt = nu + nd
+        x2 = self.get_x2(nt/2**(1./3), g2)
+        x2u = self.get_x2(nu, g2u)
+        x2d = self.get_x2(nd, g2d)
+        zeta = self.get_zeta(nu, nd)
+        chi = self.get_chi_full_deriv(nt, zeta, g2, tu+td)
+        chiu = self.get_chi_full_deriv(nu, 1, g2u, tu)
+        chid = self.get_chi_full_deriv(nd, 1, g2d, td)
+        c0, v0 = self.os_baseline(nu, nd, g2, type=0)
+        c1, v1 = self.os_baseline(nu, nd, g2, type=1)
+        amix, vmixn, vmixz, vmixx2, vmixchi = self.get_amix(nt, zeta[0], x2[0], chi[0])
         ldaxm = (ldaxu * amix, ldaxd * amix)
-        N = co.shape[0]
+        N = cx.shape[0]
         vxc = [np.zeros((N,2)),
                np.zeros((N,3)),
                np.zeros((N,2)),
                np.zeros((N,2))]
-        if include_baseline:
-            tot = co * Do[0] + cx * (1 - Do[0])
-            tmp = (co - cx)
-            fill_vxc_os_(vxc, tmp * Do[1],
-                         tmp * Do[2],
-                         tmp * Do[3])
-            fill_vxc_base_os_(vxc, vo, Do[0])
-            fill_vxc_base_os_(vxc, vx, (1-Do[0]))
-        else:
-            tot = 0
+        # deriv wrt n, zeta, x2, chi, F
+        vtmp = [np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N)]
+        vtmpu = [np.zeros(N), np.zeros(N), np.zeros(N)]
+        vtmpd = [np.zeros(N), np.zeros(N), np.zeros(N)]
+        tot = 0
 
-        if include_aug_sl:
-            x2u = self.get_x2(nu, g2u)
-            x2d = self.get_x2(nd, g2d)
-            x2 = self.get_x2((nu+nd)/2**(1.0/3), g2)
-            zu = self.get_z(nu, tu)
-            zd = self.get_z(nd, td)
-            z = self.get_z((nu+nd)/2**(2.0/3), tu+td)
-            z[1][:] /= 2**(2.0/3)
-            x2[1][:] /= 2**(1.0/3)
-            cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
-            cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
-            cfau = self.single_corr(x2u[0], zu[0], alphax, self.da)
-            cfad = self.single_corr(x2d[0], zd[0], alphax, self.da)
+        sl0, dsl0dx2, dsl0dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d0)
+        sl1, dsl1dx2, dsl1dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d1)
+        slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
+        sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.d)
 
-            tot += cfo[0] * co * Do[0]
-            tot += cfx[0] * cx
-            tot += ldaxm[0] * cfau[0]
-            tot += ldaxm[1] * cfad[0]
+        y0, deriv0 = self.xef_terms(ft, self.c0)
+        y1, deriv1 = self.xef_terms(ft, self.c1)
+        yu, derivu = self.xef_terms(fu, self.cx)
+        yd, derivd = self.xef_terms(fd, self.cx)
 
-            tmp = co * cfo[0]
-            fill_vxc_base_os_(vxc, vo, cfo[0] * Do[0])
-            fill_vxc_base_os_(vxc, vx, cfx[0])
-            fill_vxc_os_(vxc, tmp * Do[1],
-                         tmp * Do[2],
-                         tmp * Do[3])
+        tot += sl0 * c0
+        tot += sl1 * c1 * (1-chi[0]**4)
+        tot += ldaxm[0] * slu
+        tot += ldaxm[1] * sld
+        tot += y0 * c0
+        tot += y1 * c1 * (1-chi[0]**4)
+        tot += ldaxm[0] * yu
+        tot += ldaxm[1] * yd
+        # enhancment terms on c0
+        vtmp[2] += c0 * dsl0dx2
+        vtmp[3] += c0 * dsl0dchi
+        vtmp[4] += c0 * deriv0
+        # enhancment terms on c1
+        tmp = c1 * (1-chi[0]**4)
+        vtmp[2] += tmp * dsl1dx2
+        vtmp[3] += tmp * dsl1dchi
+        vtmp[4] += tmp * deriv1
+        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        # amix derivs and exchange-like rho derivs
+        tmp = ldaxu * (slu + yu) + ldaxd * (sld + yd)
+        vtmp[0] += tmp * vmixn
+        vtmp[1] += tmp * vmixz
+        vtmp[2] += tmp * vmixx2
+        vtmp[3] += tmp * vmixchi
+        # exchange-like enhancment derivs
+        tmp = ldaxu * amix
+        vtmpu[0] += tmp * dsludx2
+        vtmpu[1] += tmp * dsludchi
+        vtmpu[2] += tmp * derivu
+        tmp = ldaxd * amix
+        vtmpd[0] += tmp * dslddx2
+        vtmpd[1] += tmp * dslddchi
+        vtmpd[2] += tmp * derivd
+        # baseline derivs
+        fill_vxc_base_os_(vxc, v0, sl0 + y0)
+        fill_vxc_base_os_(vxc, v1, sl1 + y1)
+        vxc[0][:,0] += dldaxu * amix * (slu + yu)
+        vxc[0][:,1] += dldaxd * amix * (sld + yd)
 
-            vxc[0][:,0] += dldaxu * amix * cfau[0]
-            vxc[0][:,1] += dldaxd * amix * cfad[0]
-            tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
-            fill_vxc_base_os_(vxc, vxcmix, tmp)
-            
-            for c, cf in zip([co * Do[0], cx],
-                             [cfo, cfx]):
-                fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
-                             c * (cf[1] * x2[2]),
-                             c * (cf[2] * z[2]))
-            fill_vxc_ss_(vxc, 0, ldaxm[0] * (cfau[1] * x2u[1] + cfau[2] * zu[1]),
-                         ldaxm[0] * cfau[1] * x2u[2],
-                         ldaxm[0] * cfau[2] * zu[2])
-            fill_vxc_ss_(vxc, 1, ldaxm[1] * (cfad[1] * x2d[1] + cfad[2] * zd[1]),
-                         ldaxm[1] * cfad[1] * x2d[2],
-                         ldaxm[1] * cfad[2] * zd[2])
-            
-        if include_aug_nl:
-            yo, derivo = self.xef_terms(ft, self.cos)
-            yx, derivx = self.xef_terms(ft, self.cx)
-            yau, derivau = self.xef_terms(fu, self.ca)
-            yad, derivad = self.xef_terms(fd, self.ca)
+        # put everything into vxc
+        tmp = vtmp[0] + vtmp[2] * x2[1] + vtmp[3] * chi[1]
+        tmp2 = vtmp[1] + vtmp[3] * chi[2] # deriv wrt zeta
+        vxc[0][:,0] += tmp + tmp2 * zeta[1]
+        vxc[0][:,1] += tmp + tmp2 * zeta[2]
+        tmp = vtmp[2] * x2[2] + vtmp[3] * chi[3]
+        vxc[1][:,0] += tmp
+        vxc[1][:,1] += 2 * tmp
+        vxc[1][:,2] += tmp
+        tmp = vtmp[3] * chi[4]
+        vxc[2][:,0] += tmp
+        vxc[2][:,1] += tmp
+        vxc[0][:,0] += vtmp[4] * dftdnu
+        vxc[0][:,1] += vtmp[4] * dftdnd
+        vxc[3][:,0] += vtmp[4] * dftdxu
+        vxc[3][:,1] += vtmp[4] * dftdxd
 
-            tot += yo * co * Do[0]
-            tot += yx * cx
-            tot += yau * ldaxm[0]
-            tot += yad * ldaxm[1]
+        vxc[0][:,0] += vtmpu[0] * x2u[1] + vtmpu[1] * chiu[1] + vtmpu[2] * dfudnu
+        vxc[1][:,0] += vtmpu[0] * x2u[2] + vtmpu[1] * chiu[3]
+        vxc[2][:,0] += vtmpu[1] * chiu[4]
+        vxc[3][:,0] += vtmpu[2] * dfudxu
 
-            tmp = yo * co
-            fill_vxc_base_os_(vxc, vo, yo * Do[0])
-            fill_vxc_base_os_(vxc, vx, yx)
-            fill_vxc_os_(vxc, tmp * Do[1],
-                         tmp * Do[2],
-                         tmp * Do[3])
+        vxc[0][:,1] += vtmpd[0] * x2d[1] + vtmpd[1] * chid[1] + vtmpd[2] * dfddnd
+        vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
+        vxc[2][:,1] += vtmpd[1] * chid[4]
+        vxc[3][:,1] += vtmpd[2] * dfddxd
 
-            vxc[0][:,0] += dldaxu * amix * yau
-            vxc[0][:,1] += dldaxd * amix * yad
-            tmp = ldaxu * yau + ldaxd * yad
-            fill_vxc_base_os_(vxc, vxcmix, tmp)
-
-            tmp = co * Do[0] * derivo + cx * derivx
-            vxc[0][:,0] += tmp * dftdnu + ldaxm[0] * derivau * dfudnu
-            vxc[0][:,1] += tmp * dftdnd + ldaxm[1] * derivad * dfddnd
-            vxc[3][:,0] += tmp * dftdxu + ldaxm[0] * derivau * dfudxu
-            vxc[3][:,1] += tmp * dftdxd + ldaxm[1] * derivad * dfddxd
-
-        thr = 1e-6
         rhou, rhod = nu, nd
-        vxc[0][rhou<thr,0] = 0
-        vxc[1][rhou<thr,0] = 0
-        vxc[2][rhou<thr,0] = 0
-        vxc[3][rhou<thr,0] = 0
-        vxc[0][rhod<thr,1] = 0
-        vxc[1][rhod<thr,2] = 0
-        vxc[2][rhod<thr,1] = 0
-        vxc[3][rhod<thr,1] = 0
-        vxc[1][np.sqrt(rhou*rhod)<thr,1] = 0
+        vxc[0][rhou<1e-7,0] = 0
+        vxc[1][rhou<1e-7,0] = 0
+        vxc[2][rhou<1e-7,0] = 0
+        vxc[3][rhou<1e-7,0] = 0
+        vxc[0][rhod<1e-7,1] = 0
+        vxc[1][rhod<1e-7,2] = 0
+        vxc[2][rhod<1e-7,1] = 0
+        vxc[3][rhod<1e-7,1] = 0
+        vxc[1][np.minimum(rhou,rhod)<1e-7,1] = 0
         
         return tot, vxc
