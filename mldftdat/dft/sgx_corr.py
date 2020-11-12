@@ -568,6 +568,26 @@ class HFCNumInt(pyscf_numint.NumInt):
         #exc *= 0
         return exc / (rhot + 1e-20), vtot, None, None
 
+
+class HFCNumInt2(HFCNumInt):
+
+    def __init__(self, cx, c0, c1, dx, d0, d1,
+                 vv10_coeff = None, fterm_scale=2.0):
+        print ("FTERM SCALE", fterm_scale)
+        super(HFCNumInt, self).__init__()
+        from mldftdat.models import map_c7
+        self.corr_model = map_c7.VSXCContribs(
+                                css, cos, cx, cm, ca,
+                                dss, dos, dx, dm, da,
+                                fterm_scale=fterm_scale)
+
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
+
 DEFAULT_COS = [-0.02481797,  0.00303413,  0.00054502,  0.00054913]
 DEFAULT_CX = [-0.03483633, -0.00522109, -0.00299816, -0.0022187 ]
 DEFAULT_CA = [-0.60154365, -0.06004444, -0.04293853, -0.03146755]
@@ -627,6 +647,28 @@ def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
                            dss, dos, dx, dm, da,
                            vv10_coeff=vv10_coeff,
                            fterm_scale=fterm_scale)
+    uks = sgx_fit_corr(uks)
+    uks.with_df.debug = True
+    return uks
+
+def setup_rks_calc(mol, cx, c0, c1, dx, d0, d1,
+                   vv10_coeff=None, fterm_scale=2.0):
+    rks = dft.RKS(mol)
+    rks.xc = 'SCAN'
+    rks._numint = HFCNumInt2(cx, c0, c1, dx, d0, d1,
+                             vv10_coeff=vv10_coeff,
+                             fterm_scale=fterm_scale)
+    rks = sgx_fit_corr(rks)
+    rks.with_df.debug = False
+    return rks
+
+def setup_rks_calc(mol, cx, c0, c1, dx, d0, d1,
+                   vv10_coeff=None, fterm_scale=2.0):
+    uks = dft.UKS(mol)
+    uks.xc = 'SCAN'
+    uks._numint = HFCNumInt2(cx, c0, c1, dx, d0, d1,
+                             vv10_coeff=vv10_coeff,
+                             fterm_scale=fterm_scale)
     uks = sgx_fit_corr(uks)
     uks.with_df.debug = True
     return uks
