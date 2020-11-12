@@ -66,32 +66,14 @@ def fill_vxc_base_os_(vxc, vterm, multerm):
 
 class VSXCContribs():
 
-    def __init__(self, css, cos, cx, cm, ca,
-                 dss, dos, dx, dm, da,
-                 bx=None, bss=None, bos=None,
+    def __init__(self, cx, c0, c1, dx, d0, d1,
                  fterm_scale=1.0):
         self.cx = cx
-        self.css = css
-        self.cos = cos
-        self.cm = cm
-        self.ca = ca
+        self.c0 = c0
+        self.c1 = c1
         self.dx = dx
-        self.dss = dss
-        self.dos = dos
-        self.dm = dm
-        self.da = da
-        if bx is None:
-            self.bx = [0] * 4
-        else:
-            self.bx = bx
-        if bss is None:
-            self.bss = [0] * 4
-        else:
-            self.bss = bss
-        if bos is None:
-            self.bos = [0] * 4
-        else:
-            self.bos = bos
+        self.d0 = d0
+        self.d1 = d1
         self.cf = fterm_scale
 
     def get_rs(self, n):
@@ -274,7 +256,7 @@ class VSXCContribs():
         vxc[1] *= (nu + nd)[:,np.newaxis]
         return e, vxc
 
-    def get_separate_xef_terms(self, f):
+    def get_separate_xef_terms(self, f, return_deriv=False):
         f = f - 1
         fterm0 = np.exp(-self.cf * f**2)
         res = np.array([fterm0 * f**i for i in range(5)])
@@ -351,113 +333,38 @@ class VSXCContribs():
                1.0 / (CFC * n**(5./3))
 
     def get_chi(self, alpha):
-        chi = 1 / (1 + alpha)
-        return chi, -chi**2
-        chi = 1 / (1 + alpha**2)
-        return chi, -2 * alpha * chi**2
+        chi = (1 - alpha) / (1 + alpha)
+        return chi, -2 / (1 + alpha)**2
+
+    def get_chi_full_deriv(self, n, zeta, g2, t):
+        alpha = self.get_alpha(n, zeta, g2, t)
+        chi = self.get_chi(alpha[0])
+        return chi[0],\
+               chi[1] * alpha[1],\
+               chi[1] * alpha[2],\
+               chi[1] * alpha[3],\
+               chi[1] * alpha[4]
 
     def get_chi_desc(self, chi):
-        chip = 2 * chi - 1
-        return chip, chip**2, chip**3, 2, 4*chip, 6*chip**2
-        #return np.cos(np.pi * chi), 0.5 * (1 + np.cos(2*np.pi*chi)),\
-        #       -np.pi * np.sin(np.pi*chi), -np.pi * np.sin(2*np.pi*chi)
-
-    def get_D(self, n, g2, t):
-        y = 1 - g2/(8.*n*t)
-        dydn = g2/(8.*n**2*t)
-        dydg2 = -1/(8.*n*t)
-        dydt = g2/(8.*n*t**2)
-        dy = 0.5 * np.pi * np.sin(np.pi * y)
-        dy = 0
-        y = 0.5 * (1 - np.cos(np.pi * y))
-        return y, dy * dydn, dy * dydg2, dy * dydt
+        return chi, chi**2, chi**3, 1, 2*chi, 3*chi**2
 
     def get_amix(self, n, zeta, x2, chi):
         zeta = np.minimum(zeta, 1-1e-8)
         zeta = np.maximum(zeta, -1+1e-8)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
-        chi = 0.5 * (1 + np.cos(np.pi*(2*chi-1)**4))
-        num = 1 - chi * zeta**12
+        chip = 0.5 * (1 + np.cos(np.pi*chi**4))
+        num = 1 - chip * zeta**12
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
         f = num / den
-        dfdchi = -zeta**12 / den
-        dfdz = -2 * zeta * chi / den
+        dfdchi = -zeta**12 / den * (-2 * np.pi * chi**3) * np.sin(np.pi * chi**4)
+        dfdz = -12 * zeta**11 * chip / den
         dfdt2 = -0.5 * num / den**2
         dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) + (1-zeta)**(-1./3))
         dfdz += dfdt2 * dt2dz
         dfdx2 = dfdt2 * (np.pi / 3)**(1./3) / (16 * phi**2) * n**(1./3)
         dfdn = dfdt2 * (-1./3) * t2 / n
         return f, dfdn, dfdz, dfdx2, dfdchi
-
-    """
-    def get_amix(self, rhou, rhod, g2, chi):
-        rhot = rhou + rhod
-
-        Do = 0.5 * (1 - np.cos(2 * np.pi * chi))
-
-        elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
-
-        exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
-        exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
-        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2 * (rhou + rhod)
-        dinvldau += 1 / exlda
-        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2 * (rhou + rhod)
-        dinvldad += 1 / exlda
-        exlda /= (rhot)
-        u = elim / exlda
-        amix = 1 - 1/(1 + A*np.log(1 + B*u))
-        damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
-        vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
-        vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
-        vxclim[1] /= exlda[:,np.newaxis]
-        vxclim[2] /= exlda[:,np.newaxis]
-        for i in range(3):
-            vxclim[i] *= damix[:,np.newaxis]
-
-        return amix, vxclim
-    """
-    """
-    def get_D(self, n, g2, t):
-        y = 1 - g2/(8.*n*t)
-        dydn = g2/(8.*n**2*t)
-        dydg2 = -1/(8.*n*t)
-        dydt = g2/(8.*n*t**2)
-        dy = 0.5 * np.pi * np.sin(np.pi * y)
-        dy = 0
-        y = 0.5 * (1 - np.cos(np.pi * y))
-        return y, dy * dydn, dy * dydg2, dy * dydt
-
-    def get_amix(self, rhou, rhod, g2, Do):
-        rhot = rhou + rhod
-
-        elim, vxclim = self.baseline_inf(rhou, rhod, g2, Do)
-
-        exlda = 2**(1.0 / 3) * LDA_FACTOR * rhou**(4.0/3)
-        exlda += 2**(1.0 / 3) * LDA_FACTOR * rhod**(4.0/3)
-        dinvldau = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhou**(1.0/3) / exlda**2 * (rhou + rhod)
-        dinvldau += 1 / exlda
-        dinvldad = -2**(1.0 / 3) * (4.0/3) * LDA_FACTOR * rhod**(1.0/3) / exlda**2 * (rhou + rhod)
-        dinvldad += 1 / exlda
-        exlda /= (rhot)
-        u = elim / exlda
-        amix = 1 - 1/(1 + A*np.log(1 + B*u))
-        damix = (A*B)/((1 + B*u)*(1 + A*np.log(1 + B*u))**2)
-        vxclim[0][:,0] = vxclim[0][:,0] / exlda + elim * dinvldau
-        vxclim[0][:,1] = vxclim[0][:,1] / exlda + elim * dinvldad
-        vxclim[1] /= exlda[:,np.newaxis]
-        vxclim[2] /= exlda[:,np.newaxis]
-        for i in range(3):
-            vxclim[i] *= damix[:,np.newaxis]
-
-        return amix, vxclim
-    """
-
-    def single_corr(self, x2, z, alpha, d):
-        gamma = self.gammafunc(x2, z, alpha)
-        corrfunc = self.corrfunc(x2, z, gamma[0], d)
-        return corrfunc[0], corrfunc[1] + corrfunc[3] * gamma[1],\
-                            corrfunc[2] + corrfunc[3] * gamma[2]
 
     def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd,
              include_baseline=True, include_aug_sl=True,
@@ -481,13 +388,11 @@ class VSXCContribs():
         x2u = self.get_x2(nu, g2u)
         x2d = self.get_x2(nd, g2d)
         zeta = self.get_zeta(nu, nd)
-        alpha = self.get_alpha(nt, g2, tu+td)
-        alphau = self.get_alpha(nu, g2u, tu)
-        alphad = self.get_alpha(nd, g2d, td)
-        chi = self.get_chi(alpha[0])
-        chiu = self.get_chi(alphau[0])
-        chid = self.get_chi(alphad[0])
-        cx, vx = self.os_baseline(nu, nd, g2, type=0)
+        chi = self.get_chi_full_deriv(nt, zeta, g2, tu+td)
+        chiu = self.get_chi_full_deriv(nu, 1, g2u, tu)
+        chid = self.get_chi_full_deriv(nd, 1, g2d, td)
+        c0, v0 = self.os_baseline(nu, nd, g2, type=0)
+        c1, v1 = self.os_baseline(nu, nd, g2, type=1)
         amix, vmixn, vmixz, vmixx2, vmixchi = self.get_amix(nt, zeta[0], x2[0], chi[0])
         ldaxm = (ldaxu * amix, ldaxd * amix)
         N = cx.shape[0]
@@ -495,101 +400,87 @@ class VSXCContribs():
                np.zeros((N,3)),
                np.zeros((N,2)),
                np.zeros((N,2))]
+        # deriv wrt n, zeta, x2, chi, F
+        vtmp = [np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N)]
+        vtmpu = [np.zeros(N), np.zeros(N), np.zeros(N)]
+        vtmpd = [np.zeros(N), np.zeros(N), np.zeros(N)]
         tot = 0
 
-        sl, dsldx2, dsldchi = self.sl_terms(x2[0], chi[0], gammaos, self.dx)
-        slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammaos, self.da)
-        sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammaos, self.da)
+        sl0, dsl0dx2, dsl0dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d0)
+        sl1, dsl1dx2, dsl1dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d1)
+        slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
+        sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.d)
 
-        yx, derivx = self.xef_terms(ft, self.cx)
-        yau, derivau = self.xef_terms(fu, self.ca)
-        yad, derivad = self.xef_terms(fd, self.ca)
+        y0, deriv0 = self.xef_terms(ft, self.c0)
+        y1, deriv1 = self.xef_terms(ft, self.c1)
+        yu, derivu = self.xef_terms(fu, self.cx)
+        yd, derivd = self.xef_terms(fd, self.cx)
 
-        tot += sl * cx
+        tot += sl0 * c0
+        tot += sl1 * c1 * (1-chi[0]**4)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
-        tot += yx * cx
-        tot += ldaxm[0] * yau
-        tot += ldaxm[1] * yad
-        fill_vxc_os2_(vxc, cx, dsldx2, dsldchi, derivx,
-                      dftdfu, dftdfd, dftdnu, dftdnd)
-        fill_vxc_ss2_(vxc, 0, cx, dsludx2, dsludchi, derivau)
-        fill_vxc_ss2_(vxc, 1, cx, dslddx2, dslddchi, derivad)
-        fill_vxc_base_os_(vxc, vx, sl + yx)
-        vxc[0][:,0] += dldaxu * amix * (slu + yau)
-        vxc[0][:,1] += dldaxd * amix * (sld + yad)
-        fill_vxc_os2_(vxc, ldaxu * (slu + yau) + ldaxd * (slud + yad),
-                      vmixx2, vmixchi)
-        # need to take n-derivs for amix
+        tot += y0 * c0
+        tot += y1 * c1 * (1-chi[0]**4)
+        tot += ldaxm[0] * yu
+        tot += ldaxm[1] * yd
+        # enhancment terms on c0
+        vtmp[2] += c0 * dsl0dx2
+        vtmp[3] += c0 * dsl0dchi
+        vtmp[4] += c0 * deriv0
+        # enhancment terms on c1
+        tmp = c1 * (1-chi[0]**4)
+        vtmp[2] += tmp * dsl1dx2
+        vtmp[3] += tmp * dsl1dchi
+        vtmp[4] += tmp * deriv1
+        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        # amix derivs and exchange-like rho derivs
+        tmp = ldaxu * (slu + yu) + ldaxd * (sld + yd)
+        vtmp[0] += tmp * vmixn
+        vtmp[1] += tmp * vmixz
+        vtmp[2] += tmp * vmixx2
+        vtmp[3] += tmp * vmixchi
+        # exchange-like enhancment derivs
+        tmp = ldaxu * amix
+        vtmpu[0] += tmp * dsludx2
+        vtmpu[1] += tmp * dsludchi
+        vtmpu[2] += tmp * derivu
+        tmp = ldaxd * amix
+        vtmpd[0] += tmp * dslddx2
+        vtmpd[1] += tmp * dslddchi
+        vtmpd[2] += tmp * derivd
+        # baseline derivs
+        fill_vxc_base_os_(vxc, v0, sl0 + y0)
+        fill_vxc_base_os_(vxc, v1, sl1 + y1)
+        vxc[0][:,0] += dldaxu * amix * (slu + yu)
+        vxc[0][:,1] += dldaxd * amix * (sld + yd)
 
-        if include_aug_sl:
-            x2u = self.get_x2(nu, g2u)
-            x2d = self.get_x2(nd, g2d)
-            x2 = self.get_x2((nu+nd)/2**(1.0/3), g2)
-            zu = self.get_z(nu, tu)
-            zd = self.get_z(nd, td)
-            z = self.get_z((nu+nd)/2**(2.0/3), tu+td)
-            z[1][:] /= 2**(2.0/3)
-            x2[1][:] /= 2**(1.0/3)
-            cfo = self.single_corr(x2[0], z[0], alphaos, self.dos)
-            cfx = self.single_corr(x2[0], z[0], alphaos, self.dx)
-            cfau = self.single_corr(x2u[0], zu[0], alphax, self.da)
-            cfad = self.single_corr(x2d[0], zd[0], alphax, self.da)
+        # put everything into vxc
+        tmp = vtmp[0] + vtmp[2] * x2[1] + vtmp[3] * chi[1]
+        tmp2 = vtmp[1] + vtmp[3] * chi[2] # deriv wrt zeta
+        vxc[0][:,0] += tmp + tmp2 * zeta[1]
+        vxc[0][:,1] += tmp + tmp2 * zeta[2]
+        tmp = vtmp[2] * x2[2] + vtmp[3] * chi[3]
+        vxc[1][:,0] += tmp
+        vxc[1][:,1] += 2 * tmp
+        vxc[1][:,2] += tmp
+        tmp = vtmp[3] * chi[4]
+        vxc[2][:,0] += tmp
+        vxc[2][:,1] += tmp
+        vxc[0][:,0] += vtmp[4] * dftdnu
+        vxc[0][:,1] += vtmp[4] * dftdnd
+        vxc[3][:,0] += vtmp[4] * dftdfu
+        vxc[3][:,1] += vtmp[4] * dftdfd
 
-            tot += cfo[0] * co * Do[0]
-            tot += cfx[0] * cx
-            tot += ldaxm[0] * cfau[0]
-            tot += ldaxm[1] * cfad[0]
+        vxc[0][:,0] += vtmpu[0] * x2u[1] + vtmpu[1] * chiu[1]
+        vxc[1][:,0] += vtmpu[0] * x2u[2] + vtmpu[1] * chiu[3]
+        vxc[2][:,0] += vtmpu[1] * chiu[4]
+        vxc[3][:,0] += vtmpu[2]
 
-            tmp = co * cfo[0]
-            fill_vxc_base_os_(vxc, vo, cfo[0] * Do[0])
-            fill_vxc_base_os_(vxc, vx, cfx[0])
-            fill_vxc_os_(vxc, tmp * Do[1],
-                         tmp * Do[2],
-                         tmp * Do[3])
-
-            vxc[0][:,0] += dldaxu * amix * cfau[0]
-            vxc[0][:,1] += dldaxd * amix * cfad[0]
-            tmp = ldaxu * cfau[0] + ldaxd * cfad[0]
-            fill_vxc_base_os_(vxc, vxcmix, tmp)
-            
-            for c, cf in zip([co * Do[0], cx],
-                             [cfo, cfx]):
-                fill_vxc_os_(vxc, c * (cf[1] * x2[1] + cf[2] * z[1]),
-                             c * (cf[1] * x2[2]),
-                             c * (cf[2] * z[2]))
-            fill_vxc_ss_(vxc, 0, ldaxm[0] * (cfau[1] * x2u[1] + cfau[2] * zu[1]),
-                         ldaxm[0] * cfau[1] * x2u[2],
-                         ldaxm[0] * cfau[2] * zu[2])
-            fill_vxc_ss_(vxc, 1, ldaxm[1] * (cfad[1] * x2d[1] + cfad[2] * zd[1]),
-                         ldaxm[1] * cfad[1] * x2d[2],
-                         ldaxm[1] * cfad[2] * zd[2])
-            
-        if include_aug_nl:
-            
-
-            tot += yo * co * Do[0]
-            tot += yx * cx
-            tot += yau * ldaxm[0]
-            tot += yad * ldaxm[1]
-
-            tmp = yo * co
-            fill_vxc_base_os_(vxc, vo, yo * Do[0])
-            fill_vxc_base_os_(vxc, vx, yx)
-            fill_vxc_os_(vxc, tmp * Do[1],
-                         tmp * Do[2],
-                         tmp * Do[3])
-
-            vxc[0][:,0] += dldaxu * amix * yau
-            vxc[0][:,1] += dldaxd * amix * yad
-            tmp = ldaxu * yau + ldaxd * yad
-            fill_vxc_base_os_(vxc, vxcmix, tmp)
-
-            tmp = co * Do[0] * derivo + cx * derivx
-            vxc[0][:,0] += tmp * dftdnu
-            vxc[0][:,1] += tmp * dftdnd
-            vxc[3][:,0] += tmp * dftdfu + ldaxm[0] * derivau
-            vxc[3][:,1] += tmp * dftdfd + ldaxm[1] * derivad
+        vxc[0][:,1] += vtmpd[0] * x2d[1] + vtmpd[1] * chid[1]
+        vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
+        vxc[2][:,1] += vtmpd[1] * chid[4]
+        vxc[3][:,1] += vtmpd[2]
 
         rhou, rhod = nu, nd
         vxc[0][rhou<1e-7,0] = 0
