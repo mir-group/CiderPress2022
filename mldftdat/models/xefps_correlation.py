@@ -864,8 +864,7 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
     from mldftdat.models import map_c7
 
     corr_model = map_c7.VSXCContribs(None, None, None, None, None,
-                                     None, None, None, None, None,
-                                     fterm_scale=2.0)
+                                     None, fterm_scale=2.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -989,7 +988,8 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
     alphad = corr_model.get_alpha(rhod + 1e-16, 1, g2d, td)[0]
     chi = corr_model.get_chi(alpha)[0]
     #co *= (1-chi)*chi*4
-    co *= 1 - (2 * chi - 1)**4
+    Ecscan = np.dot(co * (1 - chi**4), weights)
+    co *= 1 - chi**4
     chiu = corr_model.get_chi(alphau)[0]
     chid = corr_model.get_chi(alphad)[0]
     x2 = corr_model.get_x2(nu+nd, g2)[0]
@@ -1302,14 +1302,17 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
                 # 34:39 -- Etermso
                 # 39:50 -- dvalso
                 E_c = np.append(mlx[:,3:7], mlx[:,8:12], axis=1)
-                E_c = np.append(E_c, mlx[:,12:40] * 100, axis=1)
+                E_c = np.append(E_c, mlx[:,12:40], axis=1)
                 E_c = np.append(E_c, mlx[:,41:45], axis=1)
-                E_c = np.append(E_c, mlx[:,45:59] * 20, axis=1)
+                E_c = np.append(E_c, mlx[:,45:59], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
         E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
+        noise = np.ones(E_c.shape[1]) * 1e-5
+        noise[8:36] /= 10000
+        noise[-14:] /= 10
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
@@ -1353,7 +1356,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(10 / mols[i].nelectron)
+            weights.append(4 / mols[i].nelectron)
 
         weights = np.array(weights)
         
@@ -1380,14 +1383,15 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
         hind = indd[hind]
         waterind = indd[waterind]
 
-        noise = 1e-5
+        #noise = 1e-5
         trset_bools = np.logical_not(valset_bools)
         Xtr = X[trset_bools]
         Xts = X[valset_bools]
         ytr = y[trset_bools]
         yts = y[valset_bools]
         wtr = weights[trset_bools]
-        A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + noise * np.identity(Xtr.shape[1]))
+        #A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + noise * np.identity(Xtr.shape[1]))
+        A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + np.diag(noise))
         B = np.dot(Xtr.T, wtr * ytr)
         coef = np.dot(A, B)
         #coef *= 0
