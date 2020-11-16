@@ -263,43 +263,58 @@ class VSXCContribs():
         fterm0 = np.exp(-self.cf * f**2)
         res = np.array([fterm0 * f**i for i in range(5)])
         res[0,:] -= 1
+        if return_deriv:
+            dres = np.array([i * f**(i-1) - 2 * self.cf * f**(i+1) for i in range(5)])
+            dres *= fterm0
+            return res, dres
         return res
 
     def get_separate_sl_terms(self, x2, chi, gamma):
-        desc = np.zeros((14,x2.shape[0]))
-        dx2 = np.zeros((14,x2.shape[0]))
-        dchi = np.zeros((14,x2.shape[0]))
+        desc = np.zeros((19, x2.shape[0]))
+        dx2 = np.zeros((19, x2.shape[0]))
+        dchi = np.zeros((19, x2.shape[0]))
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
-        a0, a1, a2, da0, da1, da2 = self.get_chi_desc(chi)
+        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
         ind = 0
-        for i in range(4):
-            diff = u**(i+1) - u**(i+2)
-            ddiff = (i+1) * u**(i) - (i+2) * u**(i+1)
+        for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+            desc[ind] = a
+            dchi[ind] = da
+            ind += 1
+        for i in range(3):
+            diff = u**(i+1)
+            ddiff = (i+1) * u**(i)
             ddiff *= du
             desc[ind] = diff
             dx2[ind] = ddiff
             ind += 1
-            desc[ind] = diff * a0
-            dx2[ind] = ddiff * a0
-            dchi[ind] = diff * da0 
+            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+                desc[ind] = diff * a
+                dx2[ind] = ddiff * a
+                dchi[ind] = diff * da
+                ind += 1
+        return desc, dx2, dchi
+
+    def get_separate_xefa_terms(self, F, chi):
+        x, dx = self.get_separate_xef_terms(F, return_deriv=True)
+        x = x[1:4]
+        dx = dx[1:4]
+        desc = np.zeros((15, x2.shape[0]))
+        df = np.zeros((15, x2.shape[0]))
+        dchi = np.zeros((15, x2.shape[0]))
+        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
+        ind = 0
+        for i in range(3):
+            diff = x[i]
+            ddiff = dx[i]
+            desc[ind] = diff
+            dx2[ind] = ddiff
             ind += 1
-            desc[ind] = diff * a1
-            dx2[ind] = ddiff * a1
-            dchi[ind] = diff * da1
-            ind += 1
-            #desc[ind] = u**(i+1) * a2
-            #dx2[ind] = (i+1) * u**i * a2
-            #dchi[ind] = u**(i+1) * da2
-            #ind += 1
-        desc[ind] = a0
-        dchi[ind] = da0
-        ind += 1
-        desc[ind] = a1
-        dchi[ind] = da1
-        #ind += 1
-        #desc[ind] = a2
-        #dchi[ind] = da2
+            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+                desc[ind] = diff * a 
+                dx2[ind] = ddiff * a 
+                dchi[ind] = diff * da
+                ind += 1
         return desc, dx2, dchi
 
     def sl_terms(self, x2, chi, gamma, c):
@@ -379,7 +394,7 @@ class VSXCContribs():
                deriv*(-tmp4 / D)
 
     def get_chi_desc(self, chi):
-        return chi, chi**2, chi**3, np.ones_like(chi), 2*chi, 3*chi**2
+        return chi**2, chi**3, chi**6, chi**7, 2*chi, 3*chi**2, 6*chi**5, 7*chi**6
 
     def get_amix(self, n, zeta, x2, chi):
         zeta = np.minimum(zeta, 1-1e-8)
