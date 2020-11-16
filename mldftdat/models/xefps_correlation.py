@@ -1024,6 +1024,158 @@ def get_new_contribs(dft_dir, restricted, mlfunc, exact=True):
     return np.concatenate([[Ex, Exscan], Eterms, Fterms, dvals, xvals, Etermso, dvalso,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
+def get_new_contribs2(dft_dir, restricted, mlfunc, exact=True):
+
+    from mldftdat.models import map_c8
+
+    corr_model = map_c8.VSXCContribs(None, None, None, None, None,
+                                     None, fterm_scale=2.0)
+
+    if restricted:
+        dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0]
+    else:
+        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
+
+    rho_data = dft_analyzer.rho_data
+    weights = dft_analyzer.grid.weights
+    grid = dft_analyzer.grid
+    spin = dft_analyzer.mol.spin
+    mol = dft_analyzer.mol
+    rdm1 = dft_analyzer.rdm1
+    E_pbe = dft_analyzer.e_tot
+
+    auxmol, ao_to_aux = setup_aux(mol, 0)
+    mol.ao_to_aux = ao_to_aux
+    mol.auxmol = auxmol
+
+    if restricted:
+        rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
+    else:
+        rho_data_u, rho_data_d = rho_data[0], rho_data[1]
+
+    rhou = rho_data_u[0] + 1e-20
+    g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    tu = rho_data_u[5] + 1e-20
+    rhod = rho_data_d[0] + 1e-20
+    g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+    td = rho_data_d[5] + 1e-20
+    ntup = (rhou, rhod)
+    gtup = (g2u, g2d)
+    ttup = (tu, td)
+    rhot = rhou + rhod
+    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
+    g2 = g2u + 2 * g2o + g2d
+
+    zeta = (rhou - rhod) / (rhot)
+    ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
+    CU = 0.3 * (3 * np.pi**2)**(2.0/3)
+
+    co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
+    co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
+    co0 *= rhot
+    co1 *= rhot
+    cx = co0
+    co = co1
+
+    nu, nd = rhou, rhod
+
+    N = dft_analyzer.grid.weights.shape[0]
+    if restricted:
+        if exact:
+            ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
+        else:
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
+            xdesc = get_exchange_descriptors2(dft_analyzer, restricted=True)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            ex = LDA_FACTOR * xef * rho_data[0]**(1.0/3)
+        exu = ex
+        exd = ex
+        exo = ex
+        rhou = rho_data[0] / 2
+        rhod = rho_data[0] / 2
+        rhot = rho_data[0]
+        Ex = np.dot(exo * rhot, weights)
+    else:
+        if exact:
+            exu = dft_analyzer.fx_energy_density_u / (rho_data[0][0] + 1e-20)
+            exd = dft_analyzer.fx_energy_density_d / (rho_data[1][0] + 1e-20)
+        else:
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
+            xdesc_u, xdesc_d = get_exchange_descriptors2(dft_analyzer, restricted=False)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_u, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exu = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[0][0]**(1.0/3)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_d, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exd = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[1][0]**(1.0/3)
+        rhou = rho_data[0][0]
+        rhod = rho_data[1][0]
+        rhot = rho_data[0][0] + rho_data[1][0]
+        exo = (exu * rho_data[0][0] + exd * rho_data[1][0])
+        Ex = np.dot(exo, weights)
+        exo /= (rhot + 1e-20)
+
+    FUNCTIONAL = DEFAULT_FUNCTIONAL
+    Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+             * (rho_data_u[0] + rho_data_d[0])
+    Exscan = np.dot(Exscan, weights)
+    Ecscan = eval_xc(',MGGA_C_REVSCAN', (rho_data_u, rho_data_d), spin = 1)[0] \
+                     * (rho_data_u[0] + rho_data_d[0])
+    Ecscan = np.dot(Ecscan, weights)
+
+    print('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
+    if (np.abs(Ex - dft_analyzer.fx_total) > 1e-7):
+        print('LARGE ERROR')
+    #assert np.abs(Ex - dft_analyzer.fx_total) < 1e-4
+
+    exu = exu * rhou
+    exd = exd * rhod
+    exo = exo * rhot
+    ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
+    ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
+    ldaxt = ldaxu + ldaxd
+
+    gamma = 2**(2./3) * 0.004
+    gammass = 0.004
+    chi = corr_model.get_chi_full_deriv(rhot + 1e-16, zeta, g2, tu + td)[0]
+    chiu = corr_model.get_chi_full_deriv(rhou + 1e-16, 1, g2u, tu)[0]
+    chid = corr_model.get_chi_full_deriv(rhod + 1e-16, 1, g2d, td)[0]
+    x2 = corr_model.get_x2(nu+nd, g2)[0]
+    x2u = corr_model.get_x2(nu, g2u)[0]
+    x2d = corr_model.get_x2(nd, g2d)[0]
+    amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
+    chidesc = np.array(corr_model.get_chi_desc(chi)[:4])
+    chidescu = np.array(corr_model.get_chi_desc(chiu)[:4])
+    chidescd = np.array(corr_model.get_chi_desc(chid)[:4])
+    Fx = exo / ldaxt
+    Fxu = exu / ldaxu
+    Fxd = exd / ldaxd
+    corrterms = np.append(corr_model.get_separate_xef_terms(Fx),
+                          chidesc, axis=0)
+    extermsu = np.append(corr_model.get_separate_sl_terms(x2u, chiu, gammass)[0],
+                         corr_model.get_separate_xefa_terms(Fu, chiu)[0], axis=0)
+    extermsd = np.append(corr_model.get_separate_sl_terms(x2d, chid, gammass)[0],
+                         corr_model.get_separate_xefa_terms(Fd, chid)[0], axis=0)
+
+    co *= 1 - chi**6
+    Ecscan = np.dot(co, weights)
+    Eterms = np.dot(corrterms * cx, weights)
+    Etermso = np.dot(corrterms * co, weights)
+    Fterms = np.dot(extermsu * ldaxu * amix, weights)
+    Fterms += np.dot(extermsd * ldaxd * amix, weights)
+
+    #                                    9,      9,       34
+    return np.concatenate([[Ex, Exscan], Eterms, Eterms0, Fterms,
+                          [Ecscan, dft_analyzer.fx_total]], axis=0)
+
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC,
                                 exact=True, BASIS=DEFAULT_BASIS,
@@ -1061,6 +1213,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
 
     XSIZE = 14
     SIZE = 2+5+5+3*XSIZE+5+2
+    SIZE = 2+9+9+34+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1076,8 +1229,8 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
             dft_dir = get_save_dir(ROOT, 'UKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_new_contribs(dft_dir, is_restricted,
-                                       MLFUNC, exact=exact)
+        sl_contribs = get_new_contribs2(dft_dir, is_restricted,
+                                        MLFUNC, exact=exact)
         print(sl_contribs)
         assert (not np.isnan(sl_contribs).any())
         X = np.vstack([X, sl_contribs])
