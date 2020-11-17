@@ -1161,9 +1161,9 @@ def get_new_contribs2(dft_dir, restricted, mlfunc, exact=True):
     corrterms = np.append(corr_model.get_separate_xef_terms(Fx),
                           chidesc, axis=0)
     extermsu = np.append(corr_model.get_separate_sl_terms(x2u, chiu, gammass)[0],
-                         corr_model.get_separate_xefa_terms(Fu, chiu)[0], axis=0)
+                         corr_model.get_separate_xefa_terms(Fxu, chiu)[0], axis=0)
     extermsd = np.append(corr_model.get_separate_sl_terms(x2d, chid, gammass)[0],
-                         corr_model.get_separate_xefa_terms(Fd, chid)[0], axis=0)
+                         corr_model.get_separate_xefa_terms(Fxd, chid)[0], axis=0)
 
     co *= 1 - chi**6
     Ecscan = np.dot(co, weights)
@@ -1173,7 +1173,7 @@ def get_new_contribs2(dft_dir, restricted, mlfunc, exact=True):
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
 
     #                                    9,      9,       34
-    return np.concatenate([[Ex, Exscan], Eterms, Eterms0, Fterms,
+    return np.concatenate([[Ex, Exscan], Eterms, Etermso, Fterms,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
@@ -1344,7 +1344,7 @@ def store_vv10_contribs_dataset(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     np.save(FNAME, X)
 
 
-def solve_from_stored_ae(DATA_ROOT, alpha=True):
+def solve_from_stored_ae(DATA_ROOT, version='a'):
 
     import yaml
     from collections import Counter
@@ -1356,7 +1356,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha2_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1364,7 +1364,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha2_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1411,7 +1411,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
         def get_terms(etot, mlx, vv10=None):
             if vv10 is not None:
                 E_vv10 = vv10[:,i]
-            if not alpha:
+            if version == 'a':
                 E_dft = etot[:,0]
                 E_ccsd = etot[:,1]
                 E_x = mlx[:,0]
@@ -1441,7 +1441,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
                 #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12] + mlx[:,22])
                 #diff = E_ccsd - (E_dft - E_xscan + E_x + mlx[:,2] + mlx[:,7] + mlx[:,12])
-            else:
+            elif version == 'b':
                 E_dft = etot[:,0]
                 E_ccsd = etot[:,1]
                 E_x = mlx[:,0]
@@ -1459,13 +1459,31 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
                 E_c = np.append(E_c, mlx[:,41:45], axis=1)
                 E_c = np.append(E_c, mlx[:,45:59], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
+            else:
+                E_dft = etot[:,0]
+                E_ccsd = etot[:,1]
+                E_x = mlx[:,0]
+                E_xscan = mlx[:,1]
+                E_cscan = mlx[:,-2]
+                # 0, 1 -- Ex pred and EXscan
+                # 2:7 -- xef terms alpha=0
+                # 7:11 -- chi terms alpha=0
+                # 11:16 -- xef terms alpha=1
+                # 16:20 -- chi terms alpha=1
+                # 20:39 -- sl ex terms
+                # 39:54 -- nl ex terms
+                E_c = np.append(mlx[:,3:11], mlx[:,12:20], axis=1)
+                E_c = np.append(E_c, mlx[:,20:39], axis=1)
+                E_c = np.append(E_c, mlx[:,39:54], axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
         E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
-        noise = np.ones(E_c.shape[1]) * 1e-5
-        noise[8:36] /= 10000
-        noise[-14:] /= 10
+        noise = np.ones(E_c.shape[1]) * 3e-5
+        noise[4:8] /= 10000000
+        #noise[12] /= 100
+        #noise[16:16+19] /= 10
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
@@ -1509,7 +1527,7 @@ def solve_from_stored_ae(DATA_ROOT, alpha=True):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(4 / mols[i].nelectron)
+            weights.append(20 / mols[i].nelectron)
 
         weights = np.array(weights)
         
