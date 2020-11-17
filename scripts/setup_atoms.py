@@ -22,6 +22,9 @@ spins2 = [3, 4, 5, 6, 0]
 numbers = numbers_r2 + numbers_r3 + numbers_r4 + numbers1 + numbers2
 spins = spins_r2 + spins_r3 + spins_r4 + spins1 + spins2
 
+print (len(numbers))
+exit()
+
 for Z, spin in zip(numbers, spins):
     for basis in ['def2-qzvppd']:
         struct = Atoms([Z], positions=[(0,0,0)])

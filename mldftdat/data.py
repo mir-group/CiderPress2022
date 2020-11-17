@@ -67,6 +67,7 @@ def rho_data_from_calc(calc, grid, is_ccsd = False):
         else:
             trans_mo_coeff = calc.mo_coeff.T
         dm = transform_basis_1e(dm, trans_mo_coeff)
+    print ('NORMALIZATION', np.trace(dm.dot(calc.mol.get_ovlp())))
     rho = eval_rho(calc.mol, ao, dm, xctype='MGGA')
     return rho
 
@@ -1213,12 +1214,16 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 e_tot = mf.e_tot
                 calc = mf
             elif type(FUNCTIONAL) == str and 'SGXCorr' in FUNCTIONAL:
+                #fname = '/n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/MLFUNCTIONALS/SGXCorr_3/settings.yaml'
+                #import yaml
+                #with open(fname, 'r') as f:
+                #    settings = yaml.load(f, Loader=yaml.Loader)
                 if 'RKS' in path:
-                    from mldftdat.dft.sgx_corr import setup_rks_calc
-                    mf = setup_rks_calc(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_rks_calc2
+                    mf = setup_rks_calc2(mol, fterm_scale=2.0)
                 else:
-                    from mldftdat.dft.sgx_corr import setup_uks_calc
-                    mf = setup_uks_calc(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_uks_calc2
+                    mf = setup_uks_calc2(mol, fterm_scale=2.0)
                 mf.kernel()
                 #if mol.spin > 0:
                 #    uhf_internal(mf)

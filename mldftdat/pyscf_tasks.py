@@ -259,9 +259,9 @@ class SGXCorrCalc(FiretaskBase):
             if settings is None:
                 settings = {}
         if calc_type == 'RKS':
-            calc = numint.setup_rks_calc(mol, **settings)
+            calc = numint.setup_rks_calc2(mol, **settings)
         else:
-            calc = numint.setup_uks_calc(mol, **settings)
+            calc = numint.setup_uks_calc2(mol, **settings)
 
         calc.DIIS = scf.diis.ADIIS
         print ("Removing linear dep")
