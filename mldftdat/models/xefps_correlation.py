@@ -1480,8 +1480,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
         E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
-        noise = np.ones(E_c.shape[1]) * 3e-5
-        noise[4:8] /= 10000000
+        noise = np.ones(E_c.shape[1]) * 1e-3
+        noise[4:8] /= 10000
         #noise[12] /= 100
         #noise[16:16+19] /= 10
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)

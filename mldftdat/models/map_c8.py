@@ -628,10 +628,11 @@ class VSXCContribs():
         
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
-        vtmp[0] += tmp * vmixn
-        vtmp[1] += tmp * vmixz
-        vtmp[2] += tmp * vmixx2
-        vtmp[3] += tmp * vmixchi
+        cond = nt>1e-4
+        vtmp[0][cond] += (tmp * vmixn)[cond]
+        vtmp[1][cond] += (tmp * vmixz)[cond]
+        vtmp[2][cond] += (tmp * vmixx2)[cond]
+        vtmp[3][cond] += (tmp * vmixchi)[cond]
         # exchange-like enhancment derivs
         tmp = ldaxu * amix
         vtmpu[0] += tmp * dsludx2

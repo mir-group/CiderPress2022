@@ -238,7 +238,7 @@ class SGXCorrCalc(FiretaskBase):
                        'mlfunc_name', 'mlfunc_settings_file']
     optional_params = ['spin', 'charge', 'max_conv_tol']
 
-    DEFAULT_MAX_CONV_TOL = 1e-8
+    DEFAULT_MAX_CONV_TOL = 1e-7
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -263,7 +263,9 @@ class SGXCorrCalc(FiretaskBase):
         else:
             calc = numint.setup_uks_calc2(mol, **settings)
 
-        calc.DIIS = scf.diis.ADIIS
+        calc.damp = 6
+        calc.start_diis_cycle = 6
+        calc.DIIS = scf.diis.CDIIS
         print ("Removing linear dep")
         calc = scf.addons.remove_linear_dep_(calc)
 
