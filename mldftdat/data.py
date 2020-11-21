@@ -1452,16 +1452,17 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
     result = {}
     errs = []
     for data_point_name, formula in list(formulas.items()):
-        if not ('HTBH' in data_point_name):
-            continue
-        #parts = data_point_name.split('_')
-        #if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
+        #if not ('HTBH' in data_point_name):
         #    continue
+        parts = data_point_name.split('_')
+        if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
+            continue
         pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
         result[data_point_name] = {
             'pred' : pred_energy,
             'true' : energy
         }
+        print(pred_energy-energy)
         errs.append(pred_energy-energy)
     errs = np.array(errs)
     print(errs.shape)
