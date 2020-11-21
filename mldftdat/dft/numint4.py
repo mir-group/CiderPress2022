@@ -13,6 +13,7 @@ from scipy.linalg.blas import dgemm, dgemv
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
 from mldftdat.dft.correlation import eval_custom_corr, nr_rks_vv10
+from scipy.linalg import cho_factor, cho_solve
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -328,20 +329,23 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     print('desc setup', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
+    """
     if mlfunc.y_to_f_mul is None:
         #F = mlfunc.get_F(desc)
         # shape (N, ndesc)
         #dF = mlfunc.get_derivative(desc)
-        F, dF = mlfunc.get_F_and_derivative(desc)
+        F, dF = mlfunc.get_F_and_derivative(desc, rho_data[0])
     else:
         F = mlfunc.get_F(desc, s = contracted_desc[1])
         dF = mlfunc.get_derivative(desc, s = contracted_desc[1], F = F)
+    """
+    F, dF = mlfunc.get_F_and_derivative(desc, rho_data[0])
     exc = LDA_FACTOR * F * rho_data[0]**(1.0/3)
     elda = LDA_FACTOR * rho_data[0]**(4.0/3)
     v_npa = np.zeros((4, N))
     dgpdp = np.zeros(rho_data.shape[1])
     dgpda = np.zeros(rho_data.shape[1])
-    dFddesc = dF * ddesc
+    dFddesc = dF# * ddesc
 
     print('run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -454,11 +458,17 @@ def setup_aux(mol, beta):
     aux_e2 = df.incore.aux_e2(mol, auxmol)
     #print(aux_e2.shape)
     # shape (naux, nao * nao)
+    """
     aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
     aux_e2 = np.ascontiguousarray(aux_e2)
     lu, piv, info = dgetrf(aug_J, overwrite_a = True)
     inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
     ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+    ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+    """
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    c_and_lower = cho_factor(aug_J)
+    ao_to_aux = cho_solve(c_and_lower, aux_e2)
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
     return auxmol, ao_to_aux
 

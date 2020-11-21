@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
 from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
-import os
+import os, json
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
@@ -12,6 +12,7 @@ from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
 #from mldftdat.models.nn import Predictor
 from pyscf.dft.numint import eval_ao, eval_rho
+from pyscf.scf.stability import uhf_internal
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -66,6 +67,7 @@ def rho_data_from_calc(calc, grid, is_ccsd = False):
         else:
             trans_mo_coeff = calc.mo_coeff.T
         dm = transform_basis_1e(dm, trans_mo_coeff)
+    print ('NORMALIZATION', np.trace(dm.dot(calc.mol.get_ovlp())))
     rho = eval_rho(calc.mol, ao, dm, xctype='MGGA')
     return rho
 
@@ -951,7 +953,7 @@ def error_table2(dirs, Analyzer, mlmodel, num = 1):
 def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['MGGA_X_GVT4', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
+    models = ['GGA_X_CHACHIYO', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -974,7 +976,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
             symbol = chemical_symbols[Z]
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/PBE/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
                         dbpath, letter, Z, symbol, spin)
             if letter == 'R':
                 element_analyzers[Z] = RHFAnalyzer.load(path)
@@ -1002,6 +1004,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
                                     model = model, num = num, version = version)
             xef_pred, eps_pred, neps_pred, fx_total_pred = \
                 predict_exchange(analyzer, model = model, num = num, version = version)
+            print(fx_total_pred, fx_total_true, fx_total_ref, fx_total_ref_true)
             print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
                                                  - (fx_total_ref - fx_total_ref_true))
 
@@ -1171,6 +1174,17 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
             else:
                 return analyzer.calc.e_tot, analyzer.calc
+        elif ('CCSD_T' in path) and os.path.isfile(path.replace('CCSD_T', 'CCSD')):
+            print ('Check if triples correction available.')
+            analyzer = Analyzer.load(path.replace('CCSD_T', 'CCSD'))
+            if analyzer.e_tri is None and mol.nelectron > 2:
+                print ('Calculating triples')
+                analyzer.calc_pert_triples()
+            elif mol.nelectron < 3:
+                analyzer.e_tri = 0
+            else:
+                print ('Triples correction already calculated.')
+            return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
 
         else:
             if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
@@ -1199,6 +1213,22 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 mf = run_scf(mol, calc_type)
                 e_tot = mf.e_tot
                 calc = mf
+            elif type(FUNCTIONAL) == str and 'SGXCorr' in FUNCTIONAL:
+                #fname = '/n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/MLFUNCTIONALS/SGXCorr_3/settings.yaml'
+                #import yaml
+                #with open(fname, 'r') as f:
+                #    settings = yaml.load(f, Loader=yaml.Loader)
+                if 'RKS' in path:
+                    from mldftdat.dft.sgx_corr import setup_rks_calc2
+                    mf = setup_rks_calc2(mol, fterm_scale=2.0)
+                else:
+                    from mldftdat.dft.sgx_corr import setup_uks_calc2
+                    mf = setup_uks_calc2(mol, fterm_scale=2.0)
+                mf.kernel()
+                #if mol.spin > 0:
+                #    uhf_internal(mf)
+                e_tot = mf.e_tot
+                calc = mf
             elif type(FUNCTIONAL) == str:
                 mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
                 e_tot = mf.e_tot
@@ -1206,23 +1236,34 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint6 import setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'PBE')
+                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_rks_calc(mol, FUNCTIONAL)
+                    mf = setup_rks_calc(mol, FUNCTIONAL, grid_level=1)
                     mf.xc = None
-                    #mf.xc = ',MGGA_C_SCAN'
+                    #mf.xc = 'GGA_X_CHACHIYO'
                 else:
                     from mldftdat.dft.numint6 import setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'PBE')
-                    dm0 = mf.make_rdm1()
-                    #dm0 = None
+                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
+                    #dm0 = mf.make_rdm1()
+                    dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_uks_calc(mol, FUNCTIONAL)
+                    mf = setup_uks_calc(mol, FUNCTIONAL, grid_level=1)
                     mf.xc = None
-                    #mf.xc = ',MGGA_C_SCAN'
-                mf.kernel(dm0 = None)
+                    #mf.xc = 'GGA_X_CHACHIYO'
+                    #mf.init_guess = 'atom'
+                    #mf.diis_start_cycle = 10
+                    #from pyscf.scf.diis import ADIIS
+                    #mf.DIIS = ADIIS
+                    #mf.damp = 5
+                    #mf.conv_tol = 1e-7
+                    #mf.kernel()
+                    #mo = uhf_internal(mf)
+                    #dm0 = mf.make_rdm1(mo_coeff=mo, mo_occ=mf.mo_occ)
+                mf.kernel(dm0 = dm0)
+                if mol.spin > 0:
+                    uhf_internal(mf)
                 e_tot = mf.e_tot
                 calc = mf
             else:
@@ -1248,7 +1289,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
 
     mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
     if mol is None:
-        analyzer = Analyzer.load(mol_path)
+        analyzer = Analyzer.load(mol_path.replace('CCSD_T', 'CCSD'))
         mol = analyzer.mol
     mol.basis = BASIS
     mol.build() 
@@ -1326,16 +1367,48 @@ def get_run_total_energy(dirname):
         data = json.load(f)
     return data['e_tot']
 
-def get_accdb_data(formula, FUNCTIONAL, BASIS):
+default_return_data = ['e_tot', 'nelectron']
+def get_run_data(dirname, return_data=default_return_data):
+    with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    return {name : data.get(name) for name in return_data}
 
+def read_accdb_structure(struct_id):
+    ACCDB_DIR = os.environ.get('ACCDB')
+    fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
+    with open(fname, 'r') as f:
+        print(fname)
+        lines = f.readlines()
+        natom = int(lines[0])
+        charge_and_spin = lines[1].split()
+        charge = int(charge_and_spin[0].strip().strip(','))
+        spin = int(charge_and_spin[1].strip().strip(',')) - 1
+        symbols = []
+        coords = []
+        for i in range(natom):
+            line = lines[2+i]
+            symbol, x, y, z = line.split()
+            if symbol.isdigit():
+                symbol = int(symbol)
+            else:
+                symbol = symbol[0] + symbol[1:].lower()
+            symbols.append(symbol)
+            coords.append([x,y,z])
+        struct = Atoms(symbols, positions = coords)
+        print(charge, spin, struct)
+    return struct, os.path.join('ACCDB', struct_id), spin, charge
+
+from ase import Atoms
+
+def get_accdb_data(formula, FUNCTIONAL, BASIS):
     pred_energy = 0
-    for sname, count in zip(formula[structs], formula[counts]):
-        struct, mol_id, spin, charge = read_accdb_struct(sname)
+    for sname, count in zip(formula['structs'], formula['counts']):
+        struct, mol_id, spin, charge = read_accdb_structure(sname)
         if spin == 0:
             CALC_TYPE = 'RKS'
         else:
             CALC_TYPE = 'UKS'
-        dname = get_save_dir(ROOT, CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
+        dname = get_save_dir(os.environ['MLDFTDB'], CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
         pred_energy += count * get_run_total_energy(dname)
 
     return pred_energy, formula['energy']
@@ -1358,3 +1431,41 @@ def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
     if single:
         return result[data_point_names[0]]
     return result
+
+
+def get_accdb_formulas(dataset_eval_name):
+    with open(dataset_eval_name, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            lines[i] = line.split(',')
+        formulas = {}
+        for line in lines:
+            counts = line[1:-1:2]
+            structs = line[2:-1:2]
+            energy = float(line[-1])
+            counts = [int(c) for c in counts]
+            formulas[line[0]] = {'structs': structs, 'counts': counts, 'energy': energy}
+    return formulas
+
+def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
+    formulas = get_accdb_formulas(dataset_eval_name)    
+    result = {}
+    errs = []
+    for data_point_name, formula in list(formulas.items()):
+        #if not ('HTBH' in data_point_name):
+        #    continue
+        parts = data_point_name.split('_')
+        if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
+            continue
+        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
+        result[data_point_name] = {
+            'pred' : pred_energy,
+            'true' : energy
+        }
+        print(pred_energy-energy)
+        errs.append(pred_energy-energy)
+    errs = np.array(errs)
+    print(errs.shape)
+    mae = np.mean(np.abs(errs))
+    rmse = np.sqrt(np.mean(errs**2))
+    return mae, rmse, result
