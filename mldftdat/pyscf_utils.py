@@ -23,6 +23,10 @@ SCF_TYPES = {
     'UKS'  : dft.UKS
 }
 
+GG_SMUL = 1.0
+GG_AMUL = 1.0
+GG_AMIN = 1.0 / 18
+
 def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     """
     Get a pyscf gto.Mole object from an ase Atoms object (atoms).
@@ -91,19 +95,21 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
     bas[:,5] = start + np.arange(N)
     bas[:,6] = start + N + np.arange(N)
 
-    a = np.pi * (rho / 2 + 1e-6)**(2.0 / 3)
+    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
     scale = 1
-    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
     if s is not None:
-        scale += fac * s**2
+        scale += GG_SMUL * fac * s**2
     if alpha is not None:
-        scale += 3.0 / 5 * fac * (alpha - 1)
+        scale += GG_AMUL * 0.6 * fac * (alpha - 1)
     bas[:,1] = l
-    env[bas[:,5]] = a * scale
-    env[bas[rho<1e-8,5]] = 1e16
+    ascale = a * scale
+    cond = ascale < GG_AMIN
+    ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
+    env[bas[:,5]] = ascale
     print(np.sqrt(np.min(env[bas[:,5]])))
-    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    env[bas[:,6]] = np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
     return atm, bas, env
 

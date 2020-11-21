@@ -489,18 +489,44 @@ class CorrGPFunctional5(GPFunctional):
         return E, vo, (dEddesc_u, dEddesc_d)
 
 
-import mldftdat.models.map_v1 as mapper
+import mldftdat.models.map_v4 as mapper
+
+def cutoff_and_deriv(scale):
+    x = np.exp(0.35 * (scale - 10**1.45))
+    return 1.0 / (1 + x), 0.35 * x / (1 + x)**2
+
+def cutoff_and_deriv(scale):
+    x = (1 + 1e-2 * (scale-1)**2)
+    return 1 / x, 1e-2 * (scale-1) / x**2
+
+def chachiyo_fx(s2):
+    c = 4 * np.pi / 9
+    x = c * np.sqrt(s2)
+    dx = c / (2 * np.sqrt(s2))
+    Pi = np.pi
+    Log = np.log
+    chfx = (3*x**2 + Pi**2*Log(1 + x))/((Pi**2 + 3*x)*Log(1 + x))
+    dchfx = (-3*x**2*(Pi**2 + 3*x) + 3*x*(1 + x)*(2*Pi**2 + 3*x)*Log(1 + x) - 3*Pi**2*(1 + x)*Log(1 + x)**2)/((1 + x)*(Pi**2 + 3*x)**2*Log(1 + x)**2)
+    dchfx *= dx
+    #chfx_old = chfx.copy()
+    #dchfx_old = dchfx.copy()
+    #print('TINYGRAD', (s2<1e-12).any())
+    chfx[s2<1e-6] = 1 + 8 * s2[s2<1e-6] / 27
+    dchfx[s2<1e-6] = 8.0 / 27
+    #print(np.linalg.norm(chfx-chfx_old), np.linalg.norm(dchfx-dchfx_old), chfx.shape, chfx_old.shape, dchfx.shape, dchfx_old.shape)
+    return chfx, dchfx
 
 class NormGPFunctional(GPFunctional):
 
     def __init__(self, evaluator, normp = True):
+        # for use with Chachiyo reference
         self.evaluator = evaluator
         self.y_to_f_mul = None
         self.desc_list = [
             Descriptor(1, square, single, mul = 1.0),\
             Descriptor(2, identity, single, mul = 1.0),\
             Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
+            Descriptor(5, square, single, mul = 1.0),\
             Descriptor(8, identity, single, mul = 1.0),\
             Descriptor(12, identity, single, mul = 1.00),\
             Descriptor(6, identity, single, mul = 1.00),\
@@ -510,19 +536,49 @@ class NormGPFunctional(GPFunctional):
         ]
         self.normp = normp
 
-    def get_F_and_derivative(self, X, compare = None):
-        mat, dmat = mapper.desc_and_ddesc(X.T, normp = self.normp)
-        if compare is not None:
-            print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
+    def get_F_and_derivative(self, X, rho=None):
+        mat, dmat, scale, dscaledp, dscaledalpha = \
+            mapper.desc_and_ddesc(X.T)
+        #F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1, min_order=3)
         F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
         dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        return F + 1, dFddesc
+        #cut, cut_deriv = cutoff_and_deriv(scale**2)
+        #cut[scale**2>70] = 0
+        #cut_deriv[scale**2>70] = 0
+        #dFddesc *= cut[:,np.newaxis]
+        
+        #dFddesc[:,0] += F * cut_deriv * 2 * scale * dscaledp
+        #dFddesc[:,1] += F * cut_deriv * 2 * scale * dscaledalpha
+        #F *= cut
+        if rho is not None:
+            highcut = 1e-3
+            ecut = 1.0/2
+            lowcut = 1e-6
+            #F[rho<highcut] *= np.sqrt(rho[rho<highcut] / highcut)
+            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut] / highcut)**ecut))
+            dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
+            #F[rho<lowcut] = 0
+            dFddesc[rho<lowcut,:] = 0
+
+        chfx, dchfx = chachiyo_fx(X[:,0])
+        F += chfx
+        dFddesc[:,0] += dchfx
+    
+        if rho is not None:
+            F[rho<1e-9] = 0
+            dFddesc[rho<1e-9,:] = 0
+
+        return F, dFddesc
 
     def get_F(self, X):
-        return self.get_F_and_derivative(self, X)[0]
+        #x = np.sqrt(X[:,0]) * 4 * np.pi / 9
+        #fch_num = 3 * x**2 + np.pi**2 * np.log(x + 1)
+        #fch_den = (3 * x + np.pi**2) * np.log(x + 1)
+        #fch = (fch_num + 1e-10) / (fch_den + 1e-10)
+        return self.get_F_and_derivative(X)[0]# + fch
 
     def get_derivative(self, X):
-        return self.get_F_and_derivative(self, X)[1]
+        return self.get_F_and_derivative(X)[1]
 
 
 class CorrGPFunctional6(GPFunctional):

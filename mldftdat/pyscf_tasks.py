@@ -38,7 +38,7 @@ class SCFCalc(FiretaskBase):
         calc_type = self['calc_type']
 
         start_time = time.monotonic()
-        calc = run_scf(mol, calc_type, self.get('functional'))
+        calc = run_scf(mol, calc_type, self.get('functional'), remove_ld = True)
         stop_time = time.monotonic()
 
         max_iter = 50 # extra safety catch
@@ -74,6 +74,85 @@ class SCFCalc(FiretaskBase):
 
 
 @explicit_serialize
+class SCFFromDB(FiretaskBase):
+    """
+    Rerun calculation in new basis.
+    """
+
+    required_params = ['struct', 'basis', 'oldbasis', 'calc_type', 'mol_id']
+    optional_params = ['functional']
+
+    DEFAULT_MAX_CONV_TOL = 1e-7
+
+    def run_task(self, fw_spec):
+
+        if self.get('functional') is not None:
+            functional = get_functional_db_name(self['functional'])
+        else:
+            functional = None
+        adir = get_save_dir(os.environ['MLDFTDB'], self['calc_type'],
+                            self['oldbasis'], self['mol_id'],
+                            functional=functional)
+        if 'U' in calc_type:
+            analyzer = UHFAnalyzer.load(adir)
+        else:
+            analyzer = RHFAnalyzer.load(adir)
+        init_mol = analyzer.mol
+        init_mol.build()
+        mol = init_mol.copy()
+        mol.basis = self['basis']
+        mol.build()
+        s = mol.get_ovlp()
+        mo = analyzer.mo_coeff
+        mo_occ = analyzer.mo_occ
+        def fproj(mo):
+            mo = addons.project_mo_nr2nr(init_mol, mo, mol)
+            norm = numpy.einsum('pi,pi->i', mo.conj(), s.dot(mo))
+            mo /= np.sqrt(norm)
+            return mo
+        if 'U' in calc_type:
+            dm = analyzer.calc.make_rdm1([fproj(mo[0]), fproj(mo[1])], mo_occ)
+        else:
+            dm = analyzer.calc.make_rdm1(fproj(mo), mo_occ)
+
+        start_time = time.monotonic()
+        calc = run_scf(mol, calc_type, functional = functional,
+                       remove_ld = True, dm0 = dm)
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            calc.conv_tol *= 10
+
+            start_time = time.monotonic()
+            calc.kernel(dm0 = dm)
+            stop_time = time.monotonic()
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        if 'KS' in calc_type:
+            functional = self.get('functional')
+            if functional is None:
+                update_spec['functional'] = 'LDA_VWN'
+            else:
+                update_spec['functional'] = get_functional_db_name(functional)
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
 class MLSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type',\
@@ -81,7 +160,7 @@ class MLSCFCalc(FiretaskBase):
     optional_params = ['spin', 'charge', 'max_conv_tol',\
                        'mlfunc_c_file']
 
-    DEFAULT_MAX_CONV_TOL = 1e-7
+    DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -96,7 +175,7 @@ class MLSCFCalc(FiretaskBase):
 
         import joblib
         if self.get('mlfunc_c_file') is None:
-            from mldftdat.dft import numint4 as numint
+            from mldftdat.dft import numint6 as numint
             mlfunc = joblib.load(self['mlfunc_file'])
         else:
             from mldftdat.dft import numint5 as numint
@@ -120,6 +199,76 @@ class MLSCFCalc(FiretaskBase):
                 calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
             else:
                 calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
+
+        start_time = time.monotonic()
+        calc.kernel()
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol < max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            calc.conv_tol *= 10
+
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
+class SGXCorrCalc(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'calc_type',\
+                       'mlfunc_name', 'mlfunc_settings_file']
+    optional_params = ['spin', 'charge', 'max_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-7
+
+    def run_task(self, fw_spec):
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = self['calc_type']
+
+        from mldftdat.dft import sgx_corr as numint
+        import yaml
+
+        with open(self['mlfunc_settings_file'], 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
+            if settings is None:
+                settings = {}
+        if calc_type == 'RKS':
+            calc = numint.setup_rks_calc2(mol, **settings)
+        else:
+            calc = numint.setup_uks_calc2(mol, **settings)
+
+        #calc.damp = 6
+        #calc.diis_start_cycle = 6
+        calc.DIIS = scf.diis.ADIIS
+        #calc.max_cycle = 50
+        print ("Removing linear dep")
+        calc = scf.addons.remove_linear_dep_(calc)
 
         start_time = time.monotonic()
         calc.kernel()
@@ -336,6 +485,12 @@ class TrainingDataCollector(FiretaskBase):
             Analyzer = analyzer_module.CCSDAnalyzer
         elif type(calc) == cc.uccsd.UCCSD:
             Analyzer = analyzer_module.UCCSDAnalyzer
+        elif isinstance(calc, scf.hf.RHF):
+            print ('Other restricted SCF class')
+            Analyzer = analyzer_module.RHFAnalyzer
+        elif isinstance(calc, scf.uhf.UHF):
+            print ('Other unrestricted SCF class')
+            Analyzer = analyzer_module.UHFAnalyzer
         else:
             raise NotImplementedError(
                 'Training data collection not supported for {}'.format(type(calc)))
@@ -396,7 +551,8 @@ class SCFCalcConvergenceFixer(FiretaskBase):
 
         max_iter = 50 # extra safety catch
         iter_step = 0
-        diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        #diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        diis_types = [scf.diis.ADIIS, scf.diis.EDIIS, scf.diis.SCF_DIIS, None]
         init_guess_types = ['minao', 'atom', '1e']
         diis_options_list = [(8, 1), (14, 4)]
         while not calc.converged and calc.conv_tol <= max_conv_tol\
@@ -446,5 +602,113 @@ class SCFCalcConvergenceFixer(FiretaskBase):
                 update_spec['functional'] = 'LDA_VWN'
             else:
                 update_spec['functional'] = get_functional_db_name(functional)
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
+class MLSCFCalcConvergenceFixer(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'calc_type',\
+                       'mlfunc_name', 'mlfunc_file', 'mlfunc_settings_file']
+    optional_params = ['spin', 'charge', 'max_conv_tol',\
+                       'mlfunc_c_file']
+
+    DEFAULT_MAX_CONV_TOL = 1e-8
+
+    def run_task(self, fw_spec):
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = self['calc_type']
+
+        import joblib
+        if self.get('mlfunc_c_file') is None:
+            from mldftdat.dft import numint6 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+        else:
+            from mldftdat.dft import numint5 as numint
+            mlfunc = joblib.load(self['mlfunc_file'])
+            mlfunc_c = joblib.load(self['mlfunc_c_file'])
+        import yaml
+
+        #if not hasattr(mlfunc, 'y_to_f_mul'):
+        #    mlfunc.y_to_f_mul = None
+        with open(self['mlfunc_settings_file'], 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
+            if settings is None:
+                settings = {}
+        if self.get('mlfunc_c_file') is None:
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+        else:
+            if calc_type == 'RKS':
+                calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
+            else:
+                calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
+
+        calc.DIIS = scf.diis.ADIIS
+        print ("Removing linear dep")
+        calc = scf.addons.remove_linear_dep_(calc)
+
+        start_time = time.monotonic()
+        calc.kernel()
+        stop_time = time.monotonic()
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        #diis_types = [scf.diis.SCF_DIIS, scf.diis.ADIIS, scf.diis.EDIIS, None]
+        diis_types = [scf.diis.ADIIS, scf.diis.EDIIS, scf.diis.SCF_DIIS, None]
+        init_guess_types = ['minao', 'atom', '1e']
+        diis_options_list = [(8, 1), (14, 4)]
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, changing params.")
+
+            calc.max_cycle = 100
+            calc.direct_scf = True
+            for DIIS, init_guess, diis_opts in product(diis_types,
+                                                       init_guess_types,
+                                                       diis_options_list):
+
+                if DIIS is None:
+                    calc.diis = False
+                else:
+                    calc.DIIS = DIIS
+                calc.init_guess = init_guess
+                calc.diis_space = diis_opts[0]
+                calc.diis_start_cycle = diis_opts[1]
+
+                start_time = time.monotonic()
+                calc.kernel()
+                stop_time = time.monotonic()
+
+                if calc.converged:
+                    print('Fixed convergence issues! {} {} {}'.format(
+                            init_guess, diis_opts, DIIS))
+                    break
+            else:
+                print("Increasing convergence tolerance to %e" % (calc.conv_tol * 10))
+                calc.conv_tol *= 10
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
 
         return FWAction(update_spec = update_spec)

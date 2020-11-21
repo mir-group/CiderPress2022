@@ -15,7 +15,7 @@ fw_lst = []
 
 functional_list = ['pbe', 'scan', 'b3lyp']
 
-for struct_str in struct_strs[:10]:
+for struct_str in struct_strs:
     name, struct_str = struct_str.split('\n', 1)
     name = name[:-4]
     if name.endswith('_s'):
@@ -32,7 +32,7 @@ for struct_str in struct_strs[:10]:
     struct = ase.io.read(structio, format='xyz')
     print(name, spin, struct)
     mol_id = 'augG2/' + name
-    for basis in ['aug-cc-pvtz', 'cc-pcvtz']:
+    for basis in ['def2-qzvppd']:
         for functional in functional_list:
             fw_lst.append(make_dft_firework(struct, mol_id, basis,
                                         spin, functional = functional, charge = 0,

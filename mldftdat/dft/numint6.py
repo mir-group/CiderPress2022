@@ -10,6 +10,7 @@ from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
 import scipy.linalg
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
+from scipy.linalg import cho_factor, cho_solve
 from mldftdat.pyscf_utils import get_mgga_data, get_rho_second_deriv
 from mldftdat.dft.utils import *
 from mldftdat.dft.correlation import eval_custom_corr, nr_rks_vv10
@@ -42,6 +43,11 @@ def _uks_gga_wv0a(rho, vxc, weight):
     wvb[1:]+= weight * vgrad[:,:,1]
     return wva, wvb
 
+class QuickGrid():
+    def __init__(self, coords, weights):
+        self.coords = coords
+        self.weights = weights
+
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
@@ -62,7 +68,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         for idm in range(nset):
             print('dm shape', dms.shape)
             rho = make_rho(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(xc_code, mol, rho, grids, dms,
+            exc, vxc = ni.eval_xc(xc_code, mol, rho, QuickGrid(coords, weight), dms,
                                   0, relativity, 1,
                                   verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
@@ -132,7 +138,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             rho_a = make_rhoa(idm, ao, mask, 'MGGA')
             rho_b = make_rhob(idm, ao, mask, 'MGGA')
             exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
-                                  grids, (dma, dmb),
+                                  QuickGrid(coords, weight), (dma, dmb),
                                   1, relativity, 1, verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
             den = rho_a[0]*weight
@@ -149,7 +155,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             #:aow = np.einsum('npi,np->pi', ao[:4], wvb, out=aow)
             aow = _scale_ao(ao[:4], wvb, out=aow)
             vmat[1,idm] += _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-
+            print(np.max(np.abs(vmat[1,idm])))
 # FIXME: .5 * .5   First 0.5 for v+v.T symmetrization.
 # Second 0.5 is due to the Libxc convention tau = 1/2 \nabla\phi\dot\nabla\phi
             wv = (.25 * weight * vtau[:,0]).reshape(-1,1)
@@ -160,9 +166,10 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             vmat[1,idm] += _dot_ao_ao(mol, ao[1], wv*ao[1], mask, shls_slice, ao_loc)
             vmat[1,idm] += _dot_ao_ao(mol, ao[2], wv*ao[2], mask, shls_slice, ao_loc)
             vmat[1,idm] += _dot_ao_ao(mol, ao[3], wv*ao[3], mask, shls_slice, ao_loc)
-
+            print(np.max(np.abs(vmat[1,idm])))
             vmat[0,idm] += 0.5 * vmol[0,:,:]
             vmat[1,idm] += 0.5 * vmol[1,:,:]
+            print(np.max(np.abs(vmat[1,idm])))
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
@@ -179,6 +186,8 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
     for i in range(nset):
         vmat[0,i] = vmat[0,i] + vmat[0,i].T
         vmat[1,i] = vmat[1,i] + vmat[1,i].T
+        print("VMAT", np.max(np.abs(vmat[0,i])))
+        print("VMAT", np.max(np.abs(vmat[1,i])))
     if isinstance(dma, np.ndarray) and dma.ndim == 2:
         vmat = vmat[:,0]
         nelec = nelec.reshape(2)
@@ -195,12 +204,14 @@ class NLNumInt(pyscf_numint.NumInt):
 
     nr_uks = nr_uks
 
-    def __init__(self, mlfunc_x, cx, css, cos,
-                 dx, dss, dos, vv10_coeff = None):
+    def __init__(self, mlfunc_x, css, cos, cx, cm, ca,
+                 dss, dos, dx, dm, da, vv10_coeff = None):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
-        from mldftdat.models import map_c2
-        self.mlfunc_x.corr_model = map_c2.VSXCContribs(cx, css, cos, dx, dss, dos)
+        from mldftdat.models import map_c6
+        self.mlfunc_x.corr_model = map_c6.VSXCContribs(
+                                    css, cos, cx, cm, ca,
+                                    dss, dos, dx, dm, da)
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -237,8 +248,8 @@ class NLNumInt(pyscf_numint.NumInt):
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
                                       (rdm1, rdm1))
-            vxc = [vxc[0][:,0], 0.5 * vxc[1][:,0] + 0.25 * vxc[1][:,1],\
-                   vxc[2][:,0], vxc[3][:,0], vxc[4][:,:,0], vxc[5][0,:,:]]
+            vxc = [vxc[0][:,1], 0.5 * vxc[1][:,2] + 0.25 * vxc[1][:,1],\
+                   vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1], vxc[5][1,:,:]]
         else:
             print('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
@@ -264,6 +275,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     #    spin = 1
     #else:
     #    spin = 2
+
+    CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
     chkpt = time.monotonic()
 
@@ -293,18 +306,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     gtup = (g2u, g2d)
     ttup = (tu, td)
     rhot = rhou + rhod
-
-    co, v_lda_ud = eval_xc(',LDA_C_PW_MOD', (rhou, rhod), spin = 1)[:2]
-    cu, v_lda_uu = eval_xc(',LDA_C_PW_MOD', (rhou, 0 * rhod), spin = 1)[:2]
-    cd, v_lda_dd = eval_xc(',LDA_C_PW_MOD', (0 * rhou, rhod), spin = 1)[:2]
-    cu *= rhou
-    cd *= rhod
-    co = co * rhot - cu - cd
-    v_lda_uu = v_lda_uu[0][:,0]
-    v_lda_dd = v_lda_dd[0][:,1]
-    v_lda_ud = v_lda_ud[0]
-    v_lda_ud[:,0] -= v_lda_uu
-    v_lda_ud[:,1] -= v_lda_dd
+    g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
 
     vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)), np.zeros((N,2))]
 
@@ -326,36 +328,36 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
         for i, d in enumerate(mlfunc.desc_list):
             desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
-        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin])
+        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin], 2*ntup[spin])
+        #F[spin][(ntup[spin]<1e-8)] = 0
+        #dF[spin][(ntup[spin]<1e-8)] = 0
+        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * F[spin]
+        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * F[spin]
         dEddesc[spin] = 2**(4.0/3) * LDA_FACTOR * rho43.reshape(-1,1) * dF[spin]
-        ex_fock, ex_fock_rho_deriv, ex_fock_f_deriv = \
-            mlfunc.corr_model.ex_fock(ntup[spin], F[spin])
-        exc += 2**(1.0/3) * LDA_FACTOR * rho43 * (F[spin])
-        exc += ex_fock
-        vtot[0][:,spin] += 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * rho13 * (F[spin])
-        vtot[0][:,spin] += ex_fock_rho_deriv
-        dEddesc[spin] += 2 * ex_fock_f_deriv.reshape(-1,1) * dF[spin]
-        cf = mlfunc.corr_model.ex_mn(ntup[spin], gtup[spin], ttup[spin])
-        exc += cf[0]
-        vtot[0][:,spin] += cf[1]
-        vtot[1][:,2*spin] += cf[2]
-        vtot[3][:,spin] += cf[3]
+        
+    tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
+                                      tu, td, F[0], F[1],
+                                      include_aug_sl=True,
+                                      include_aug_nl=True)
 
-    corr_fock, corr_fock_uderiv, corr_fock_dderiv = \
-        mlfunc.corr_model.corr_fock(cu, cd, co, v_lda_uu, v_lda_dd,
-                                    v_lda_ud[:,0], v_lda_ud[:,1],
-                                    rhou, rhod, g2u, g2d, tu, td,
-                                    F[0], F[1])
-
-    exc += corr_fock
-    vtot[0][:,0] += corr_fock_uderiv[0]
-    vtot[1][:,0] += corr_fock_uderiv[1]
-    vtot[3][:,0] += corr_fock_uderiv[2]
-    vtot[0][:,1] += corr_fock_dderiv[0]
-    vtot[1][:,2] += corr_fock_dderiv[1]
-    vtot[3][:,1] += corr_fock_dderiv[2]
-    dEddesc[0] += 2 * corr_fock_uderiv[-1].reshape(-1,1) * dF[0]
-    dEddesc[1] += 2 * corr_fock_dderiv[-1].reshape(-1,1) * dF[1]
+    
+    print('V ACTION')
+    weights = grid.weights
+    print(np.dot(vxc[0][:,0], rhou * weights))
+    print(np.dot(vxc[0][:,1], rhod * weights))
+    print(np.dot(vxc[1][:,0], g2u * weights))
+    print(np.dot(vxc[1][:,1], g2o * weights))
+    print(np.dot(vxc[1][:,2], g2d * weights))
+    print(np.dot(vxc[2][:,0], tu * weights))
+    print(np.dot(vxc[2][:,1], td * weights))
+    
+    exc += tot
+    vtot[0][:,:] += vxc[0]
+    vtot[1][:,:] += vxc[1]
+    vtot[3][:,:] += vxc[2]
+    dEddesc[0] += 2 * vxc[3][:,0,np.newaxis] * dF[0]
+    dEddesc[1] += 2 * vxc[3][:,1,np.newaxis] * dF[1]
+    
 
     print('desc setup and run GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
@@ -380,20 +382,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     print('v_nonlocal', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
-    corr_mn, corr_mn_uderiv, corr_mn_dderiv = \
-        mlfunc.corr_model.corr_mn(cu, cd, co, v_lda_uu, v_lda_dd,
-                                v_lda_ud[:,0], v_lda_ud[:,1],
-                                rhou, rhod, g2u, g2d, tu, td)
-
-    
-    exc += corr_mn
-    vtot[0][:,0] += corr_mn_uderiv[0]
-    vtot[1][:,0] += corr_mn_uderiv[1]
-    vtot[3][:,0] += corr_mn_uderiv[2]
-    vtot[0][:,1] += corr_mn_dderiv[0]
-    vtot[1][:,2] += corr_mn_dderiv[1]
-    vtot[3][:,1] += corr_mn_dderiv[2]
-
     vtot[0] += v_nst[0]
     vtot[1][:,0] += 2 * v_nst[1][:,0]
     vtot[1][:,2] += 2 * v_nst[1][:,1]
@@ -405,7 +393,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
 def setup_aux(mol):
     nao = mol.nao_nr()
-    auxmol = df.make_auxmol(mol, 'weigend')
+    auxmol = df.make_auxmol(mol, 'weigend+etb')
     #auxmol = df.make_auxmol(mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
@@ -414,42 +402,74 @@ def setup_aux(mol):
     aux_e2 = df.incore.aux_e2(mol, auxmol)
     #print(aux_e2.shape)
     # shape (naux, nao * nao)
+    """
     aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
     aux_e2 = np.ascontiguousarray(aux_e2)
     lu, piv, info = dgetrf(aug_J, overwrite_a = True)
     inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
     ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+    """
+    """
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    inv_aug_J = np.linalg.inv(aug_J)
+    ao_to_aux = np.dot(inv_aug_J, aux_e2)
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+    """
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    c_and_lower = cho_factor(aug_J)
+    ao_to_aux = cho_solve(c_and_lower, aux_e2)
+    ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+
     return auxmol, ao_to_aux
 
-DEFAULT_CSS = [9.45005252e-03,  2.99898283e-02, -5.77803659e-02,  4.71687530e-02]
-DEFAULT_COS = [6.56853990e-02,  1.37109979e-01,  3.86516565e-02, -3.87351635e-02]
-DEFAULT_CX = [2.59109018e-01,  9.17724172e-02,  4.68728794e-01, -1.08767355e-01]
-DEFAULT_DSS = [-2.60863426e-03, -4.96379923e-02, -7.05006634e-02,\
-               1.93345307e-03, 4.74310694e-03,  8.91634839e-03]
-DEFAULT_DOS = [6.41488932e-02, -2.36550649e-02, 1.00285533e-01,\
-               3.89088798e-04, -1.63303498e-03,  2.70268729e-04]
-DEFAULT_DX = [5.30877430e-02,  2.36683945e-03, -1.15681238e-02,\
-              5.09357773e-05, -2.22092336e-04,  3.42532905e-05]
+DEFAULT_COS = [-0.02481797,  0.00303413,  0.00054502,  0.00054913]
+DEFAULT_CX = [-0.03483633, -0.00522109, -0.00299816, -0.0022187 ]
+DEFAULT_CA = [-0.60154365, -0.06004444, -0.04293853, -0.03146755]
+DEFAULT_DOS = [-0.00041445, -0.01881556,  0.03186469,  0.00100642, -0.00333434,
+                  0.00472453]
+DEFAULT_DX = [ 0.00094936,  0.09238444, -0.21472824, -0.00118991,  0.0023009 ,
+                 -0.00096118]
+DEFAULT_DA = [ 7.92248007e-03, -2.11963128e-03,  2.72918353e-02,  4.57295468e-05,
+                 -1.00450001e-05, -3.47808331e-04]
+DEFAULT_CM = None
+DEFAULT_DM = None
+DEFAULT_CSS = None
+DEFAULT_DSS = None
 
-def setup_rks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
-                   cos=DEFAULT_COS, dx=DEFAULT_DX,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
-                   vv10_coeff = None):
+DEFAULT_COS = [-0.03569016,  0.00124141, -0.00101882,  0.00017673]
+DEFAULT_CX = [ 0.01719458, -0.00963045, -0.00879279, -0.0057004 ]
+DEFAULT_CA = [-0.71581393, -0.36932482, -0.19691875, -0.12507637]
+DEFAULT_DOS = [-8.00966168e-04, -1.16338402e-02, -9.04350500e-02,  7.31694234e-04,
+         -5.38843153e-04, -4.57654739e-05]
+DEFAULT_DX = [-0.00363218,  0.00021466,  0.08919607,  0.00117978, -0.00894649,
+          0.0114701 ]
+DEFAULT_DA = [-7.59229970e-03,  2.63563397e-03,  7.46369471e-03, -3.94199066e-06,
+          1.43406887e-04, -5.03764720e-04]
+
+def setup_rks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
+                   dm=DEFAULT_DM, da=DEFAULT_DA,
+                   vv10_coeff = None, grid_level=3):
     rks = dft.RKS(mol)
     rks.xc = None
-    rks._numint = NLNumInt(mlfunc_x, cx, css,
-                           cos, dx, dss, dos,
+    rks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+                           dss, dos, dx, dm, da,
                            vv10_coeff)
+    rks.grids.level = grid_level
+    rks.grids.build()
     return rks
 
-def setup_uks_calc(mol, mlfunc_x, cx=DEFAULT_CX, css=DEFAULT_CSS,
-                   cos=DEFAULT_COS, dx=DEFAULT_DX,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS,
-                   vv10_coeff = None):
+def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
+                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
+                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
+                   dm=DEFAULT_DM, da=DEFAULT_DA,
+                   vv10_coeff = None, grid_level=3):
     uks = dft.UKS(mol)
     uks.xc = None
-    uks._numint = NLNumInt(mlfunc_x, cx, css,
-                           cos, dx, dss, dos,
+    uks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
+                           dss, dos, dx, dm, da,
                            vv10_coeff)
+    uks.grids.level = grid_level
+    uks.grids.build()
     return uks

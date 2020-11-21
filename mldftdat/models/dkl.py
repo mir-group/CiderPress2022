@@ -7,6 +7,7 @@ from torch import nn
 from math import pi, log
 from mldftdat.models.agp import NAdditiveStructureKernel, AQRBF
 from gpytorch.kernels.additive_structure_kernel import AdditiveStructureKernel
+from mldftdat.pyscf_utils import GG_SMUL, GG_AMUL
 
 # based on https://github.com/cornellius-gp/gpytorch/blob/master/examples/06_PyTorch_NN_Integration_DKL/KISSGP_Deep_Kernel_Regression_CUDA.ipynb
 
@@ -23,18 +24,26 @@ class Predictor(mldftdat.models.nn.Predictor):
         with torch.no_grad(), gpytorch.settings.use_toeplitz(False), gpytorch.settings.fast_pred_var():
             X = torch.tensor(self.get_descriptors(X))
             F = self.model(X).mean.numpy().flatten()
-        return self.y_to_xed(F, rho_data[0])
+        return self.y_to_xed(F, rho_data)
 
 class FeatureExtractor(torch.nn.Sequential):
     def __init__(self):
         super(FeatureExtractor, self).__init__()
-        self.add_module('linear1', torch.nn.Linear(421, 400))
-        self.add_module('celu1', torch.nn.CELU())
-        self.add_module('linear2', torch.nn.Linear(400, 200))
-        self.add_module('celu2', torch.nn.CELU())
-        self.add_module('linear3', torch.nn.Linear(200, 50))
-        self.add_module('celu3', torch.nn.CELU())
-        self.add_module('linear4', torch.nn.Linear(50, 3))
+        self.add_module('linear1', torch.nn.Linear(10, 10))
+        torch.nn.init.eye_(self.linear1.weight)
+        torch.nn.init.zeros_(self.linear1.bias)
+        self.add_module('sigmoid1', torch.nn.CELU())
+        self.add_module('linear2', torch.nn.Linear(10, 7))
+        torch.nn.init.eye_(self.linear2.weight)
+        torch.nn.init.zeros_(self.linear2.bias)
+        self.add_module('sigmoid2', torch.nn.CELU())
+        self.add_module('linear3', torch.nn.Linear(7, 4))
+        torch.nn.init.eye_(self.linear3.weight)
+        torch.nn.init.zeros_(self.linear3.bias)
+        self.add_module('sigmoid3', torch.nn.CELU())
+        self.add_module('linear4', torch.nn.Linear(4, 4))
+        torch.nn.init.eye_(self.linear4.weight)
+        torch.nn.init.zeros_(self.linear4.bias)
         self.add_module('sigmoid4', torch.nn.Sigmoid())
 
 class GPRModel(gpytorch.models.ExactGP):
@@ -42,12 +51,19 @@ class GPRModel(gpytorch.models.ExactGP):
         super(GPRModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
-            gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=3),
-            num_dims = 3, grid_size = 20
+            gpytorch.kernels.GridInterpolationKernel(gpytorch.kernels.RBFKernel(ard_num_dims=4),
+            #num_dims = 4, grid_size = 60
+            num_dims = 4, grid_size = 48
         ))
+        self.covar_module.base_kernel.base_kernel.lengthscale = \
+                torch.tensor([[0.2, 0.2, 0.12, 0.12]], dtype=torch.float64)
+                #torch.tensor([[0.12, 0.12, 0.08, 0.08]], dtype=torch.float64)
+        self.covar_module.base_kernel.outputscale = 1.0
         self.feature_extractor = FeatureExtractor()
+        self.feature_normalizer = FeatureNormalizer(ndim=10)
 
     def forward(self, x):
+        x = self.feature_normalizer(x)
         projected_x = self.feature_extractor(x)
         mean_x = self.mean_module(projected_x)
         covar_x = self.covar_module(projected_x)
@@ -85,7 +101,7 @@ class FeatureNormalizer(torch.nn.Module):
         p, alpha = X[:,1]**2, X[:,2]
 
         fac = (6 * pi**2)**(2.0/3) / (16 * pi)
-        scale = torch.sqrt(1 + fac * p + 0.6 * fac * (alpha - 1))
+        #scale = torch.sqrt(1 + GG_SMUL * fac * p + GG_AMUL * 0.6 * fac * (alpha - 1))
 
         gammax = torch.exp(self.gammax)
         gamma1 = torch.exp(self.gamma1)
@@ -95,24 +111,22 @@ class FeatureNormalizer(torch.nn.Module):
         gamma0c = torch.exp(self.gamma0b)
 
         refs = gammax / (1 + gammax * p)
-        ref0a = gamma0a / (1 + gamma0a * X[:,4] * scale**3)
-        ref0b = gamma0b / (1 + gamma0b * X[:,15] * scale**3)
-        ref0c = gamma0c / (1 + gamma0c * X[:,16] * scale**3)
-        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2 * scale**6)
-        ref2 = gamma2 / (1 + gamma2 * X[:,8] * scale**6)
+        ref0a = gamma0a / (1 + gamma0a * X[:,4])
+        ref0b = gamma0b / (1 + gamma0b * X[:,15])
+        ref0c = gamma0c / (1 + gamma0c * X[:,16])
+        ref1 = gamma1 / (1 + gamma1 * X[:,5]**2)
+        ref2 = gamma2 / (1 + gamma2 * X[:,8])
 
-        #d0 = X[:,0]
         d1 = p * refs
-        #d1 = X[:,0]
         d2 = 2 / (1 + alpha**2) - 1.0
-        d3 = (X[:,4] * scale**3 - 2.0) * ref0a
-        d4 = X[:,5]**2 * scale**6 * ref1
-        d5 = X[:,8] * scale**6 * ref2
-        d6 = X[:,12] * scale**3 * refs * torch.sqrt(ref2)
-        d7 = X[:,6] * scale**3 * torch.sqrt(refs) * torch.sqrt(ref1)
-        d8 = (X[:,15] * scale**3 - 8.0) * ref0b
-        d9 = (X[:,16] * scale**3 - 0.5) * ref0c
-        d10 = (X[:,13] * scale**6) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
+        d3 = X[:,4] * ref0a - gamma0a * 2 / (1 + gamma0a * 2)
+        d4 = X[:,5]**2 * ref1
+        d5 = X[:,8] * ref2
+        d6 = X[:,12] * refs * torch.sqrt(ref2)
+        d7 = X[:,6] * torch.sqrt(refs) * torch.sqrt(ref1)
+        d8 = X[:,15] * ref0b - gamma0b * 8 / (1 + gamma0b * 8)
+        d9 = X[:,16] * ref0c - gamma0c * 0.5 / (1 + gamma0c * 0.5)
+        d10 = (X[:,13]) * torch.sqrt(refs) * torch.sqrt(ref1) * torch.sqrt(ref2)
         #d11 = (X[:,14] * scale**9) * torch.sqrt(ref2) * ref1
 
         return torch.stack((d1, d2, d3, d4, d5, d6, d7, d8, d9, d10)[:self.ndim], dim = 1)
@@ -287,7 +301,8 @@ class CorrGPR(gpytorch.models.ExactGP):
 
 
 def train(train_x, train_y, test_x, test_y, model_type = 'DKL', 
-          fixed_noise = None, lfbgs = False, veclength = None):
+          fixed_noise = None, lfbgs = False, veclength = None,
+          model=None):
 
     train_x = torch.tensor(train_x)
     train_y = torch.tensor(train_y).squeeze()
@@ -302,20 +317,26 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
 
     print(train_x.size(), train_y.size())
 
-    if fixed_noise is None:
+    if model is not None:
+        likelihood = model.likelihood
+    elif fixed_noise is None:
         likelihood = gpytorch.likelihoods.GaussianLikelihood()
     else:
         print('using fixed noise')
         likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
                 torch.tensor(fixed_noise, dtype=torch.float64))
 
-    if model_type == 'DKL':
+    if model is not None:
+        pass
+    elif model_type == 'DKL':
         model = GPRModel(train_x[::2], train_y[::2], likelihood)
     elif model_type == 'ADD':
         model = AddGPR(train_x[::2], train_y[::2], likelihood, order = 3, ndim = 10)
     elif model_type == 'BIG':
         print('BIG MODEL')
         model = BigGPR(train_x, train_y, likelihood, ndim = 10)
+    elif model_type == 'BIG2':
+        model = GPRModel(train_x, train_y, likelihood)
     elif model_type == 'AQRBF':
         model = AQGPR(train_x, train_y, likelihood, ndim = 10)
     elif model_type == 'CORR':
@@ -334,45 +355,53 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
     if lfbgs:
         training_iterations = 100
     else:
+        training_iterations = 100
+    if isinstance(model, GPRModel):
         training_iterations = 500
 
     model.train()
     likelihood.train()
 
     if not lfbgs:
-        """
         optimizer = torch.optim.SGD([
-            #{'params': model.feature_extractor.parameters()},
-            #{'params': model.covar_module.parameters(), 'lr': 1e-30},
-            #{'params': model.mean_module.parameters()},
-            #{'params': model.likelihood.parameters()},
-        ], lr=1e-30)
+            {'params': model.feature_extractor.parameters(), 'lr': 1e-5},
+            {'params': model.covar_module.parameters(), 'lr': 1e-3},
+            {'params': model.mean_module.parameters(), 'lr': 1e-5},
+            {'params': model.likelihood.parameters(), 'lr': 1e-3},
+            {'params': model.feature_normalizer.parameters(), 'lr': 1e-4}
+        ])
         """
+        lr = 2e-3 if isinstance(model, GPRModel) else 4e-2
+        lr = 2e-4 if isinstance(model, GPRModel) else 4e-2
         optimizer = torch.optim.Adam([
+        #optimizer = torch.optim.SGD([
                 {'params': model.parameters()},  # Includes GaussianLikelihood parameters
-                ], lr=4e-2)
+                ], lr=lr)
+        """
     else:
         optimizer = torch.optim.LBFGS(model.parameters(), lr = 0.1, max_iter = 200, history_size=200)
    
     print(optimizer.state_dict())
 
-    torch.manual_seed(0)
-    settings = [\
-    gpytorch.settings.max_root_decomposition_size(1000),\
-    gpytorch.settings.fast_pred_var(state=False),\
-    gpytorch.settings.fast_pred_samples(state=False),\
-    gpytorch.settings.debug(state=True),\
-    gpytorch.settings.max_cg_iterations(10000),\
-    gpytorch.settings.cg_tolerance(0.01),\
-    gpytorch.settings.max_cholesky_size(150000),\
-    gpytorch.settings.lazily_evaluate_kernels(state=True),\
-    gpytorch.settings.use_toeplitz(state=False),\
-    gpytorch.settings.num_trace_samples(0),\
-    gpytorch.settings.fast_computations(covar_root_decomposition = False, log_prob = False, solves = False),\
-    gpytorch.settings.skip_logdet_forward(state=False),\
-    ]
-    for setting in settings:
-        setting.__enter__()
+    if not isinstance(model, GPRModel):
+        torch.manual_seed(0)
+        settings = [\
+        gpytorch.settings.max_root_decomposition_size(1000),\
+        gpytorch.settings.fast_pred_var(state=False),\
+        gpytorch.settings.fast_pred_samples(state=False),\
+        gpytorch.settings.debug(state=True),\
+        gpytorch.settings.max_cg_iterations(10000),\
+        gpytorch.settings.cg_tolerance(0.01),\
+        gpytorch.settings.max_cholesky_size(150000),\
+        gpytorch.settings.lazily_evaluate_kernels(state=True),\
+        gpytorch.settings.use_toeplitz(state=False),\
+        gpytorch.settings.num_trace_samples(0),\
+        gpytorch.settings.fast_computations(covar_root_decomposition=False,
+                                            log_prob=False, solves=False),\
+        gpytorch.settings.skip_logdet_forward(state=False),\
+        ]
+        for setting in settings:
+            setting.__enter__()
 
     print('off', gpytorch.settings.fast_computations.log_prob.off())
     print('off', gpytorch.settings.fast_computations.solves.off())
@@ -429,7 +458,8 @@ def train(train_x, train_y, test_x, test_y, model_type = 'DKL',
         preds = model(test_x)
     print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - test_y))))
 
-    for setting in settings:
-        setting.__exit__()
+    if not isinstance(model, GPRModel):
+        for setting in settings:
+            setting.__exit__()
 
     return model, min_loss
