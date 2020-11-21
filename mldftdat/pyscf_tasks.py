@@ -263,9 +263,10 @@ class SGXCorrCalc(FiretaskBase):
         else:
             calc = numint.setup_uks_calc2(mol, **settings)
 
-        calc.damp = 6
-        calc.start_diis_cycle = 6
-        calc.DIIS = scf.diis.CDIIS
+        #calc.damp = 6
+        #calc.diis_start_cycle = 6
+        calc.DIIS = scf.diis.ADIIS
+        #calc.max_cycle = 50
         print ("Removing linear dep")
         calc = scf.addons.remove_linear_dep_(calc)
 

@@ -1473,15 +1473,16 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 # 20:39 -- sl ex terms
                 # 39:54 -- nl ex terms
                 E_c = np.append(mlx[:,3:11], mlx[:,12:20], axis=1)
-                E_c = np.append(E_c, mlx[:,20:39], axis=1)
-                E_c = np.append(E_c, mlx[:,39:54], axis=1)
-                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
+                E_c = np.append(mlx[:,7:11], mlx[:,16:20], axis=1)
+                E_c = np.append(E_c, mlx[:,20:34], axis=1)
+                E_c = np.append(E_c, mlx[:,39:49], axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_c[:,6])
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
         E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
         noise = np.ones(E_c.shape[1]) * 1e-3
-        noise[4:8] /= 10000
+        noise[:4] /= 100
         #noise[12] /= 100
         #noise[16:16+19] /= 10
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
