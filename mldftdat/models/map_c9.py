@@ -270,14 +270,14 @@ class VSXCContribs():
         return res
 
     def get_separate_sl_terms(self, x2, chi, gamma):
-        desc = np.zeros((19, x2.shape[0]))
-        dx2 = np.zeros((19, x2.shape[0]))
-        dchi = np.zeros((19, x2.shape[0]))
+        desc = np.zeros((15, x2.shape[0]))
+        dx2 = np.zeros((15, x2.shape[0]))
+        dchi = np.zeros((15, x2.shape[0]))
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
         a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
         ind = 0
-        for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+        for a, da in zip([a0, a1, a2], [da0, da1, da2]):
             desc[ind] = a
             dchi[ind] = da
             ind += 1
@@ -288,7 +288,7 @@ class VSXCContribs():
             desc[ind] = diff
             dx2[ind] = ddiff
             ind += 1
-            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+            for a, da in zip([a0, a1, a2], [da0, da1, da2]):
                 desc[ind] = diff * a
                 dx2[ind] = ddiff * a
                 dchi[ind] = diff * da
@@ -299,9 +299,9 @@ class VSXCContribs():
         x, dx = self.get_separate_xef_terms(F, return_deriv=True)
         x = x[1:4]
         dx = dx[1:4]
-        desc = np.zeros((15, F.shape[0]))
-        df = np.zeros((15, F.shape[0]))
-        dchi = np.zeros((15, F.shape[0]))
+        desc = np.zeros((13, F.shape[0]))
+        df = np.zeros((13, F.shape[0]))
+        dchi = np.zeros((13, F.shape[0]))
         a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
         ind = 0
         for i in range(3):
@@ -310,11 +310,13 @@ class VSXCContribs():
             desc[ind] = diff
             df[ind] = ddiff
             ind += 1
-            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+            for a, da in zip([a0, a1, a2], [da0, da1, da2]):
                 desc[ind] = diff * a 
                 df[ind] = ddiff * a 
                 dchi[ind] = diff * da
                 ind += 1
+        desc[ind] = F-1
+        df[ind] = 1
         return desc, df, dchi
 
     def sl_terms(self, x2, chi, gamma, c):
@@ -384,19 +386,18 @@ class VSXCContribs():
                deriv*(-tmp4 / D)
 
     def get_chi_desc(self, chi):
-        return chi**2, chi, chi**6, chi**3, 2*chi, np.ones_like(chi), 6*chi**5, 3*chi**2
+        return chi, chi**2, chi**3, chi**4, np.ones_like(chi), 2*chi, 3*chi**2, 4*chi**3
 
     def get_amix(self, n, zeta, x2, chi):
         zeta = np.minimum(zeta, 1-1e-8)
         zeta = np.maximum(zeta, -1+1e-8)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
-        chip = 0.5 * (1 - np.cos(np.pi*chi**4))
-        num = 1 - chip * zeta**12
+        num = 1 - chi**4 * zeta**12
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
         f = num / den
-        dfdchi = -zeta**12 / den * (8 * np.pi * chi**3) * np.sin(np.pi * chi**4)
-        dfdz = -12 * zeta**11 * chip / den
+        dfdchi = -zeta**12 / den * 4 * chi**3
+        dfdz = -12 * zeta**11 * chi**4 / den
         dfdt2 = -0.5 * num / den**2
         dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) - (1-zeta)**(-1./3))
         dfdz += dfdt2 * dt2dz
