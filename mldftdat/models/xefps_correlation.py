@@ -1513,7 +1513,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha3_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha2_ml.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1521,7 +1521,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha3_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha2_ml.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1634,6 +1634,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_c = np.append(E_c, mlx[:,20:34], axis=1)
                 E_c = np.append(E_c, mlx[:,39:49], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_c[:,6])
+                noise = np.ones(E_c.shape[1]) * 1e-3
+                noise[:4] /= 1000
             else:
                 E_dft = etot[:,0]
                 E_ccsd = etot[:,1]
@@ -1642,16 +1644,13 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_cscan = mlx[:,-2]
                 E_c = mlx[:,4:38]
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# - mlx[:,37])
+                noise = np.ones(E_c.shape[1]) * 1e-4
+                noise[:6] *= 10
 
-            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
 
-        E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
-        noise = np.ones(E_c.shape[1]) * 1e-4
-        noise[:6] *= 10
-        #noise[:4] /= 100
-        #noise[12] /= 100
-        #noise[16:16+19] /= 10
-        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
+        E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise = get_terms(etot, mlx)
+        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2, noise = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
         E_ccsd = np.append(E_ccsd, E_ccsd2)
