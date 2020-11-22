@@ -268,6 +268,24 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
+class NLNumInt2(NLNumInt):
+
+    def __init__(self, mlfunc_x, cx, c0, c1, dx, d0, d1,
+                 vv10_coeff = None, fterm_scale=2.0):
+        super(NLNumInt, self).__init__()
+        self.mlfunc_x = mlfunc_x
+        from mldftdat.models import map_c8
+        self.mlfunc_x.corr_model = map_c8.VSXCContribs(
+                                    cx, c0, c1, dx, d0, d1,
+                                    fterm_scale=fterm_scale)
+
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
+
 def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
@@ -473,3 +491,36 @@ def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
     uks.grids.level = grid_level
     uks.grids.build()
     return uks
+
+C0 = [0., 0., 0., 0.]
+D0 = [0.92642313, 0.0612833 , 0.55086957, 0.49373008]
+C1 = [0., 0., 0., 0.]
+D1 = [-0.00482615, -0.10379149,  0.03454682,  0.09281949]
+DX = [ 0.27384179, -0.09953398,  0.11309756, -0.35438573,  0.65416998,
+         -0.06390127,  0.2808232 ,  0.06472575,  0.07132121]
+CX = [ 0.01850537,  0.10110328,  0.08678594,  0.17720392,  0.22679325,
+         -1.06448733, -0.24174785,  0.64852308,  0.06586449, -0.06078151,
+          -0.73831308, -0.63320915, -1.10079207, -0.20164018, -0.59467933]
+
+def setup_rks_calc2(mol, mlfunc_x, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    rks = dft.RKS(mol)
+    rks.xc = 'SCAN'
+    rks._numint = NLNumInt2(mlfunc_x, cx, c0, c1, dx, d0, d1,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
+    rks.grids.level = grid_level
+    rks.grids.build()
+    return rks
+
+def setup_uks_calc2(mol, mlfunc_x, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    uks = dft.UKS(mol)
+    uks.xc = 'SCAN'
+    uks._numint = NLNumInt2(mlfunc_x, cx, c0, c1, dx, d0, d1,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
+    uks.grids.level = grid_level
+    uks.grids.build()
+    return uks
+
