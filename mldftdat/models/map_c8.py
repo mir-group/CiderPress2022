@@ -423,18 +423,24 @@ class VSXCContribs():
 
         g2 = g2u + g2d + 2 * g2o
         nt = nu + nd
-        x2 = self.get_x2(nt/2**(1./3), g2)
+        x2 = self.get_x2(nt, g2)
         x2u = self.get_x2(nu, g2u)
         x2d = self.get_x2(nd, g2d)
         zeta = self.get_zeta(nu, nd)
+        
         chi = self.get_chi_full_deriv(nt, zeta[0], g2, tu+td)
         chiu = self.get_chi_full_deriv(nu, 1, g2u, tu)
         chid = self.get_chi_full_deriv(nd, 1, g2d, td)
+        chiu[0][np.isnan(chiu[0])] = 0
+        chid[0][np.isnan(chid[0])] = 0
+        
         c0, v0 = self.os_baseline(nu, nd, g2, type=0)
         c1, v1 = self.os_baseline(nu, nd, g2, type=1)
+        c0 *= nt
+        c1 *= nt
         amix, vmixn, vmixz, vmixx2, vmixchi = self.get_amix(nt, zeta[0], x2[0], chi[0])
         ldaxm = (ldaxu * amix, ldaxd * amix)
-        N = cx.shape[0]
+        N = nt.shape[0]
         vxc = [np.zeros((N,2)),
                np.zeros((N,3)),
                np.zeros((N,2)),
@@ -445,67 +451,79 @@ class VSXCContribs():
         vtmpd = [np.zeros(N), np.zeros(N), np.zeros(N)]
         tot = 0
 
-        sl0, dsl0dx2, dsl0dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d0)
-        sl1, dsl1dx2, dsl1dchi = self.sl_terms(x2[0], chi[0], gammaos, self.d1)
+        gammax = 0.004
+        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi[0])
+        adesc = np.array([a0,a1,a2,a3])
+        dadesc = np.array([da0,da1,da2,da3])
+        sl0 = np.dot(self.d0, adesc)
+        dsl0dchi = np.dot(self.d0, dadesc)
+        sl1 = np.dot(self.d1, adesc)
+        dsl1dchi = np.dot(self.d1, dadesc)
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
-        sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.d)
+        sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.dx)
+        nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
+        nld, dnlddf, dnlddchi = self.nl_terms(fd, chid[0], self.cx)
 
         y0, deriv0 = self.xef_terms(ft, self.c0)
         y1, deriv1 = self.xef_terms(ft, self.c1)
-        yu, derivu = self.xef_terms(fu, self.cx)
-        yd, derivd = self.xef_terms(fd, self.cx)
 
+        tot += c1 * (1-chi[0]**6)
         tot += sl0 * c0
-        tot += sl1 * c1 * (1-chi[0]**4)
+        tot += sl1 * c1 * (1-chi[0]**6)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
         tot += y0 * c0
-        tot += y1 * c1 * (1-chi[0]**4)
-        tot += ldaxm[0] * yu
-        tot += ldaxm[1] * yd
+        tot += y1 * c1 * (1-chi[0]**6)
+        tot += ldaxm[0] * nlu
+        tot += ldaxm[1] * nld
         # enhancment terms on c0
-        vtmp[2] += c0 * dsl0dx2
         vtmp[3] += c0 * dsl0dchi
         vtmp[4] += c0 * deriv0
         # enhancment terms on c1
-        tmp = c1 * (1-chi[0]**4)
-        vtmp[2] += tmp * dsl1dx2
+        tmp = c1 * (1-chi[0]**6)
         vtmp[3] += tmp * dsl1dchi
         vtmp[4] += tmp * deriv1
         vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        
+        vtmp[3] += -6 * chi[0]**5 * c1
+        
         # amix derivs and exchange-like rho derivs
-        tmp = ldaxu * (slu + yu) + ldaxd * (sld + yd)
-        vtmp[0] += tmp * vmixn
-        vtmp[1] += tmp * vmixz
-        vtmp[2] += tmp * vmixx2
-        vtmp[3] += tmp * vmixchi
+        tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
+        cond = nt>1e-4
+        vtmp[0][cond] += (tmp * vmixn)[cond]
+        vtmp[1][cond] += (tmp * vmixz)[cond]
+        vtmp[2][cond] += (tmp * vmixx2)[cond]
+        vtmp[3][cond] += (tmp * vmixchi)[cond]
         # exchange-like enhancment derivs
         tmp = ldaxu * amix
         vtmpu[0] += tmp * dsludx2
-        vtmpu[1] += tmp * dsludchi
-        vtmpu[2] += tmp * derivu
+        vtmpu[1] += tmp * (dsludchi + dnludchi)
+        vtmpu[2] += tmp * dnludf
         tmp = ldaxd * amix
         vtmpd[0] += tmp * dslddx2
-        vtmpd[1] += tmp * dslddchi
-        vtmpd[2] += tmp * derivd
+        vtmpd[1] += tmp * (dslddchi + dnlddchi)
+        vtmpd[2] += tmp * dnlddf
         # baseline derivs
         fill_vxc_base_os_(vxc, v0, sl0 + y0)
-        fill_vxc_base_os_(vxc, v1, sl1 + y1)
-        vxc[0][:,0] += dldaxu * amix * (slu + yu)
-        vxc[0][:,1] += dldaxd * amix * (sld + yd)
+        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6) * (sl1 + y1))
+        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6))
+        vxc[0][:,0] += dldaxu * amix * (slu + nlu)
+        vxc[0][:,1] += dldaxd * amix * (sld + nld)
+
+        ### TODO
 
         # put everything into vxc
-        tmp = vtmp[0] + vtmp[2] * x2[1]# + vtmp[3] * chi[1]
+        tmp = vtmp[0] + vtmp[2] * x2[1] + vtmp[3] * chi[1]
         tmp2 = vtmp[1] + vtmp[3] * chi[2] # deriv wrt zeta
         vxc[0][:,0] += tmp + tmp2 * zeta[1]
         vxc[0][:,1] += tmp + tmp2 * zeta[2]
-        tmp = vtmp[2] * x2[2]# + vtmp[3] * chi[3]
+        tmp = vtmp[2] * x2[2] + vtmp[3] * chi[3]
         vxc[1][:,0] += tmp
         vxc[1][:,1] += 2 * tmp
         vxc[1][:,2] += tmp
-        #tmp = vtmp[3] * chi[4]
-        #vxc[2][:,0] += tmp
-        #vxc[2][:,1] += tmp
+        tmp = vtmp[3] * chi[4]
+        vxc[2][:,0] += tmp
+        vxc[2][:,1] += tmp
         vxc[0][:,0] += vtmp[4] * dftdnu
         vxc[0][:,1] += vtmp[4] * dftdnd
         vxc[3][:,0] += vtmp[4] * dftdfu
@@ -521,16 +539,20 @@ class VSXCContribs():
         vxc[2][:,1] += vtmpd[1] * chid[4]
         vxc[3][:,1] += vtmpd[2]
 
+        ### TODO
+
+        thr = 1e-6
         rhou, rhod = nu, nd
-        vxc[0][rhou<1e-7,0] = 0
-        vxc[1][rhou<1e-7,0] = 0
-        vxc[2][rhou<1e-7,0] = 0
-        vxc[3][rhou<1e-7,0] = 0
-        vxc[0][rhod<1e-7,1] = 0
-        vxc[1][rhod<1e-7,2] = 0
-        vxc[2][rhod<1e-7,1] = 0
-        vxc[3][rhod<1e-7,1] = 0
-        vxc[1][np.minimum(rhou,rhod)<1e-7,1] = 0
+        tot[(rhou+rhod)<thr] = 0
+        vxc[0][rhou<thr,0] = 0
+        vxc[1][rhou<thr,0] = 0
+        vxc[2][rhou<thr,0] = 0
+        vxc[3][rhou<thr,0] = 0
+        vxc[0][rhod<thr,1] = 0
+        vxc[1][rhod<thr,2] = 0
+        vxc[2][rhod<thr,1] = 0
+        vxc[3][rhod<thr,1] = 0
+        vxc[1][np.sqrt(rhou*rhod)<thr,1] = 0
         
         return tot, vxc
 
