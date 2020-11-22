@@ -1235,7 +1235,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint6 import setup_rks_calc
+                    from mldftdat.dft.numint6 import setup_rks_calc2 as setup_rks_calc
                     mf = run_scf(mol, 'RKS', functional = 'SCAN')
                     dm0 = mf.make_rdm1()
                     #dm0 = None
@@ -1244,7 +1244,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
                 else:
-                    from mldftdat.dft.numint6 import setup_uks_calc
+                    from mldftdat.dft.numint6 import setup_uks_calc2 as setup_uks_calc
                     mf = run_scf(mol, 'UKS', functional = 'SCAN')
                     #dm0 = mf.make_rdm1()
                     dm0 = None

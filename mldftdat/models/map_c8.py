@@ -395,7 +395,8 @@ class VSXCContribs():
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
         f = num / den
-        dfdchi = -zeta**12 / den * (2 * np.pi * chi**3) * np.sin(np.pi * chi**4)
+        dfdchi = -zeta**12 / den * (8 * np.pi * chi**3) * np.sin(np.pi * chi**4)
+        #dfdchi = -zeta**12 / den * (2 * np.pi * chi**3) * np.sin(np.pi * chi**4)
         dfdz = -12 * zeta**11 * chip / den
         dfdt2 = -0.5 * num / den**2
         dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) - (1-zeta)**(-1./3))
