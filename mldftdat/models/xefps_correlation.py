@@ -1318,9 +1318,11 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
                          corr_model.get_separate_xefa_terms(Fxd, chid)[0], axis=0)
 
     cmix = 3 * (1 - chi) / (3 - chi)
-    cmix_terms = np.array([cmix * (1-cmix), cmix**2 * (1-cmix),
-                           cmix * (1-cmix)**2, cmix**2 * (1-cmix)**2])
-    Ecscan = np.dot(co * cmix, weights)
+    #cmix_terms = np.array([cmix * (1-cmix), cmix**2 * (1-cmix),
+    #                       cmix * (1-cmix)**2, cmix**2 * (1-cmix)**2])
+    cmix_terms = np.array([chi, chi**2, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
+                           chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
+    Ecscan = np.dot(co * cmix + cx * (1-cmix), weights)
     Eterms = np.dot(cmix_terms * (cx-co), weights)
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
@@ -1368,7 +1370,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
     XSIZE = 14
     SIZE = 2+5+5+3*XSIZE+5+2
     SIZE = 2+9+9+34+2
-    SIZE = 2+4+28+2
+    SIZE = 2+8+28+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1511,7 +1513,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha2_ml.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha3_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1519,7 +1521,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha2_ml.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha3_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1614,7 +1616,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_c = np.append(E_c, mlx[:,41:45], axis=1)
                 E_c = np.append(E_c, mlx[:,45:59], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
-            else:
+            elif version == 'c':
                 E_dft = etot[:,0]
                 E_ccsd = etot[:,1]
                 E_x = mlx[:,0]
@@ -1632,12 +1634,21 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_c = np.append(E_c, mlx[:,20:34], axis=1)
                 E_c = np.append(E_c, mlx[:,39:49], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_c[:,6])
+            else:
+                E_dft = etot[:,0]
+                E_ccsd = etot[:,1]
+                E_x = mlx[:,0]
+                E_xscan = mlx[:,1]
+                E_cscan = mlx[:,-2]
+                E_c = mlx[:,4:38]
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# - mlx[:,37])
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
 
         E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
-        noise = np.ones(E_c.shape[1]) * 1e-3
-        noise[:4] /= 100
+        noise = np.ones(E_c.shape[1]) * 1e-4
+        noise[:6] *= 10
+        #noise[:4] /= 100
         #noise[12] /= 100
         #noise[16:16+19] /= 10
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
@@ -1683,7 +1694,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(20 / mols[i].nelectron)
+            weights.append(8 / mols[i].nelectron)
 
         weights = np.array(weights)
         
@@ -1742,10 +1753,13 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         print('50', (np.dot(E_c[inds], coef) + E0)[[hind, oind, waterind]])
         print(coef[20:32], coef[38:44])
         print((E_x[inds])[[hind, oind, waterind]])
-        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
-        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
-        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
-        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)))
+        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)), np.std(Ecc-Edf))
+        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]),
+                np.std((Ecc-Edf)[valset_bools]))
+        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)),
+                np.std(y - np.dot(X,coef)))
+        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)),
+                np.std(yts-np.dot(Xts,coef)))
         print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
         print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
 
