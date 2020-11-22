@@ -712,3 +712,99 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
         update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
 
         return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
+class GridBenchmark(FiretaskBase):
+
+    required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune']
+    optional_params = ['mlfunc_file', 'mlfunc_settings_file']
+
+    DEFAULT_MAX_CONV_TOL = 1e-9
+
+    def run_task(self, fw_spec):
+
+        from pyscf import gto, dft, scf
+        mols = {}
+        mols['H'] = gto.M(atom='H', basis='def2-qzvppd', spin=1)
+        mols['O'] = gto.M(atom='O', basis='def2-qzvppd', spin=2)
+        mols['N'] = gto.M(atom='N', basis='def2-qzvppd', spin=3)
+        mols['S'] = gto.M(atom='S', basis='def2-qzvppd', spin=2)
+        mols['F'] = gto.M(atom='F', basis='def2-qzvppd', spin=1)
+        mols['Ar'] = gto.M(atom='Ar', basis='def2-qzvppd', spin=0)
+        mols['H2O'] = gto.M(
+            atom='''O    0.0   0.0       0.1173
+                    H    0.0   0.7572   -0.4692
+                    H    0.0   -0.7572  -0.4692
+            ''',
+            basis = 'def2-qzvppd', spin=0
+        )
+        mols['NO'] = gto.M(atom='N 0 0 0; 0 0 1.15', basis='def2-qzvppd', spin=1)
+        mols['SF6'] = gto.M(
+            atom=[('S', [0.0, 0.0, 0.0]),\
+            ('F', [0.0, 0.0, 2.949295562608692]),\
+            ('F', [0.0, 2.949295562608692, 0.0]),\
+            ('F', [2.949295562608692, 0.0, 0.0]),\
+            ('F', [0.0, -2.949295562608692, 0.0]),\
+            ('F', [-2.949295562608692, 0.0, 0.0]),\
+            ('F', [0.0, 0.0, -2.949295562608692])],
+            basis='def2-qzvppd', spin=0
+        )
+        dimers = {}
+        dists = np.exp(np.linspace(np.log(3.4), np.log(10)))
+        for i in range(dists.shape[[0]]):
+            dimers[int(round(dists[i]*100))] = gto.M(
+                    atom='Ar 0 0 0; Ar 0 0 {}'.format(dists[i]),
+                    basis='def2-qzvppd', spin=0)
+
+        grid = (self['rad'], self['ang'])
+        RADI_METHODS = [radi.treutler, radi.gauss_chebyshev, radi.double_exponential]
+        radi_method = RADI_METHODS[self['radi_method']]
+
+        results = {}
+        for name, mol in list(mols.items()) + list(dimers.items()):
+            mol.build()
+            if self.get('mlfunc_file') is not None:
+                with open(self['mlfunc_settings_file'], 'r') as f:
+                    settings = yaml.load(f, Loader = yaml.Loader)
+                    if settings is None:
+                        settings = {}
+                from mldftdat.dft import numint6 as numint
+                mlfunc = joblib.load(self['mlfunc_file'])
+                if spin == 0:
+                    calc = numint.setup_rks_calc2(mol, mlfunc, **settings)
+                else:
+                    calc = numint.setup_uks_calc2(mol, mlfunc, **settings)
+            else:
+                if spin == 0:
+                    calc = dft.RKS(mol)
+                    calc.xc = self['functional']
+                else:
+                    calc = dft.UKS(mol)
+                    calc.xc = self['functional']
+            for site in mol._atom:
+                calc.grids.atom_grid = {site[0]: grid}
+            calc.grids.prune = gen_grid.nwchem_prune if self['prune'] else None
+            calc.grids.radi_method = radi_method
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
+            results[name] = {
+                'mol': gto.mol.pack(self.mol),
+                'e_tot': calc.e_tot,
+                'converged': calc.converged,
+                'time': stop_time - start_time
+            }
+
+        fname = 'gridbench_{}_{}_{}_{}_{}.yaml'.format(
+                    self['functional'],
+                    'nwchem' if self['prune'] else 'noprune',
+                    self['rad_part'],
+                    self['rad'],
+                    self['ang']
+                )
+
+        with open(os.path.join(SAVE_ROOT, 'BENCHMARK', fname), 'w') as f:
+            yaml.dump(results, f)
+
+        return FWAction(update_spec = update_spec)
