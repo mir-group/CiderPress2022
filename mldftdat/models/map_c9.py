@@ -473,25 +473,13 @@ class VSXCContribs():
         y0, deriv0 = self.xef_terms(ft, self.c0)
         y1, deriv1 = self.xef_terms(ft, self.c1)
 
-        tot += c1 * (1-chi[0]**6)
-        tot += sl0 * c0
-        tot += sl1 * c1 * (1-chi[0]**6)
+        tot += c1 * slc + c0 * (1 - slc)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
-        tot += y0 * c0
-        tot += y1 * c1 * (1-chi[0]**6)
         tot += ldaxm[0] * nlu
         tot += ldaxm[1] * nld
-        # enhancment terms on c0
-        vtmp[3] += c0 * dsl0dchi
-        vtmp[4] += c0 * deriv0
-        # enhancment terms on c1
-        tmp = c1 * (1-chi[0]**6)
-        vtmp[3] += tmp * dsl1dchi
-        vtmp[4] += tmp * deriv1
-        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
-        
-        vtmp[3] += -6 * chi[0]**5 * c1
+        # enhancment terms on c1 and c0
+        vtmp[3] += (c1 - c0) * dslc
         
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
@@ -510,13 +498,10 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, sl0 + y0)
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6) * (sl1 + y1))
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6))
+        fill_vxc_base_os_(vxc, v0, slc)
+        fill_vxc_base_os_(vxc, v1, slc)
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
-
-        ### TODO
 
         # put everything into vxc
         tmp = vtmp[0] + vtmp[2] * x2[1] + vtmp[3] * chi[1]
@@ -544,8 +529,6 @@ class VSXCContribs():
         vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
         vxc[2][:,1] += vtmpd[1] * chid[4]
         vxc[3][:,1] += vtmpd[2]
-
-        ### TODO
 
         thr = 1e-6
         rhou, rhod = nu, nd

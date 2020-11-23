@@ -483,7 +483,7 @@ class VSXCContribs():
         tmp = c1 * (1-chi[0]**6)
         vtmp[3] += tmp * dsl1dchi
         vtmp[4] += tmp * deriv1
-        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        vtmp[3] += -6 * chi[0]**5 * c1 * (sl1 + y1)
         
         vtmp[3] += -6 * chi[0]**5 * c1
         
