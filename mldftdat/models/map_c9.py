@@ -624,9 +624,6 @@ class VSXCContribs():
         nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
         nld, dnlddf, dnlddchi = self.nl_terms(fd, chid[0], self.cx)
 
-        y0, deriv0 = self.xef_terms(ft, self.c0)
-        y1, deriv1 = self.xef_terms(ft, self.c1)
-
         tot += c1 * slc + c0 * (1 - slc)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
