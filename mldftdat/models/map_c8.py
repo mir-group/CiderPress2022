@@ -483,7 +483,7 @@ class VSXCContribs():
         tmp = c1 * (1-chi[0]**6)
         vtmp[3] += tmp * dsl1dchi
         vtmp[4] += tmp * deriv1
-        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        vtmp[3] += -6 * chi[0]**5 * c1 * (sl1 + y1)
         
         vtmp[3] += -6 * chi[0]**5 * c1
         
@@ -641,7 +641,7 @@ class VSXCContribs():
         tmp = c1 * (1-chi[0]**6)
         vtmp[3] += tmp * dsl1dchi
         vtmp[4] += tmp * deriv1
-        vtmp[3] += -4 * chi[0]**3 * c1 * (sl1 + y1)
+        vtmp[3] += -6 * chi[0]**5 * c1 * (sl1 + y1)
         #print(np.isinf(-2 * chi[0] * c1).any(), np.isinf(chi[0]).any(),
         #np.isinf(c1).any(), np.isinf(chi[1]).any(), np.isinf(chi[2]).any(),
         #np.isinf(chi[3]).any(), np.isinf(chi[4]).any())
