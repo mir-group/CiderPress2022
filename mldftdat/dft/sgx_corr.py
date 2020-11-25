@@ -612,7 +612,7 @@ class HFCNumInt2(HFCNumInt):
 
 class HFCNumInt3(HFCNumInt2):
 
-    def __init__(self, d, dx, cx
+    def __init__(self, d, dx, cx,
                  vv10_coeff = None,
                  fterm_scale=2.0):
         print ("FTERM SCALE", fterm_scale)
