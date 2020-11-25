@@ -14,6 +14,7 @@ import numpy as np
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 DEFAULT_FUNCTIONAL = 'SCAN'
+DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA'
 #DEFAULT_BASIS = 'aug-cc-pvtz'
 DEFAULT_BASIS = 'def2-qzvppd'
 
@@ -1180,8 +1181,7 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
 
     from mldftdat.models import map_c9
 
-    corr_model = map_c9.VSXCContribs(None, None, None, None, None,
-                                     None, fterm_scale=2.0)
+    corr_model = map_c9.VSXCContribs(None, None, None, fterm_scale=2.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -1378,7 +1378,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
         print(mol_id)
 
         if mol_id_full:
-            dft_dir = mol_id
+            dft_dir = mol_id.replace('SCAN', DEFAULT_FUNCTIONAL)
         elif is_restricted:
             dft_dir = get_save_dir(ROOT, 'RKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
@@ -1513,7 +1513,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha2_ml.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha3_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1521,7 +1521,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha2_ml.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha3_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1644,8 +1644,9 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_cscan = mlx[:,-2]
                 E_c = mlx[:,4:38]
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# - mlx[:,37])
-                noise = np.ones(E_c.shape[1]) * 1e-4
-                noise[:6] *= 10
+                noise = np.ones(E_c.shape[1]) * 5e-4
+                noise[:6] *= 2
+                #noise = np.ones(E_c.shape[1]) * 1e-3
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
 
@@ -1741,7 +1742,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(Xts.shape, yts.shape)
         print(score, score0)
-        print((Ecc - y + np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
+        print((Ecc)[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print('20', (np.dot(E_c[inds,:20], coef[:20]) + E0)[[hind, oind, waterind]])
         print('26', (np.dot(E_c[inds,:26], coef[:26]) + E0)[[hind, oind, waterind]])

@@ -458,20 +458,13 @@ class VSXCContribs():
         tot = 0
 
         gammax = 0.004
-        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi[0])
-        adesc = np.array([a0,a1,a2,a3])
-        dadesc = np.array([da0,da1,da2,da3])
-        sl0 = np.dot(self.d0, adesc)
-        dsl0dchi = np.dot(self.d0, dadesc)
-        sl1 = np.dot(self.d1, adesc)
-        dsl1dchi = np.dot(self.d1, dadesc)
+        achi, dachi = self.get_chi_desc2(chi[0])
+        slc = 3 * (1 - chi[0]) / (3 - chi[0]) - np.dot(self.d, achi)
+        dslc = (-6) / (3 - chi[0])**2 - np.dot(self.d, dachi)
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
         sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.dx)
         nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
         nld, dnlddf, dnlddchi = self.nl_terms(fd, chid[0], self.cx)
-
-        y0, deriv0 = self.xef_terms(ft, self.c0)
-        y1, deriv1 = self.xef_terms(ft, self.c1)
 
         tot += c1 * slc + c0 * (1 - slc)
         tot += ldaxm[0] * slu
@@ -676,7 +669,7 @@ class VSXCContribs():
         vxc[2][:,1] += vtmpd[1] * chid[4]
         vxc[3][:,1] += vtmpd[2] * dfddxd
 
-        thr = 1e-6
+        thr = 1e-5
         rhou, rhod = nu, nd
         tot[(rhou+rhod)<thr] = 0
         vxc[0][rhou<thr,0] = 0

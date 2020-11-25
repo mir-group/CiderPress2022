@@ -191,9 +191,9 @@ class MLSCFCalc(FiretaskBase):
                 settings = {}
         if self.get('mlfunc_c_file') is None:
             if calc_type == 'RKS':
-                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+                calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
             else:
-                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+                calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
         else:
             if calc_type == 'RKS':
                 calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
@@ -259,13 +259,13 @@ class SGXCorrCalc(FiretaskBase):
             if settings is None:
                 settings = {}
         if calc_type == 'RKS':
-            calc = numint.setup_rks_calc2(mol, **settings)
+            calc = numint.setup_rks_calc3(mol, **settings)
         else:
-            calc = numint.setup_uks_calc2(mol, **settings)
+            calc = numint.setup_uks_calc3(mol, **settings)
 
         #calc.damp = 6
         #calc.diis_start_cycle = 6
-        calc.DIIS = scf.diis.ADIIS
+        calc.DIIS = scf.diis.CDIIS
         #calc.max_cycle = 50
         print ("Removing linear dep")
         calc = scf.addons.remove_linear_dep_(calc)
@@ -723,7 +723,7 @@ class GridBenchmark(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-9
 
     def run_task(self, fw_spec):
-
+        import yaml
         from pyscf import gto, dft, scf
         mols = {}
         mols['H'] = gto.M(atom='H', basis='def2-qzvppd', spin=1)
@@ -739,7 +739,7 @@ class GridBenchmark(FiretaskBase):
             ''',
             basis = 'def2-qzvppd', spin=0
         )
-        mols['NO'] = gto.M(atom='N 0 0 0; 0 0 1.15', basis='def2-qzvppd', spin=1)
+        mols['NO'] = gto.M(atom='N 0 0 0; O 0 0 1.15', basis='def2-qzvppd', spin=1)
         mols['SF6'] = gto.M(
             atom=[('S', [0.0, 0.0, 0.0]),\
             ('F', [0.0, 0.0, 2.949295562608692]),\
@@ -748,15 +748,17 @@ class GridBenchmark(FiretaskBase):
             ('F', [0.0, -2.949295562608692, 0.0]),\
             ('F', [-2.949295562608692, 0.0, 0.0]),\
             ('F', [0.0, 0.0, -2.949295562608692])],
+            unit='Bohr',
             basis='def2-qzvppd', spin=0
         )
         dimers = {}
         dists = np.exp(np.linspace(np.log(3.4), np.log(10)))
-        for i in range(dists.shape[[0]]):
+        for i in range(dists.shape[0]):
             dimers[int(round(dists[i]*100))] = gto.M(
                     atom='Ar 0 0 0; Ar 0 0 {}'.format(dists[i]),
                     basis='def2-qzvppd', spin=0)
 
+        from pyscf.dft import gen_grid, radi
         grid = (self['rad'], self['ang'])
         RADI_METHODS = [radi.treutler, radi.gauss_chebyshev, radi.double_exponential]
         radi_method = RADI_METHODS[self['radi_method']]
@@ -772,11 +774,11 @@ class GridBenchmark(FiretaskBase):
                 from mldftdat.dft import numint6 as numint
                 mlfunc = joblib.load(self['mlfunc_file'])
                 if spin == 0:
-                    calc = numint.setup_rks_calc2(mol, mlfunc, **settings)
+                    calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
                 else:
-                    calc = numint.setup_uks_calc2(mol, mlfunc, **settings)
+                    calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
             else:
-                if spin == 0:
+                if mol.spin == 0:
                     calc = dft.RKS(mol)
                     calc.xc = self['functional']
                 else:
@@ -786,11 +788,13 @@ class GridBenchmark(FiretaskBase):
                 calc.grids.atom_grid = {site[0]: grid}
             calc.grids.prune = gen_grid.nwchem_prune if self['prune'] else None
             calc.grids.radi_method = radi_method
+            calc.DIIS = scf.diis.ADIIS
+            calc = scf.addons.remove_linear_dep_(calc)
             start_time = time.monotonic()
             calc.kernel()
             stop_time = time.monotonic()
             results[name] = {
-                'mol': gto.mol.pack(self.mol),
+                'mol': gto.mole.pack(mol),
                 'e_tot': calc.e_tot,
                 'converged': calc.converged,
                 'time': stop_time - start_time
@@ -799,12 +803,16 @@ class GridBenchmark(FiretaskBase):
         fname = 'gridbench_{}_{}_{}_{}_{}.yaml'.format(
                     self['functional'],
                     'nwchem' if self['prune'] else 'noprune',
-                    self['rad_part'],
+                    self['radi_method'],
                     self['rad'],
                     self['ang']
                 )
 
-        with open(os.path.join(SAVE_ROOT, 'BENCHMARK', fname), 'w') as f:
+        bench_dir = os.path.join(os.environ['MLDFTDB'], 'BENCHMARK')
+        os.makedirs(bench_dir, exist_ok=True)
+        save_file = os.path.join(bench_dir, fname)
+        with open(save_file, 'w') as f:
             yaml.dump(results, f)
 
-        return FWAction(update_spec = update_spec)
+        return FWAction(stored_data={'save_file': save_file})
+
