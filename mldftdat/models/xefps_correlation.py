@@ -3,18 +3,19 @@ from mldftdat.dft.numint5 import _eval_x_0, setup_aux
 from mldftdat.dft.numint6 import _eval_xc_0
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
-from mldftdat.workflow_utils import get_save_dir
+from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
 from mldftdat.models.map_c2 import VSXCContribs
 from mldftdat.density import get_exchange_descriptors2
 import os
 import numpy as np
+import yaml
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 DEFAULT_FUNCTIONAL = 'SCAN'
-DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA'
+DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA3'
 #DEFAULT_BASIS = 'aug-cc-pvtz'
 DEFAULT_BASIS = 'def2-qzvppd'
 
@@ -1275,12 +1276,27 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
         Ex = np.dot(exo, weights)
         exo /= (rhot + 1e-20)
 
+    exu = exu * rhou
+    exd = exd * rhod
+    exo = exo * rhot
+
     FUNCTIONAL = DEFAULT_FUNCTIONAL
-    Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
-             * (rho_data_u[0] + rho_data_d[0])
-    Exscan = np.dot(Exscan, weights)
+    try:
+        Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+                 * (rho_data_u[0] + rho_data_d[0])
+        Exscan = np.dot(Exscan, weights)
+    except:
+        Exscan = dft_analyzer.fx_total
+        with open(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', FUNCTIONAL, 'settings.yaml'), 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
+        corr_model_iter = map_c9.VSXCContribs(settings['d'], settings['dx'],
+                                              settings['cx'],
+                                              fterm_scale=settings['fterm_scale'])
+        exc, vxc = corr_model_iter.xefc2(rhou, rhod, g2u, g2o, g2d,
+                                         tu, td, exu, exd)
+        Exscan += np.dot(dft_analyzer.grid.weights, exc)
     Ecscan = eval_xc(',MGGA_C_REVSCAN', (rho_data_u, rho_data_d), spin = 1)[0] \
-                     * (rho_data_u[0] + rho_data_d[0])
+                    * (rho_data_u[0] + rho_data_d[0])
     Ecscan = np.dot(Ecscan, weights)
 
     print('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
@@ -1288,9 +1304,6 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
         print('LARGE ERROR')
     #assert np.abs(Ex - dft_analyzer.fx_total) < 1e-4
 
-    exu = exu * rhou
-    exd = exd * rhod
-    exo = exo * rhot
     ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
     ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
     ldaxt = ldaxu + ldaxd
@@ -1513,7 +1526,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha3_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1521,7 +1534,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha3_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1630,11 +1643,11 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 # 20:39 -- sl ex terms
                 # 39:54 -- nl ex terms
                 E_c = np.append(mlx[:,3:11], mlx[:,12:20], axis=1)
-                E_c = np.append(mlx[:,7:11], mlx[:,16:20], axis=1)
-                E_c = np.append(E_c, mlx[:,20:34], axis=1)
-                E_c = np.append(E_c, mlx[:,39:49], axis=1)
+                #E_c = np.append(mlx[:,7:11], mlx[:,16:20], axis=1)
+                E_c = np.append(E_c, mlx[:,20:39], axis=1)
+                E_c = np.append(E_c, mlx[:,39:54], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_c[:,6])
-                noise = np.ones(E_c.shape[1]) * 1e-3
+                noise = np.ones(E_c.shape[1]) * 1e-5
                 noise[:4] /= 1000
             else:
                 E_dft = etot[:,0]
@@ -1644,8 +1657,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_cscan = mlx[:,-2]
                 E_c = mlx[:,4:38]
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# - mlx[:,37])
-                noise = np.ones(E_c.shape[1]) * 5e-4
-                noise[:6] *= 2
+                noise = np.ones(E_c.shape[1]) * 1e-4
+                noise[:6] *= 10
                 #noise = np.ones(E_c.shape[1]) * 1e-3
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
@@ -1987,10 +2000,10 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None, 
             else:
                 pbe_analyzer = UHFAnalyzer.load(mol_id+'/data.hdf5')
         elif is_restricted:
-            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
+            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional = 'SGXCORR_ALPHA3')
             pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
         else:
-            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
+            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional = 'SGXCORR_ALPHA3')
             pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
 
         mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
