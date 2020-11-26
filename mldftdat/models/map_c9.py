@@ -669,7 +669,7 @@ class VSXCContribs():
         vxc[2][:,1] += vtmpd[1] * chid[4]
         vxc[3][:,1] += vtmpd[2] * dfddxd
 
-        thr = 1e-5
+        thr = 1e-6
         rhou, rhod = nu, nd
         tot[(rhou+rhod)<thr] = 0
         vxc[0][rhou<thr,0] = 0
