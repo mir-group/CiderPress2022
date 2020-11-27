@@ -1466,6 +1466,8 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
         errs.append(pred_energy-energy)
     errs = np.array(errs)
     print(errs.shape)
+    me = np.mean(errs)
     mae = np.mean(np.abs(errs))
     rmse = np.sqrt(np.mean(errs**2))
-    return mae, rmse, result
+    std = np.std(errs)
+    return me, mae, rmse, std, result
