@@ -15,7 +15,7 @@ import yaml
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 DEFAULT_FUNCTIONAL = 'SCAN'
-DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA3'
+#DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA3'
 #DEFAULT_BASIS = 'aug-cc-pvtz'
 DEFAULT_BASIS = 'def2-qzvppd'
 
@@ -1330,18 +1330,23 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
     extermsd = np.append(corr_model.get_separate_sl_terms(x2d, chid, gammass)[0],
                          corr_model.get_separate_xefa_terms(Fxd, chid)[0], axis=0)
 
-    cmix = 3 * (1 - chi) / (3 - chi)
+    cmscale = 17.0 / 3
+    cmix = cmscale * (1 - chi) / (cmscale - chi)
     #cmix_terms = np.array([cmix * (1-cmix), cmix**2 * (1-cmix),
     #                       cmix * (1-cmix)**2, cmix**2 * (1-cmix)**2])
+    cmix_terms0 = np.array([chi**2-chi, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
+                           chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
     cmix_terms = np.array([chi, chi**2, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
                            chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
     Ecscan = np.dot(co * cmix + cx * (1-cmix), weights)
-    Eterms = np.dot(cmix_terms * (cx-co), weights)
+    Eterms = np.dot(cmix_terms0 * (cx-co), weights)
+    Eterms2 = np.dot(cmix_terms * cx, weights)
+    Eterms3 = np.dot(cmix_terms * (Fx-1) * cx, weights)
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
 
-    #                                    4,      28
-    return np.concatenate([[Ex, Exscan], Eterms, Fterms,
+    #                                    7,      8,       8,       28
+    return np.concatenate([[Ex, Exscan], Eterms, Eterms2, Eterms3, Fterms,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
 
@@ -1383,7 +1388,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
     XSIZE = 14
     SIZE = 2+5+5+3*XSIZE+5+2
     SIZE = 2+9+9+34+2
-    SIZE = 2+8+28+2
+    SIZE = 2+7+8+8+28+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1526,17 +1531,17 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha4_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
-    #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha4_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
-    #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
+    atom_vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
@@ -1571,8 +1576,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     ecounts = np.array(ecounts)
 
     N = etot.shape[0]
-    #num_vv10 = vv10.shape[-1]
-    num_vv10 = 1
+    num_vv10 = vv10.shape[-1]
+    #num_vv10 = 1
 
     #print(formulas, Z_to_ind)
 
@@ -1656,9 +1661,17 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_xscan = mlx[:,1]
                 E_cscan = mlx[:,-2]
                 E_c = mlx[:,4:38]
-                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# - mlx[:,37])
-                noise = np.ones(E_c.shape[1]) * 1e-4
-                noise[:6] *= 10
+                E_c = np.append(mlx[:,4:10], mlx[:,10:26], axis=1)
+                E_c = np.append(E_c, mlx[:,26:54], axis=1)
+                print(E_c.shape)
+                E_c = np.append(E_c, mlx[:,3:4]-mlx[:,2:3], axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan + E_vv10)# - mlx[:,37])
+                means = np.mean(np.abs(E_c), axis=0)
+                noise = np.ones(E_c.shape[1]) * 1e-3
+                noise[:16] *= 1
+                noise[-1] *= 1
+                #noise[:2] *= 10
+                #noise[8:10] *= 100
                 #noise = np.ones(E_c.shape[1]) * 1e-3
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
@@ -1981,7 +1994,7 @@ def solve_from_stored_ae_ml(DATA_ROOT):
         coef_sets.append(coef)
         scores.append(score)
 
-        break
+        #break
 
     return coef_sets, scores
 
@@ -2000,10 +2013,10 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None, 
             else:
                 pbe_analyzer = UHFAnalyzer.load(mol_id+'/data.hdf5')
         elif is_restricted:
-            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional = 'SGXCORR_ALPHA3')
+            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional='SCAN')#'SGXCORR_ALPHA3')
             pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
         else:
-            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional = 'SGXCORR_ALPHA3')
+            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional='SCAN')#'SGXCORR_ALPHA3')
             pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
 
         mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
