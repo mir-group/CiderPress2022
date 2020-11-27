@@ -56,6 +56,13 @@ def run_scf(mol, calc_type, functional = None, remove_ld = False, dm0 = None):
         calc = scf.addons.remove_linear_dep_(calc)
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
+        if functional == 'wB97M_V':
+            print ('Specialized wB97M-V params')
+            calc.nlc = 'VV10'
+            calc.grids.prune = None
+            calc.grids.level = 4
+            calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+            calc.nlcgrids.level = 1
 
     calc.kernel(dm0 = dm0)
     return calc
