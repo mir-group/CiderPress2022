@@ -238,7 +238,7 @@ class SGXCorrCalc(FiretaskBase):
                        'mlfunc_name', 'mlfunc_settings_file']
     optional_params = ['spin', 'charge', 'max_conv_tol']
 
-    DEFAULT_MAX_CONV_TOL = 1e-7
+    DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -265,7 +265,7 @@ class SGXCorrCalc(FiretaskBase):
 
         #calc.damp = 6
         #calc.diis_start_cycle = 6
-        calc.DIIS = scf.diis.CDIIS
+        calc.DIIS = scf.diis.ADIIS
         #calc.max_cycle = 50
         print ("Removing linear dep")
         calc = scf.addons.remove_linear_dep_(calc)
