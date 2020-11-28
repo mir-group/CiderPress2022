@@ -491,7 +491,7 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, slc)
+        fill_vxc_base_os_(vxc, v0, 1-slc)
         fill_vxc_base_os_(vxc, v1, slc)
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
@@ -625,7 +625,7 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, slc)
+        fill_vxc_base_os_(vxc, v0, 1-slc)
         fill_vxc_base_os_(vxc, v1, slc)
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
