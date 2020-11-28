@@ -61,7 +61,10 @@ def run_scf(mol, calc_type, functional = None, remove_ld = False, dm0 = None):
             calc.nlc = 'VV10'
             calc.grids.prune = None
             calc.grids.level = 4
-            calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+            if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
+                calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+            else:
+                calc.nlcgrids.prune = None
             calc.nlcgrids.level = 1
 
     calc.kernel(dm0 = dm0)
