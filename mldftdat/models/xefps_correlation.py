@@ -1182,7 +1182,8 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
 
     from mldftdat.models import map_c9
 
-    corr_model = map_c9.VSXCContribs(None, None, None, fterm_scale=2.0)
+    corr_model = map_c10.VSXCContribs(None, None, None, None,
+                                      fterm_scale=2.0)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -1338,15 +1339,23 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
                            chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
     cmix_terms = np.array([chi, chi**2, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
                            chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
+    cmix_termsu = np.array([chiu, chiu**2, chiu**3-chiu, chiu**4-chiu**2, chiu**5-chiu**3,
+                            chiu**6-chiu**4, chiu**7-chiu**5, chiu**8-chiu**6])
+    cmix_termsd = np.array([chid, chid**2, chid**3-chid, chid**4-chid**2, chid**5-chid**3,
+                            chid**6-chid**4, chid**7-chid**5, chid**8-chid**6])
     Ecscan = np.dot(co * cmix + cx * (1-cmix), weights)
     Eterms = np.dot(cmix_terms0 * (cx-co), weights)
     Eterms2 = np.dot(cmix_terms * cx, weights)
     Eterms3 = np.dot(cmix_terms * (Fx-1) * cx, weights)
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
+    Fterms2 = np.dot(cmix_termsu * ldaxu * amix, weights)
+    Fterms2 += np.dot(cmix_termsd * ldaxd * amix, weights)
+    Fterms3 = np.dot(cmix_termsu * (Fx-1) * ldaxu * amix, weights)
+    Fterms3 += np.dot(cmix_termsd * (Fx-1) * ldaxd * amix, weights)
 
-    #                                    7,      8,       8,       28
-    return np.concatenate([[Ex, Exscan], Eterms, Eterms2, Eterms3, Fterms,
+    #                                    7,      8,       8,       28,     8,       8,
+    return np.concatenate([[Ex, Exscan], Eterms, Eterms2, Eterms3, Fterms, Fterms2, Fterms3,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
 
@@ -1388,7 +1397,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
     XSIZE = 14
     SIZE = 2+5+5+3*XSIZE+5+2
     SIZE = 2+9+9+34+2
-    SIZE = 2+7+8+8+28+2
+    SIZE = 2+7+8+8+28+8+8+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
