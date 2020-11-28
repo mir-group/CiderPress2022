@@ -1180,7 +1180,7 @@ def get_new_contribs2(dft_dir, restricted, mlfunc, exact=True):
 
 def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
 
-    from mldftdat.models import map_c9
+    from mldftdat.models import map_c10
 
     corr_model = map_c10.VSXCContribs(None, None, None, None,
                                       fterm_scale=2.0)
@@ -1317,7 +1317,7 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
     x2 = corr_model.get_x2(nu+nd, g2)[0]
     x2u = corr_model.get_x2(nu, g2u)[0]
     x2d = corr_model.get_x2(nd, g2d)[0]
-    amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
+    amix = corr_model.get_amix2(rhot, zeta, x2, chi)[0]
     chidesc = np.array(corr_model.get_chi_desc(chi)[:4])
     chidescu = np.array(corr_model.get_chi_desc(chiu)[:4])
     chidescd = np.array(corr_model.get_chi_desc(chid)[:4])
@@ -1540,17 +1540,17 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha4_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha5_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
-    vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
+    #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
     mols = yaml.load(f, Loader = yaml.Loader)
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha4_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha5_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
-    atom_vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
+    #atom_vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
@@ -1585,8 +1585,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     ecounts = np.array(ecounts)
 
     N = etot.shape[0]
-    num_vv10 = vv10.shape[-1]
-    #num_vv10 = 1
+    #num_vv10 = vv10.shape[-1]
+    num_vv10 = 1
 
     #print(formulas, Z_to_ind)
 
@@ -1669,17 +1669,24 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_x = mlx[:,0]
                 E_xscan = mlx[:,1]
                 E_cscan = mlx[:,-2]
-                E_c = mlx[:,4:38]
-                E_c = np.append(mlx[:,4:10], mlx[:,10:26], axis=1)
-                E_c = np.append(E_c, mlx[:,26:54], axis=1)
-                print(E_c.shape)
-                E_c = np.append(E_c, mlx[:,3:4]-mlx[:,2:3], axis=1)
-                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan + E_vv10)# - mlx[:,37])
+                #E_c = mlx[:,4:38]
+                #E_c = np.append(mlx[:,4:10], mlx[:,10:26], axis=1)
+                #E_c = np.append(E_c, mlx[:,26:54], axis=1)
+                #E_c = np.append(E_c, mlx[:,3:4]-mlx[:,2:3], axis=1)
+                E_c = np.zeros((E_ccsd.shape[0], 0))
+                E_c = np.append(E_c, mlx[:,2:9], axis=1)
+                E_c = np.append(E_c, mlx[:,9:17], axis=1)
+                #E_c = np.append(E_c, mlx[:,17:25], axis=1)
+                E_c = np.append(E_c, mlx[:,25:30], axis=1)
+                E_c = np.append(E_c, mlx[:,30:53], axis=1)
+                #E_c = np.append(E_c, mlx[:,53:61], axis=1)
+                #E_c = np.append(E_c, mlx[:,61:69], axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_vv10)# - mlx[:,37])
                 means = np.mean(np.abs(E_c), axis=0)
                 noise = np.ones(E_c.shape[1]) * 1e-3
-                noise[:16] *= 1
-                noise[-1] *= 1
-                #noise[:2] *= 10
+                #noise[15:23] *= .1
+                #noise[7:15] *= 4
+                #noise[15:] /= 4
                 #noise[8:10] *= 100
                 #noise = np.ones(E_c.shape[1]) * 1e-3
 

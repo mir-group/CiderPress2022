@@ -723,7 +723,7 @@ class GridBenchmark(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-9
 
     def run_task(self, fw_spec):
-        import yaml
+        import yaml, joblib
         from pyscf import gto, dft, scf
         mols = {}
         mols['H'] = gto.M(atom='H', basis='def2-qzvppd', spin=1)
@@ -773,7 +773,7 @@ class GridBenchmark(FiretaskBase):
                         settings = {}
                 from mldftdat.dft import numint6 as numint
                 mlfunc = joblib.load(self['mlfunc_file'])
-                if spin == 0:
+                if mol.spin == 0:
                     calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
                 else:
                     calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
