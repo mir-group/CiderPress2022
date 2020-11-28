@@ -627,6 +627,23 @@ class HFCNumInt3(HFCNumInt2):
             self.vv10_b, self.vv10_c = vv10_coeff
 
 
+class HFCNumInt4(HFCNumInt2):
+
+    def __init__(self, d, c, dx, cx,
+                 vv10_coeff = None,
+                 fterm_scale=2.0):
+        print ("FTERM SCALE", fterm_scale)
+        super(HFCNumInt, self).__init__()
+        from mldftdat.models import map_c10
+        self.corr_model = map_c10.VSXCContribs(d, c, dx, cx,
+                                  fterm_scale=fterm_scale)
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
+
 DEFAULT_COS = [-0.02481797,  0.00303413,  0.00054502,  0.00054913]
 DEFAULT_CX = [-0.03483633, -0.00522109, -0.00299816, -0.0022187 ]
 DEFAULT_CA = [-0.60154365, -0.06004444, -0.04293853, -0.03146755]
@@ -750,6 +767,41 @@ def setup_uks_calc3(mol, d=V3_D, dx=V3_DX, cx=V3_CX,
     uks = dft.UKS(mol)
     uks.xc = 'SCAN'
     uks._numint = HFCNumInt3(d, dx, cx,
+                             vv10_coeff=vv10_coeff,
+                             fterm_scale=fterm_scale)
+    uks = sgx_fit_corr(uks)
+    uks.with_df.debug = True
+    return uks
+
+
+V4_D = [-0.17654427,  0.20982372,  0.17060646, -0.02551619,  0.01342819,
+ -0.06299852, -0.01121752]
+V4_C = [ 0.20844183,  0.49877638, -0.19778921, -0.11459531,  0.09617469,
+  0.02539087,  0.11329777,  0.03291029]
+V4_DX = [-0.08935424,  0.18471635, -0.12302603,  0.62965171,  0.11379649,
+ -0.24022591,  0.32674729, -0.14123412,  0.07535669, -0.04161861,
+  0.22269839, -0.1282896 ,  0.08055665,  0.00394882,  0.13084771]
+V4_CX = [-0.2886141 ,  0.238061  , -0.44752893, -0.0105108 ,  0.53289043,
+ -0.39086948, -0.12705188, -0.11383656, -0.08579452, -0.15143574,
+ -0.07660444, -0.02748063, -0.63002868]
+
+
+def setup_rks_calc4(mol, d=V4_D, c=V4_C, dx=V4_DX, cx=V4_CX,
+                    vv10_coeff=None, fterm_scale=2.0):
+    rks = dft.RKS(mol)
+    rks.xc = 'SCAN'
+    rks._numint = HFCNumInt4(d, c, dx, cx,
+                             vv10_coeff=vv10_coeff,
+                             fterm_scale=fterm_scale)
+    rks = sgx_fit_corr(rks)
+    rks.with_df.debug = False
+    return rks
+
+def setup_uks_calc4(mol, d=V4_D, c=V4_C, dx=V4_DX, cx=V4_CX,
+                    vv10_coeff=None, fterm_scale=2.0):
+    uks = dft.UKS(mol)
+    uks.xc = 'SCAN'
+    uks._numint = HFCNumInt4(d, c, dx, cx,
                              vv10_coeff=vv10_coeff,
                              fterm_scale=fterm_scale)
     uks = sgx_fit_corr(uks)
