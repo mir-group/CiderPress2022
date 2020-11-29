@@ -481,8 +481,9 @@ class VSXCContribs():
 
         gammax = 0.004
         achi, dachi = self.get_chi_desc2(chi[0])
-        slc = 3 * (1 - chi[0]) / (3 - chi[0]) - np.dot(self.d, achi[2:])
-        dslc = (-6) / (3 - chi[0])**2 - np.dot(self.d, dachi[2:])
+        A = 17.0 / 3
+        slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.d, achi[2:])
+        dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.d, dachi[2:])
         slc0 = np.dot(self.c, achi[[0,1,3,4,5,6,7,8]])
         dslc0 = np.dot(self.c, dachi[[0,1,3,4,5,6,7,8]])
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
@@ -619,8 +620,9 @@ class VSXCContribs():
 
         gammax = 0.004
         achi, dachi = self.get_chi_desc2(chi[0])
-        slc = 3 * (1 - chi[0]) / (3 - chi[0]) - np.dot(self.d, achi[2:])
-        dslc = (-6) / (3 - chi[0])**2 - np.dot(self.d, dachi[2:])
+        A = 17.0 / 3
+        slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.d, achi[2:])
+        dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.d, dachi[2:])
         slc0 = np.dot(self.c, achi[[0,1,3,4,5,6,7,8]])
         dslc0 = np.dot(self.c, dachi[[0,1,3,4,5,6,7,8]])
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
