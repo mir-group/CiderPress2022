@@ -382,7 +382,7 @@ class VSXCContribs():
             y[i] = chi**(i+3) - chi**(i+1)
             dy[i] = (i+3) * chi**(i+2) - (i+1) * chi**(i)
         y = np.append([chi, chi**2, chi**2-chi], y, axis=0)
-        dy = np.append([np.ones_like(chi), 2*chi, 2*chi - 1], y, axis=0)
+        dy = np.append([np.ones_like(chi), 2*chi, 2*chi - 1], dy, axis=0)
         return y, dy
 
     def get_chi_desc3(self, chi):
