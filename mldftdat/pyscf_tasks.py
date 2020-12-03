@@ -259,9 +259,9 @@ class SGXCorrCalc(FiretaskBase):
             if settings is None:
                 settings = {}
         if calc_type == 'RKS':
-            calc = numint.setup_rks_calc3(mol, **settings)
+            calc = numint.setup_rks_calc4(mol, **settings)
         else:
-            calc = numint.setup_uks_calc3(mol, **settings)
+            calc = numint.setup_uks_calc4(mol, **settings)
 
         #calc.damp = 6
         #calc.diis_start_cycle = 6
