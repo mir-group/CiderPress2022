@@ -821,6 +821,8 @@ class GridBenchmark(FiretaskBase):
                     self['rad'],
                     self['ang']
                 )
+        if self.get('normalize'):
+            fname = fname[:-5] + '_norm.yaml'
 
         bench_dir = os.path.join(os.environ['MLDFTDB'], 'BENCHMARK')
         os.makedirs(bench_dir, exist_ok=True)
