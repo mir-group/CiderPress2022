@@ -761,7 +761,7 @@ class GridBenchmark(FiretaskBase):
         from pyscf.dft import gen_grid, radi
         grid = (self['rad'], self['ang'])
         RADI_METHODS = [radi.treutler, radi.gauss_chebyshev, radi.double_exponential,\
-                        radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_chebyshev_m4]
+                        radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_jacobi]
         radi_method = RADI_METHODS[self['radi_method']]
 
         results = {}
@@ -785,7 +785,7 @@ class GridBenchmark(FiretaskBase):
                 else:
                     calc = dft.UKS(mol)
                     calc.xc = self['functional']
-                if functional == 'wB97M_V':
+                if self['functional'] == 'wB97M_V':
                     print ('Specialized wB97M-V params')
                     calc.nlc = 'VV10'
                     calc.grids.prune = None
