@@ -123,6 +123,35 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
 
     return atm, bas, env
 
+def get_gaussian_grid_c(coords, rho, l = 0, s = None, alpha = None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+    ratio = alpha + 5./3 * s**2
+
+    fac = 0.6 * (6 * np.pi**2)**(2.0/3) / (2 * np.pi)
+    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
+    #rp = (fac*ratio / (ratio + 1))
+    amix = 0#1 / (ratio + 1)
+    scale = 1 + ratio * fac
+    #scale = amix + (1-amix) * ratio
+    bas[:,1] = l
+    ascale = a * scale
+    cond = ascale < GG_AMIN
+    ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
+    env[bas[:,5]] = ascale
+    print(np.sqrt(np.min(env[bas[:,5]])))
+    #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    env[bas[:,6]] = fac**1.5 * np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
+
+    return atm, bas, env
+
 def get_gaussian_grid_b(coords, rho, l = 0, s = None, alpha = None):
     N = coords.shape[0]
     auxmol = gto.fakemol_for_charges(coords)
@@ -769,3 +798,53 @@ def get_regularized_nonlocal_data(nonlocal_data, rho_data):
     # TODO: below value is not normalized properly
     nonlocal_data[3,:] /= nonlocal_data[6,:] + 1e-6
     return nonlocal_data[:5,:]
+
+import scipy
+def get_proj(mol, grids):
+    nao = mol.nao_nr()
+    sn = np.zeros((nao, nao))
+    ngrids = grids.coords.shape[0]
+    blksize = dft.gen_grid.BLKSIZE
+    for i0, i1 in lib.prange(0, ngrids, blksize):
+        coords = grids.coords[i0:i1]
+        ao = mol.eval_gto('GTOval', coords)
+        wao = ao * grids.weights[i0:i1,None]
+        sn += lib.dot(ao.T, wao)
+    ovlp = mol.intor_symmetric('int1e_ovlp')
+    proj = scipy.linalg.solve(sn, ovlp)
+    return proj
+
+def get_normalized_rho_integration(ks):
+    T = type(ks._numint)
+    class NormNumint(T):
+        def __init__(self):
+            super(T, self).__init__()
+            self.proj = get_proj(ks.mol, ks.grids)
+            self.omega = ks._numint.omega
+
+        def _gen_rho_evaluator(self, mol, dms, hermi=0):
+            if isinstance(dms, np.ndarray) and dms.ndim == 2:
+                dms = [dms]
+            if not hermi:
+                # For eval_rho when xctype==GGA, which requires hermitian DMs
+                dms = [(dm+dm.conj().T)*.5 for dm in dms]
+            nao = dms[0].shape[0]
+            ndms = len(dms)
+            def make_rho(idm, ao, non0tab, xctype):
+                return self.eval_rho(mol, ao, dms[idm], non0tab, xctype, hermi=1)
+            return make_rho, ndms, nao
+
+        def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
+            rho_exact = eval_rho(mol, ao, dm, non0tab, xctype, hermi, verbose)
+            proj_dm = lib.einsum('ki,ij->kj', self.proj, dm)
+            rho_scale = eval_rho(mol, ao, proj_dm, non0tab, xctype, hermi, verbose)
+            return lib.tag_array(rho_scale, rho_exact=rho_exact)
+
+        def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
+                    verbose=None):
+            if omega is None: omega = self.omega
+            return self.libxc.eval_xc(xc_code, rho.rho_exact, spin, relativity, deriv,
+                                      omega, verbose)
+    ks._numint = NormNumint()
+    return ks
+
