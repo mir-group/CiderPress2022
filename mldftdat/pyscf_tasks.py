@@ -718,7 +718,7 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
 class GridBenchmark(FiretaskBase):
 
     required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune']
-    optional_params = ['mlfunc_file', 'mlfunc_settings_file']
+    optional_params = ['mlfunc_file', 'mlfunc_settings_file', 'normalize']
 
     DEFAULT_MAX_CONV_TOL = 1e-9
 
@@ -801,6 +801,9 @@ class GridBenchmark(FiretaskBase):
             calc.grids.radi_method = radi_method
             calc.DIIS = scf.diis.ADIIS
             calc = scf.addons.remove_linear_dep_(calc)
+            if self.get('normalize'):
+                calc.grids.build()
+                calc = get_normalized_rho_integration(calc)
             start_time = time.monotonic()
             calc.kernel()
             stop_time = time.monotonic()
