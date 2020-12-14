@@ -843,7 +843,11 @@ def get_normalized_rho_integration(ks):
         def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
                     verbose=None):
             if omega is None: omega = self.omega
-            return self.libxc.eval_xc(xc_code, rho.rho_exact, spin, relativity, deriv,
+            if type(rho) == tuple:
+                rho_exact = [r.rho_exact for r in rho]
+            else:
+                rho_exact = rho.rho_exact
+            return self.libxc.eval_xc(xc_code, rho_exact, spin, relativity, deriv,
                                       omega, verbose)
     ks._numint = NormNumint()
     return ks
