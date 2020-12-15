@@ -15,7 +15,8 @@ BASIS = 'def2-qzvppd'
 #BASIS = 'aug-cc-pvtz'
 FUNCTIONAL = 'SCAN'
 MOL_IDS = next(os.walk(get_save_dir(SAVE_ROOT, 'UCCSD', BASIS, 'atoms')))[1]
-MOL_IDS = ['atoms/{}'.format(s) for s in MOL_IDS]
+MOL_IDSP = next(os.walk(get_save_dir(SAVE_ROOT, 'UKS', BASIS, 'atoms', FUNCTIONAL)))[1]
+MOL_IDS = ['atoms/{}'.format(s) for s in MOL_IDS if s in MOL_IDSP]
 IS_RESTRICTED_LIST = [False] * len(MOL_IDS)
 
 MOL_IDS2 = next(os.walk(get_save_dir(SAVE_ROOT, 'RKS', BASIS, 'atoms', FUNCTIONAL)))[1]
@@ -54,8 +55,8 @@ mlfunc = load('mlfunc10map_heg_v47_clean.joblib')
 #store_full_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS, IS_RESTRICTED_LIST, mlfunc, exact=True)
 #FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/descn3_ml')
 #store_full_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS, IS_RESTRICTED_LIST, mlfunc, exact=False)
-FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/alpha3_ml')
-store_new_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS, IS_RESTRICTED_LIST, mlfunc, exact=False)
+FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/alpha6_ex')
+store_new_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS, IS_RESTRICTED_LIST, mlfunc, exact=True)
 
 #FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/vv10')
 #store_vv10_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS, IS_RESTRICTED_LIST)

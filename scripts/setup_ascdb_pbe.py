@@ -5,14 +5,14 @@ import ase.io
 
 fw_lst = []
 
-with open('data_files/ascdb_names.txt', 'r') as f:
+with open('data_files/bh76_names.txt', 'r') as f:
     names = [name.strip() for name in f.readlines()]
 struct_dat = [read_accdb_structure(name) for name in names]
 
-functional_list = ['pbe']
+functional_list = ['wB97M_V']
 
 for struct, mol_id, spin, charge in struct_dat:
-    for basis in ['def2-tzvppd']:
+    for basis in ['def2-qzvppd']:
         for functional in functional_list:
             fw_lst.append(make_dft_firework(struct, mol_id, basis,
                                             spin, functional = functional, charge = charge,

@@ -13,6 +13,7 @@ struct_strs = txt.split('\n\n')
 
 fw_lst = []
 
+names = []
 for struct_str in struct_strs:
     name, struct_str = struct_str.split('\n', 1)
     name = name[:-4]
@@ -28,7 +29,9 @@ for struct_str in struct_strs:
         raise ValueError('Could not determine spin for %s' % name)
     structio = StringIO(struct_str)
     struct = ase.io.read(structio, format='xyz')
-    print(name, spin, struct)
+    print(name, spin, struct, name in names)
+    names.append(name)
+    continue
     mol_id = 'augG2/' + name
     for basis in ['aug-cc-pvtz', 'cc-pcvtz']:
         fw_lst.append(make_dft_firework(struct, mol_id, basis,
