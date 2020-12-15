@@ -14,6 +14,7 @@ struct_strs = txt.split('\n\n')
 fw_lst = []
 
 functional_list = ['pbe', 'scan', 'b3lyp']
+functional_list = ['wB97M_V']
 
 for struct_str in struct_strs:
     name, struct_str = struct_str.split('\n', 1)

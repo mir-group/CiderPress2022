@@ -268,6 +268,42 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
+class NLNumInt2(NLNumInt):
+
+    def __init__(self, mlfunc_x, cx, c0, c1, dx, d0, d1,
+                 vv10_coeff = None, fterm_scale=2.0):
+        super(NLNumInt, self).__init__()
+        self.mlfunc_x = mlfunc_x
+        from mldftdat.models import map_c8
+        self.mlfunc_x.corr_model = map_c8.VSXCContribs(
+                                    cx, c0, c1, dx, d0, d1,
+                                    fterm_scale=fterm_scale)
+
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
+
+class NLNumInt3(NLNumInt):
+
+    def __init__(self, mlfunc_x, d, dx, cx,
+                 vv10_coeff = None, fterm_scale=2.0):
+        super(NLNumInt, self).__init__()
+        self.mlfunc_x = mlfunc_x
+        from mldftdat.models import map_c9
+        self.mlfunc_x.corr_model = map_c9.VSXCContribs(
+                                    d, dx, cx,
+                                    fterm_scale=fterm_scale)
+
+        if vv10_coeff is None:
+            self.vv10 = False
+        else:
+            self.vv10 = True
+            self.vv10_b, self.vv10_c = vv10_coeff
+
+
 def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     import time
 
@@ -470,6 +506,87 @@ def setup_uks_calc(mol, mlfunc_x, css=DEFAULT_CSS, cos=DEFAULT_COS,
     uks._numint = NLNumInt(mlfunc_x, css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff)
+    uks.grids.level = grid_level
+    uks.grids.build()
+    return uks
+
+C0 = [0., 0., 0., 0.]
+D0 = [0.92642313, 0.0612833 , 0.55086957, 0.49373008]
+C1 = [0., 0., 0., 0.]
+D1 = [-0.00482615, -0.10379149,  0.03454682,  0.09281949]
+DX = [ 0.27384179, -0.09953398,  0.11309756, -0.35438573,  0.65416998,
+         -0.06390127,  0.2808232 ,  0.06472575,  0.07132121]
+CX = [ 0.01850537,  0.10110328,  0.08678594,  0.17720392,  0.22679325,
+         -1.06448733, -0.24174785,  0.64852308,  0.06586449, -0.06078151,
+          -0.73831308, -0.63320915, -1.10079207, -0.20164018, -0.59467933]
+
+C0 = [0., 0., 0., 0.]
+D0 = [ 0.96256403, -0.08511496,  0.16299247,  0.99210899]
+C1 = [0., 0., 0., 0.]
+D1 = [-0.00694123, -0.08840102,  0.01700766,  0.08447464]
+DX = [ 0.28905389, -0.0998426 ,  0.12869457, -0.38328385,  0.64922815,
+ -0.06751789,  0.277406  ,  0.06919556,  0.06402194, -0.00963708,
+  0.10089947,  0.09044604,  0.19056558,  0.22981789,0,0,0,0,0]
+CX = [-1.08582313, -0.24356876,  0.67803951,  0.04004844, -0.06792441,
+ -0.70230199, -0.61922714, -1.08000744, -0.20070822, -0.59659058,0, 0,0,0,0]
+
+def setup_rks_calc2(mol, mlfunc_x, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    rks = dft.RKS(mol)
+    rks.xc = None
+    rks._numint = NLNumInt2(mlfunc_x, cx, c0, c1, dx, d0, d1,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
+    rks.grids.level = grid_level
+    rks.grids.build()
+    return rks
+
+def setup_uks_calc2(mol, mlfunc_x, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    uks = dft.UKS(mol)
+    uks.xc = None
+    uks._numint = NLNumInt2(mlfunc_x, cx, c0, c1, dx, d0, d1,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
+    uks.grids.level = grid_level
+    uks.grids.build()
+    return uks
+
+V3_D = [0.01562573, 0.09629376, 0.09005671, 0.05556645, 0.05636563, 0.05542296]
+V3_DX = [ 0.00876918,  0.1533378 , -0.07827145,  0.42990607,  0.81886636,
+         -1.06456548,  0.55013466, -1.12063554, -0.22586826,  0.17390912,
+           0.07342244, -0.55254566, -0.46900012,  0.01055503, -0.65602093]
+V3_CX = [ 0.99435021,  0.90440151,  0.29465447, -0.14204387,  1.22866657,
+         -2.55106949,  0.27385608, -0.1678324 , -0.51022371, -0.74233395,
+           0.87083219,  0.35525901, -2.21769842]
+
+V3_D = [0.101416  , 0.19702274, 0.04648554, 0.04476192, 0.00893325, 0.05131002]
+V3_DX = [ 0.00303226,  0.16693523, -0.08922236,  0.36682272,  0.5517252 ,
+         -0.4492544 ,  0.392798  , -0.7964105 , -0.0913046 ,  0.0764949 ,
+           0.15904028, -0.45308748, -0.16027391,  0.01336907, -0.15479775]
+V3_CX = [ 0.58162349,  0.65215009, -0.09015343, -0.20392164,  0.73793179,
+         -1.47213268,  0.02184713, -0.43104224, -0.38730572, -0.64877241,
+           0.22477249, -0.1231774 , -1.6799939 ]
+
+def setup_rks_calc3(mol, mlfunc_x, d=V3_D, dx=V3_DX, cx=V3_CX,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    rks = dft.RKS(mol)
+    rks.xc = None
+    rks._numint = NLNumInt3(mlfunc_x, d, dx, cx,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
+    rks.grids.level = grid_level
+    rks.grids.build()
+    return rks
+
+def setup_uks_calc3(mol, mlfunc_x, d=V3_D, dx=V3_DX, cx=V3_CX,
+                    vv10_coeff=None, fterm_scale=2.0, grid_level=3):
+    print("UKS ARGS", gto.mole.pack(mol), d, dx, cx, vv10_coeff, fterm_scale, grid_level)
+    uks = dft.UKS(mol)
+    uks.xc = None
+    uks._numint = NLNumInt3(mlfunc_x, d, dx, cx,
+                            vv10_coeff=vv10_coeff,
+                            fterm_scale=fterm_scale)
     uks.grids.level = grid_level
     uks.grids.build()
     return uks

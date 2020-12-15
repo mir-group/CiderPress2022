@@ -3,17 +3,19 @@ from mldftdat.dft.numint5 import _eval_x_0, setup_aux
 from mldftdat.dft.numint6 import _eval_xc_0
 from pyscf.dft.libxc import eval_xc
 from mldftdat.dft.correlation import *
-from mldftdat.workflow_utils import get_save_dir
+from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
 from mldftdat.models.map_c2 import VSXCContribs
 from mldftdat.density import get_exchange_descriptors2
 import os
 import numpy as np
+import yaml
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 DEFAULT_FUNCTIONAL = 'SCAN'
+#DEFAULT_FUNCTIONAL = 'SGXCORR_ALPHA3'
 #DEFAULT_BASIS = 'aug-cc-pvtz'
 DEFAULT_BASIS = 'def2-qzvppd'
 
@@ -1176,6 +1178,192 @@ def get_new_contribs2(dft_dir, restricted, mlfunc, exact=True):
     return np.concatenate([[Ex, Exscan], Eterms, Etermso, Fterms,
                           [Ecscan, dft_analyzer.fx_total]], axis=0)
 
+def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
+
+    from mldftdat.models import map_c10
+
+    corr_model = map_c10.VSXCContribs(None, None, None, None,
+                                      fterm_scale=2.0)
+
+    if restricted:
+        dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0]
+    else:
+        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
+        rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
+
+    rho_data = dft_analyzer.rho_data
+    weights = dft_analyzer.grid.weights
+    grid = dft_analyzer.grid
+    spin = dft_analyzer.mol.spin
+    mol = dft_analyzer.mol
+    rdm1 = dft_analyzer.rdm1
+    E_pbe = dft_analyzer.e_tot
+
+    auxmol, ao_to_aux = setup_aux(mol, 0)
+    mol.ao_to_aux = ao_to_aux
+    mol.auxmol = auxmol
+
+    if restricted:
+        rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
+    else:
+        rho_data_u, rho_data_d = rho_data[0], rho_data[1]
+
+    rhou = rho_data_u[0] + 1e-20
+    g2u = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_u[1:4])
+    tu = rho_data_u[5] + 1e-20
+    rhod = rho_data_d[0] + 1e-20
+    g2d = np.einsum('ir,ir->r', rho_data_d[1:4], rho_data_d[1:4])
+    td = rho_data_d[5] + 1e-20
+    ntup = (rhou, rhod)
+    gtup = (g2u, g2d)
+    ttup = (tu, td)
+    rhot = rhou + rhod
+    g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
+    g2 = g2u + 2 * g2o + g2d
+
+    zeta = (rhou - rhod) / (rhot)
+    ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
+    CU = 0.3 * (3 * np.pi**2)**(2.0/3)
+
+    co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
+    co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
+    co0 *= rhot
+    co1 *= rhot
+    cx = co0
+    co = co1
+
+    nu, nd = rhou, rhod
+
+    N = dft_analyzer.grid.weights.shape[0]
+    if restricted:
+        if exact:
+            ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
+        else:
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
+            xdesc = get_exchange_descriptors2(dft_analyzer, restricted=True)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            ex = LDA_FACTOR * xef * rho_data[0]**(1.0/3)
+        exu = ex
+        exd = ex
+        exo = ex
+        rhou = rho_data[0] / 2
+        rhod = rho_data[0] / 2
+        rhot = rho_data[0]
+        Ex = np.dot(exo * rhot, weights)
+    else:
+        if exact:
+            exu = dft_analyzer.fx_energy_density_u / (rho_data[0][0] + 1e-20)
+            exd = dft_analyzer.fx_energy_density_d / (rho_data[1][0] + 1e-20)
+        else:
+            desc  = np.zeros((N, len(mlfunc.desc_list)))
+            ddesc = np.zeros((N, len(mlfunc.desc_list)))
+            xdesc_u, xdesc_d = get_exchange_descriptors2(dft_analyzer, restricted=False)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_u, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exu = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[0][0]**(1.0/3)
+            for i, d in enumerate(mlfunc.desc_list):
+                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc_d, deriv = 1)
+            xef = mlfunc.get_F(desc)
+            exd = 2**(1.0/3) * LDA_FACTOR * xef * rho_data[1][0]**(1.0/3)
+        rhou = rho_data[0][0]
+        rhod = rho_data[1][0]
+        rhot = rho_data[0][0] + rho_data[1][0]
+        exo = (exu * rho_data[0][0] + exd * rho_data[1][0])
+        Ex = np.dot(exo, weights)
+        exo /= (rhot + 1e-20)
+
+    exu = exu * rhou
+    exd = exd * rhod
+    exo = exo * rhot
+
+    FUNCTIONAL = DEFAULT_FUNCTIONAL
+    try:
+        Exscan = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[0] \
+                 * (rho_data_u[0] + rho_data_d[0])
+        Exscan = np.dot(Exscan, weights)
+    except:
+        Exscan = dft_analyzer.fx_total
+        with open(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', FUNCTIONAL, 'settings.yaml'), 'r') as f:
+            settings = yaml.load(f, Loader = yaml.Loader)
+        corr_model_iter = map_c9.VSXCContribs(settings['d'], settings['dx'],
+                                              settings['cx'],
+                                              fterm_scale=settings['fterm_scale'])
+        exc, vxc = corr_model_iter.xefc2(rhou, rhod, g2u, g2o, g2d,
+                                         tu, td, exu, exd)
+        Exscan += np.dot(dft_analyzer.grid.weights, exc)
+    Ecscan = eval_xc(',MGGA_C_REVSCAN', (rho_data_u, rho_data_d), spin = 1)[0] \
+                    * (rho_data_u[0] + rho_data_d[0])
+    Ecscan = np.dot(Ecscan, weights)
+
+    print('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
+    if (np.abs(Ex - dft_analyzer.fx_total) > 1e-7):
+        print('LARGE ERROR')
+    #assert np.abs(Ex - dft_analyzer.fx_total) < 1e-4
+
+    ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
+    ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
+    ldaxt = ldaxu + ldaxd
+
+    gamma = 2**(2./3) * 0.004
+    gammass = 0.004
+    chi = corr_model.get_chi_full_deriv(rhot + 1e-16, zeta, g2, tu + td)[0]
+    chiu = corr_model.get_chi_full_deriv(rhou + 1e-16, 1, g2u, tu)[0]
+    chid = corr_model.get_chi_full_deriv(rhod + 1e-16, 1, g2d, td)[0]
+    x2 = corr_model.get_x2(nu+nd, g2)[0]
+    x2u = corr_model.get_x2(nu, g2u)[0]
+    x2d = corr_model.get_x2(nd, g2d)[0]
+    amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
+    chidesc = np.array(corr_model.get_chi_desc(chi)[:4])
+    chidescu = np.array(corr_model.get_chi_desc(chiu)[:4])
+    chidescd = np.array(corr_model.get_chi_desc(chid)[:4])
+    Fx = exo / ldaxt
+    Fxu = exu / ldaxu
+    Fxd = exd / ldaxd
+    corrterms = np.append(corr_model.get_separate_xef_terms(Fx),
+                          chidesc, axis=0)
+    extermsu = np.append(corr_model.get_separate_sl_terms(x2u, chiu, gammass)[0],
+                         corr_model.get_separate_xefa_terms(Fxu, chiu)[0], axis=0)
+    extermsd = np.append(corr_model.get_separate_sl_terms(x2d, chid, gammass)[0],
+                         corr_model.get_separate_xefa_terms(Fxd, chid)[0], axis=0)
+
+    cmscale = 17.0 / 3
+    cmix = cmscale * (1 - chi) / (cmscale - chi)
+    #cmix_terms = np.array([cmix * (1-cmix), cmix**2 * (1-cmix),
+    #                       cmix * (1-cmix)**2, cmix**2 * (1-cmix)**2])
+    cmix_terms0 = np.array([chi**2-chi, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
+                           chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
+    cmix_terms = np.array([chi, chi**2, chi**3-chi, chi**4-chi**2, chi**5-chi**3,
+                           chi**6-chi**4, chi**7-chi**5, chi**8-chi**6])
+    cmix_termsu = np.array([chiu, chiu**2, chiu**3-chiu, chiu**4-chiu**2, chiu**5-chiu**3,
+                            chiu**6-chiu**4, chiu**7-chiu**5, chiu**8-chiu**6])
+    cmix_termsd = np.array([chid, chid**2, chid**3-chid, chid**4-chid**2, chid**5-chid**3,
+                            chid**6-chid**4, chid**7-chid**5, chid**8-chid**6])
+    Ecscan = np.dot(co * cmix + cx * (1-cmix), weights)
+    Eterms = np.dot(cmix_terms0 * (cx-co), weights)
+    Eterms2 = np.dot(cmix_terms * cx, weights)
+    Eterms2[0] = np.dot(co * amix * (Fx-1), weights)
+    Eterms2[1] = np.dot(cx * (Fx-1), weights)
+    Eterms3 = np.append(np.dot(corrterms[1:5] * cx, weights),
+                        np.dot(corrterms[1:5] * (1-chi**2) * (cx-co), weights))
+    #Eterms3[-1] = np.dot((Fx-1) * cx, weights)
+    #Eterms3[-2] = np.dot((Fx-1) * (co * cmix + cx * (1-cmix)), weights)
+    Fterms = np.dot(extermsu * ldaxu * amix, weights)
+    Fterms += np.dot(extermsd * ldaxd * amix, weights)
+    Fterms2 = np.dot(cmix_termsu * ldaxu * amix, weights)
+    Fterms2 += np.dot(cmix_termsd * ldaxd * amix, weights)
+    Fterms3 = np.dot(cmix_termsu * (Fx-1) * ldaxu * amix, weights)
+    Fterms3 += np.dot(cmix_termsd * (Fx-1) * ldaxd * amix, weights)
+
+    #                                    7,      8,       8,       28,     8,       8,
+    return np.concatenate([[Ex, Exscan], Eterms, Eterms2, Eterms3, Fterms, Fterms2, Fterms3,
+                          [Ecscan, dft_analyzer.fx_total]], axis=0)
+
+
 def store_full_contribs_dataset(FNAME, ROOT, MOL_IDS,
                                 IS_RESTRICTED_LIST, MLFUNC,
                                 exact=True, BASIS=DEFAULT_BASIS,
@@ -1214,6 +1402,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
     XSIZE = 14
     SIZE = 2+5+5+3*XSIZE+5+2
     SIZE = 2+9+9+34+2
+    SIZE = 2+7+8+8+28+8+8+2
     X = np.zeros([0,SIZE])
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
@@ -1221,7 +1410,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
         print(mol_id)
 
         if mol_id_full:
-            dft_dir = mol_id
+            dft_dir = mol_id.replace('SCAN', DEFAULT_FUNCTIONAL)
         elif is_restricted:
             dft_dir = get_save_dir(ROOT, 'RKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
@@ -1229,7 +1418,7 @@ def store_new_contribs_dataset(FNAME, ROOT, MOL_IDS,
             dft_dir = get_save_dir(ROOT, 'UKS', BASIS,
                 mol_id, functional = DEFAULT_FUNCTIONAL)
 
-        sl_contribs = get_new_contribs2(dft_dir, is_restricted,
+        sl_contribs = get_new_contribs3(dft_dir, is_restricted,
                                         MLFUNC, exact=exact)
         print(sl_contribs)
         assert (not np.isnan(sl_contribs).any())
@@ -1356,7 +1545,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha2_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha6_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1364,9 +1553,9 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha2_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'ai_alpha6_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
-    #vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
+    #atom_vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
     amols = yaml.load(f, Loader = yaml.Loader)
     f.close()
@@ -1380,23 +1569,30 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
+    amols = [gto.mole.unpack(mol) for mol in amols]
+    for mol in amols:
+        mol.build()
 
     Z_to_ind = {}
+    Z_to_ind_bsl = {}
+    ind_to_Z_ion = {}
     formulas = {}
     ecounts = []
     for i, mol in enumerate(mols):
         ecounts.append(mol.nelectron)
         if len(mol._atom) == 1:
-            Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
+            Z = atomic_numbers[mol._atom[0][0]]
+            Z_to_ind[Z] = i
         else:
             atoms = [atomic_numbers[a[0]] for a in mol._atom]
             formulas[i] = Counter(atoms)
-    #        if formulas[i]['C'] == 4 and formulas[i]['H'] == 9 and len(mol._atom) == 13:
-    #            badind = i
-    #mlx = np.append(mlx[:i], mlx[i+1:], axis=0)
-    #mols = mols[:i] + mols[i+1:]
-    #ecounts = ecounts[:i] + ecounts[i+1:]
-    #valset_bools_init = np.append(valset_bools_init[:i], valset_bools_init[i+1:])
+
+    for i, mol in enumerate(amols):
+        Z = atomic_numbers[mol._atom[0][0]]
+        if mol.spin == ground_state_magnetic_moments[Z]:
+            Z_to_ind_bsl[Z] = i
+        else:
+            ind_to_Z_ion[i] = Z
 
     ecounts = np.array(ecounts)
 
@@ -1459,7 +1655,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 E_c = np.append(E_c, mlx[:,41:45], axis=1)
                 E_c = np.append(E_c, mlx[:,45:59], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)
-            else:
+            elif version == 'c':
                 E_dft = etot[:,0]
                 E_ccsd = etot[:,1]
                 E_x = mlx[:,0]
@@ -1473,19 +1669,44 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 # 20:39 -- sl ex terms
                 # 39:54 -- nl ex terms
                 E_c = np.append(mlx[:,3:11], mlx[:,12:20], axis=1)
-                E_c = np.append(mlx[:,7:11], mlx[:,16:20], axis=1)
-                E_c = np.append(E_c, mlx[:,20:34], axis=1)
-                E_c = np.append(E_c, mlx[:,39:49], axis=1)
+                #E_c = np.append(mlx[:,7:11], mlx[:,16:20], axis=1)
+                E_c = np.append(E_c, mlx[:,20:39], axis=1)
+                E_c = np.append(E_c, mlx[:,39:54], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_c[:,6])
+                noise = np.ones(E_c.shape[1]) * 1e-5
+                noise[:4] /= 1000
+            else:
+                E_dft = etot[:,0]
+                E_ccsd = etot[:,1]
+                E_x = mlx[:,0]
+                E_xscan = mlx[:,1]
+                E_cscan = mlx[:,-2]
+                #E_c = mlx[:,4:38]
+                #E_c = np.append(mlx[:,4:10], mlx[:,10:26], axis=1)
+                #E_c = np.append(E_c, mlx[:,26:54], axis=1)
+                #E_c = np.append(E_c, mlx[:,3:4]-mlx[:,2:3], axis=1)
+                E_c = np.zeros((E_ccsd.shape[0], 0))
+                E_c = np.append(E_c, mlx[:,2:9], axis=1)
+                #E_c = np.append(E_c, mlx[:,3:9], axis=1)
+                E_c = np.append(E_c, mlx[:,9:17], axis=1)
+                #E_c = np.append(E_c, mlx[:,11:17], axis=1)
+                #E_c = np.append(E_c, mlx[:,17:25], axis=1)
+                E_c = np.append(E_c, mlx[:,25:30], axis=1)
+                E_c = np.append(E_c, mlx[:,30:53], axis=1)
+                #E_c = np.append(E_c, mlx[:,53:61], axis=1)
+                #E_c = np.append(E_c, mlx[:,61:69], axis=1)
+                diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_vv10)# - mlx[:,37])
+                means = np.mean(np.abs(E_c), axis=0)
+                noise = np.ones(E_c.shape[1]) * 0.5e-3
+                noise[7] /= 5
+                noise[8] /= 5
+                #noise[0] *= 4
+                noise[15:] /= 5
 
-            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan
+            return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
 
-        E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan = get_terms(etot, mlx)
-        noise = np.ones(E_c.shape[1]) * 1e-3
-        noise[:4] /= 100
-        #noise[12] /= 100
-        #noise[16:16+19] /= 10
-        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = get_terms(aetot, amlx)
+        E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise = get_terms(etot, mlx)
+        E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2, noise = get_terms(aetot, amlx)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
         E_ccsd = np.append(E_ccsd, E_ccsd2)
@@ -1504,7 +1725,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
-                weights.append(1.0)
+                #weights.append(1.0)
+                weights.append(1.0 / (len(mols[i]._atom) - 1))
                 formula = formulas[i]
                 if formula.get(1) == 2 and formula.get(8) == 1 and len(list(formula.keys()))==2:
                     waterind = i
@@ -1514,7 +1736,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                     y[i] -= formula[Z] * y[Z_to_ind[Z]]
                     Ecc[i] -= formula[Z] * Ecc[Z_to_ind[Z]]
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
-               # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
+                # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
                 if mols[i].nelectron == 1:
                     hind = i
@@ -1528,7 +1750,17 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(20 / mols[i].nelectron)
+            print(amols[i].nelectron, Ecc[len(mols)+i], Edf[len(mols)+i])
+            weights.append(8 / amols[i].nelectron)# if amols[i].nelectron <= 10 else 0.001)
+            if i in ind_to_Z_ion.keys():
+                j = len(mols) + i
+                k = len(mols) + Z_to_ind_bsl[ind_to_Z_ion[i]]
+                X[j,:] -= X[k,:]
+                y[j] -= y[k]
+                Ecc[j] -= Ecc[k]
+                Edf[j] -= Edf[k]
+                weights[-1] = 4
+                #weights[-1] = 0
 
         weights = np.array(weights)
         
@@ -1576,7 +1808,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         print(Xts.shape, yts.shape)
         print(score, score0)
-        print((Ecc - y + np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
+        print((Ecc)[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print((y - Ecc - np.dot(X, coef))[[hind,oind,waterind]], Ecc[oind], Edf[oind], Ecc[waterind], Edf[waterind])
         print('20', (np.dot(E_c[inds,:20], coef[:20]) + E0)[[hind, oind, waterind]])
         print('26', (np.dot(E_c[inds,:26], coef[:26]) + E0)[[hind, oind, waterind]])
@@ -1587,10 +1819,13 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         print('50', (np.dot(E_c[inds], coef) + E0)[[hind, oind, waterind]])
         print(coef[20:32], coef[38:44])
         print((E_x[inds])[[hind, oind, waterind]])
-        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)))
-        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]))
-        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)))
-        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)))
+        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)), np.mean((Ecc-Edf)), np.std(Ecc-Edf))
+        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]), np.mean((Ecc-Edf)[valset_bools]),
+                np.std((Ecc-Edf)[valset_bools]))
+        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))), np.mean(y - np.dot(X, coef)),
+                np.std(y - np.dot(X,coef)))
+        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))), np.mean(yts - np.dot(Xts, coef)),
+                np.std(yts-np.dot(Xts,coef)))
         print(np.max(np.abs(y - np.dot(X, coef))), np.max(np.abs(Ecc - Edf)))
         print(np.max(np.abs(yts - np.dot(Xts, coef))), np.max(np.abs(Ecc - Edf)[valset_bools]))
 
@@ -1799,7 +2034,7 @@ def solve_from_stored_ae_ml(DATA_ROOT):
         coef_sets.append(coef)
         scores.append(score)
 
-        break
+        #break
 
     return coef_sets, scores
 
@@ -1818,10 +2053,10 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST, VAL_SET=None, 
             else:
                 pbe_analyzer = UHFAnalyzer.load(mol_id+'/data.hdf5')
         elif is_restricted:
-            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
+            pbe_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id, functional='SCAN')#'SGXCORR_ALPHA3')
             pbe_analyzer = RHFAnalyzer.load(pbe_dir + '/data.hdf5')
         else:
-            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional = 'PBE')
+            pbe_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id, functional='SCAN')#'SGXCORR_ALPHA3')
             pbe_analyzer = UHFAnalyzer.load(pbe_dir + '/data.hdf5')
 
         mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))

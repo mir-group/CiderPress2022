@@ -191,9 +191,9 @@ class MLSCFCalc(FiretaskBase):
                 settings = {}
         if self.get('mlfunc_c_file') is None:
             if calc_type == 'RKS':
-                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+                calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
             else:
-                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+                calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
         else:
             if calc_type == 'RKS':
                 calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
@@ -238,7 +238,7 @@ class SGXCorrCalc(FiretaskBase):
                        'mlfunc_name', 'mlfunc_settings_file']
     optional_params = ['spin', 'charge', 'max_conv_tol']
 
-    DEFAULT_MAX_CONV_TOL = 1e-7
+    DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
         atoms = Atoms.fromdict(self['struct'])
@@ -259,9 +259,9 @@ class SGXCorrCalc(FiretaskBase):
             if settings is None:
                 settings = {}
         if calc_type == 'RKS':
-            calc = numint.setup_rks_calc2(mol, **settings)
+            calc = numint.setup_rks_calc4(mol, **settings)
         else:
-            calc = numint.setup_uks_calc2(mol, **settings)
+            calc = numint.setup_uks_calc4(mol, **settings)
 
         #calc.damp = 6
         #calc.diis_start_cycle = 6
@@ -712,3 +712,139 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
         update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
 
         return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
+class GridBenchmark(FiretaskBase):
+    """
+    Firetask object for benchmarking radial grid schemes using pyscf.
+    Args:
+        functional (str): XC functional name
+        radi_method (int): Radial scheme code (see list of radi methods in run_task)
+        rad (int): Number of radial grid points
+        ang (int): Number of angular grid points
+        prune (bool): Whether grid pruning was used.
+        mlfunc_file (str): For ML functional, parameter file
+        mlfunc_settings_file (str): For ML functional, settings file
+        normalize (str): Whether to use the overlap matrix normalization scheme.
+    """
+
+    required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune']
+    optional_params = ['mlfunc_file', 'mlfunc_settings_file', 'normalize']
+
+    DEFAULT_MAX_CONV_TOL = 1e-9
+
+    def run_task(self, fw_spec):
+        import yaml, joblib
+        from pyscf import gto, dft, scf
+
+        # initialize Mole objects for each system
+        mols = {}
+        mols['H'] = gto.M(atom='H', basis='def2-qzvppd', spin=1)
+        mols['O'] = gto.M(atom='O', basis='def2-qzvppd', spin=2)
+        mols['N'] = gto.M(atom='N', basis='def2-qzvppd', spin=3)
+        mols['S'] = gto.M(atom='S', basis='def2-qzvppd', spin=2)
+        mols['F'] = gto.M(atom='F', basis='def2-qzvppd', spin=1)
+        mols['Ar'] = gto.M(atom='Ar', basis='def2-qzvppd', spin=0)
+        mols['H2O'] = gto.M(
+            atom='''O    0.0   0.0       0.1173
+                    H    0.0   0.7572   -0.4692
+                    H    0.0   -0.7572  -0.4692
+            ''',
+            basis = 'def2-qzvppd', spin=0
+        )
+        mols['NO'] = gto.M(atom='N 0 0 0; O 0 0 1.15', basis='def2-qzvppd', spin=1)
+        mols['SF6'] = gto.M(
+            atom=[('S', [0.0, 0.0, 0.0]),\
+            ('F', [0.0, 0.0, 2.949295562608692]),\
+            ('F', [0.0, 2.949295562608692, 0.0]),\
+            ('F', [2.949295562608692, 0.0, 0.0]),\
+            ('F', [0.0, -2.949295562608692, 0.0]),\
+            ('F', [-2.949295562608692, 0.0, 0.0]),\
+            ('F', [0.0, 0.0, -2.949295562608692])],
+            unit='Bohr',
+            basis='def2-qzvppd', spin=0
+        )
+        dimers = {}
+        dists = np.exp(np.linspace(np.log(3.4), np.log(10)))
+        for i in range(dists.shape[0]):
+            dimers[int(round(dists[i]*100))] = gto.M(
+                    atom='Ar 0 0 0; Ar 0 0 {}'.format(dists[i]),
+                    basis='def2-qzvppd', spin=0)
+
+        from pyscf.dft import gen_grid, radi
+        grid = (self['rad'], self['ang'])
+        RADI_METHODS = [radi.treutler, radi.gauss_chebyshev, radi.double_exponential,\
+                        radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_jacobi]
+        radi_method = RADI_METHODS[self['radi_method']]
+
+        # perform DFT calculations
+        results = {}
+        for name, mol in list(mols.items()) + list(dimers.items()):
+            mol.build()
+            if self.get('mlfunc_file') is not None:
+                with open(self['mlfunc_settings_file'], 'r') as f:
+                    settings = yaml.load(f, Loader = yaml.Loader)
+                    if settings is None:
+                        settings = {}
+                from mldftdat.dft import numint6 as numint
+                mlfunc = joblib.load(self['mlfunc_file'])
+                if mol.spin == 0:
+                    calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
+                else:
+                    calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
+            else:
+                if mol.spin == 0:
+                    calc = dft.RKS(mol)
+                    calc.xc = self['functional']
+                else:
+                    calc = dft.UKS(mol)
+                    calc.xc = self['functional']
+                if self['functional'] == 'wB97M_V':
+                    print ('Specialized wB97M-V params')
+                    calc.nlc = 'VV10'
+                    calc.grids.prune = None
+                    calc.grids.level = 4
+                    if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
+                        calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+                    else:
+                        calc.nlcgrids.prune = None
+                    calc.nlcgrids.level = 1
+            for site in mol._atom:
+                calc.grids.atom_grid = {site[0]: grid}
+            calc.grids.prune = gen_grid.nwchem_prune if self['prune'] else None
+            calc.grids.radi_method = radi_method
+            calc.DIIS = scf.diis.ADIIS
+            calc = scf.addons.remove_linear_dep_(calc)
+            if self.get('normalize'):
+                calc.grids.build()
+                calc = get_normalized_rho_integration(calc)
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
+            results[name] = {
+                'mol': gto.mole.pack(mol),
+                'e_tot': calc.e_tot,
+                'converged': calc.converged,
+                'time': stop_time - start_time
+            }
+
+        # save data to file
+        fname = 'gridbench_{}_{}_{}_{}_{}.yaml'.format(
+                    self['functional'],
+                    'nwchem' if self['prune'] else 'noprune',
+                    self['radi_method'],
+                    self['rad'],
+                    self['ang']
+                )
+        if self.get('normalize'):
+            fname = fname[:-5] + '_norm.yaml'
+
+        bench_dir = os.path.join(os.environ['MLDFTDB'], 'BENCHMARK')
+        os.makedirs(bench_dir, exist_ok=True)
+        save_file = os.path.join(bench_dir, fname)
+        with open(save_file, 'w') as f:
+            yaml.dump(results, f)
+
+        return FWAction(stored_data={'save_file': save_file})
+

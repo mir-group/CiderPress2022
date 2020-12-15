@@ -66,14 +66,11 @@ def fill_vxc_base_os_(vxc, vterm, multerm):
 
 class VSXCContribs():
 
-    def __init__(self, cx, c0, c1, dx, d0, d1,
+    def __init__(self, d, dx, cx,
                  fterm_scale=1.0):
         self.cx = cx
-        self.c0 = c0
-        self.c1 = c1
         self.dx = dx
-        self.d0 = d0
-        self.d1 = d1
+        self.d = d
         self.cf = fterm_scale
 
     def get_rs(self, n):
@@ -270,14 +267,14 @@ class VSXCContribs():
         return res
 
     def get_separate_sl_terms(self, x2, chi, gamma):
-        desc = np.zeros((19, x2.shape[0]))
-        dx2 = np.zeros((19, x2.shape[0]))
-        dchi = np.zeros((19, x2.shape[0]))
+        desc = np.zeros((15, x2.shape[0]))
+        dx2 = np.zeros((15, x2.shape[0]))
+        dchi = np.zeros((15, x2.shape[0]))
         u = gamma * x2 / (1 + gamma * x2)
         du = gamma / (1 + gamma * x2)**2
         a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
         ind = 0
-        for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+        for a, da in zip([a0, a1, a2], [da0, da1, da2]):
             desc[ind] = a
             dchi[ind] = da
             ind += 1
@@ -288,7 +285,7 @@ class VSXCContribs():
             desc[ind] = diff
             dx2[ind] = ddiff
             ind += 1
-            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+            for a, da in zip([a0, a1, a2], [da0, da1, da2]):
                 desc[ind] = diff * a
                 dx2[ind] = ddiff * a
                 dchi[ind] = diff * da
@@ -299,9 +296,9 @@ class VSXCContribs():
         x, dx = self.get_separate_xef_terms(F, return_deriv=True)
         x = x[1:4]
         dx = dx[1:4]
-        desc = np.zeros((15, F.shape[0]))
-        df = np.zeros((15, F.shape[0]))
-        dchi = np.zeros((15, F.shape[0]))
+        desc = np.zeros((13, F.shape[0]))
+        df = np.zeros((13, F.shape[0]))
+        dchi = np.zeros((13, F.shape[0]))
         a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi)
         ind = 0
         for i in range(3):
@@ -310,11 +307,13 @@ class VSXCContribs():
             desc[ind] = diff
             df[ind] = ddiff
             ind += 1
-            for a, da in zip([a0, a1, a2, a3], [da0, da1, da2, da3]):
+            for a, da in zip([a0, a1, a2], [da0, da1, da2]):
                 desc[ind] = diff * a 
                 df[ind] = ddiff * a 
                 dchi[ind] = diff * da
                 ind += 1
+        desc[ind] = F-1
+        df[ind] = 1
         return desc, df, dchi
 
     def sl_terms(self, x2, chi, gamma, c):
@@ -384,19 +383,26 @@ class VSXCContribs():
                deriv*(-tmp4 / D)
 
     def get_chi_desc(self, chi):
-        return chi**2, chi, chi**6, chi**3, 2*chi, np.ones_like(chi), 6*chi**5, 3*chi**2
+        return chi, chi**2, chi**3, chi**4, np.ones_like(chi), 2*chi, 3*chi**2, 4*chi**3
+
+    def get_chi_desc2(self, chi):
+        y = np.zeros((6, chi.shape[0]))
+        dy = np.zeros((6, chi.shape[0]))
+        for i in range(6):
+            y[i] = chi**(i+3) - chi**(i+1)
+            dy[i] = (i+3) * chi**(i+2) - (i+1) * chi**(i)
+        return y, dy
 
     def get_amix(self, n, zeta, x2, chi):
         zeta = np.minimum(zeta, 1-1e-8)
         zeta = np.maximum(zeta, -1+1e-8)
         phi = 0.5 * ((1+zeta)**(2./3) + (1-zeta)**(2./3))
-        chip = 0.5 * (1 - np.cos(np.pi*chi**4))
-        num = 1 - chip * zeta**12
+        num = 1 - chi**4 * zeta**12
         t2 = (np.pi / 3)**(1./3) / (16 * phi**2) * x2 * n**(1./3)
         den = 1 + 0.5 * t2
         f = num / den
-        dfdchi = -zeta**12 / den * (8 * np.pi * chi**3) * np.sin(np.pi * chi**4)
-        dfdz = -12 * zeta**11 * chip / den
+        dfdchi = -zeta**12 / den * 4 * chi**3
+        dfdz = -12 * zeta**11 * chi**4 / den
         dfdt2 = -0.5 * num / den**2
         dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) - (1-zeta)**(-1./3))
         dfdz += dfdt2 * dt2dz
@@ -452,40 +458,21 @@ class VSXCContribs():
         tot = 0
 
         gammax = 0.004
-        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi[0])
-        adesc = np.array([a0,a1,a2,a3])
-        dadesc = np.array([da0,da1,da2,da3])
-        sl0 = np.dot(self.d0, adesc)
-        dsl0dchi = np.dot(self.d0, dadesc)
-        sl1 = np.dot(self.d1, adesc)
-        dsl1dchi = np.dot(self.d1, dadesc)
+        achi, dachi = self.get_chi_desc2(chi[0])
+        slc = 3 * (1 - chi[0]) / (3 - chi[0]) - np.dot(self.d, achi)
+        dslc = (-6) / (3 - chi[0])**2 - np.dot(self.d, dachi)
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
         sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.dx)
         nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
         nld, dnlddf, dnlddchi = self.nl_terms(fd, chid[0], self.cx)
 
-        y0, deriv0 = self.xef_terms(ft, self.c0)
-        y1, deriv1 = self.xef_terms(ft, self.c1)
-
-        tot += c1 * (1-chi[0]**6)
-        tot += sl0 * c0
-        tot += sl1 * c1 * (1-chi[0]**6)
+        tot += c1 * slc + c0 * (1 - slc)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
-        tot += y0 * c0
-        tot += y1 * c1 * (1-chi[0]**6)
         tot += ldaxm[0] * nlu
         tot += ldaxm[1] * nld
-        # enhancment terms on c0
-        vtmp[3] += c0 * dsl0dchi
-        vtmp[4] += c0 * deriv0
-        # enhancment terms on c1
-        tmp = c1 * (1-chi[0]**6)
-        vtmp[3] += tmp * dsl1dchi
-        vtmp[4] += tmp * deriv1
-        vtmp[3] += -6 * chi[0]**5 * c1 * (sl1 + y1)
-        
-        vtmp[3] += -6 * chi[0]**5 * c1
+        # enhancment terms on c1 and c0
+        vtmp[3] += (c1 - c0) * dslc
         
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
@@ -504,13 +491,10 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, sl0 + y0)
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6) * (sl1 + y1))
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6))
+        fill_vxc_base_os_(vxc, v0, 1-slc)
+        fill_vxc_base_os_(vxc, v1, slc)
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
-
-        ### TODO
 
         # put everything into vxc
         tmp = vtmp[0] + vtmp[2] * x2[1] + vtmp[3] * chi[1]
@@ -538,8 +522,6 @@ class VSXCContribs():
         vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
         vxc[2][:,1] += vtmpd[1] * chid[4]
         vxc[3][:,1] += vtmpd[2]
-
-        ### TODO
 
         thr = 1e-6
         rhou, rhod = nu, nd
@@ -610,43 +592,21 @@ class VSXCContribs():
         tot = 0
 
         gammax = 0.004
-        a0, a1, a2, a3, da0, da1, da2, da3 = self.get_chi_desc(chi[0])
-        adesc = np.array([a0,a1,a2,a3])
-        dadesc = np.array([da0,da1,da2,da3])
-        sl0 = np.dot(self.d0, adesc)
-        dsl0dchi = np.dot(self.d0, dadesc)
-        sl1 = np.dot(self.d1, adesc)
-        dsl1dchi = np.dot(self.d1, dadesc)
+        achi, dachi = self.get_chi_desc2(chi[0])
+        slc = 3 * (1 - chi[0]) / (3 - chi[0]) - np.dot(self.d, achi)
+        dslc = (-6) / (3 - chi[0])**2 - np.dot(self.d, dachi)
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
         sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.dx)
         nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
         nld, dnlddf, dnlddchi = self.nl_terms(fd, chid[0], self.cx)
 
-        y0, deriv0 = self.xef_terms(ft, self.c0)
-        y1, deriv1 = self.xef_terms(ft, self.c1)
-
-        tot += c1 * (1-chi[0]**6)
-        tot += sl0 * c0
-        tot += sl1 * c1 * (1-chi[0]**6)
+        tot += c1 * slc + c0 * (1 - slc)
         tot += ldaxm[0] * slu
         tot += ldaxm[1] * sld
-        tot += y0 * c0
-        tot += y1 * c1 * (1-chi[0]**6)
         tot += ldaxm[0] * nlu
         tot += ldaxm[1] * nld
-        # enhancment terms on c0
-        vtmp[3] += c0 * dsl0dchi
-        vtmp[4] += c0 * deriv0
-        # enhancment terms on c1
-        tmp = c1 * (1-chi[0]**6)
-        vtmp[3] += tmp * dsl1dchi
-        vtmp[4] += tmp * deriv1
-        vtmp[3] += -6 * chi[0]**5 * c1 * (sl1 + y1)
-        #print(np.isinf(-2 * chi[0] * c1).any(), np.isinf(chi[0]).any(),
-        #np.isinf(c1).any(), np.isinf(chi[1]).any(), np.isinf(chi[2]).any(),
-        #np.isinf(chi[3]).any(), np.isinf(chi[4]).any())
-        
-        vtmp[3] += -6 * chi[0]**5 * c1
+        # enhancment terms on c1 and c0
+        vtmp[3] += (c1 - c0) * dslc
         
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
@@ -665,13 +625,11 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, sl0 + y0)
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6) * (sl1 + y1))
-        fill_vxc_base_os_(vxc, v1, (1-chi[0]**6))
+        fill_vxc_base_os_(vxc, v0, 1-slc)
+        fill_vxc_base_os_(vxc, v1, slc)
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
 
-        #print(np.max(np.array([c0, c1, v1[0][:,0], v1[0][:,1]] + [vtmp[i] for i in range(4)] + [vtmpu[i] for i in range(3)] + [vtmpd[i] for i in range(3)]), axis=1))
         #vtmp[3] *= 0
         #vtmpu[1] *= 0
         #vtmpd[1] *= 0
