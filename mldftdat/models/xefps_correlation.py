@@ -1317,7 +1317,7 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
     x2 = corr_model.get_x2(nu+nd, g2)[0]
     x2u = corr_model.get_x2(nu, g2u)[0]
     x2d = corr_model.get_x2(nd, g2d)[0]
-    amix = corr_model.get_amix2(rhot, zeta, x2, chi)[0]
+    amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
     chidesc = np.array(corr_model.get_chi_desc(chi)[:4])
     chidescu = np.array(corr_model.get_chi_desc(chiu)[:4])
     chidescd = np.array(corr_model.get_chi_desc(chid)[:4])
@@ -1346,7 +1346,12 @@ def get_new_contribs3(dft_dir, restricted, mlfunc, exact=True):
     Ecscan = np.dot(co * cmix + cx * (1-cmix), weights)
     Eterms = np.dot(cmix_terms0 * (cx-co), weights)
     Eterms2 = np.dot(cmix_terms * cx, weights)
-    Eterms3 = np.dot(cmix_terms * (Fx-1) * cx, weights)
+    Eterms2[0] = np.dot(co * amix * (Fx-1), weights)
+    Eterms2[1] = np.dot(cx * (Fx-1), weights)
+    Eterms3 = np.append(np.dot(corrterms[1:5] * cx, weights),
+                        np.dot(corrterms[1:5] * (1-chi**2) * (cx-co), weights))
+    #Eterms3[-1] = np.dot((Fx-1) * cx, weights)
+    #Eterms3[-2] = np.dot((Fx-1) * (co * cmix + cx * (1-cmix)), weights)
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
     Fterms2 = np.dot(cmix_termsu * ldaxu * amix, weights)
@@ -1540,7 +1545,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     scores = []
 
     etot = np.load(os.path.join(DATA_ROOT, 'etot.npy'))
-    mlx = np.load(os.path.join(DATA_ROOT, 'alpha5_ex.npy'))
+    mlx = np.load(os.path.join(DATA_ROOT, 'alpha6_ex.npy'))
     #mlx = np.load(os.path.join(DATA_ROOT, 'descn_ex.npy'))
     #vv10 = np.load(os.path.join(DATA_ROOT, 'vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'mols.yaml'), 'r')
@@ -1548,7 +1553,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     f.close()
 
     aetot = np.load(os.path.join(DATA_ROOT, 'atom_etot.npy'))
-    amlx = np.load(os.path.join(DATA_ROOT, 'atom_alpha5_ex.npy'))
+    amlx = np.load(os.path.join(DATA_ROOT, 'ai_alpha6_ex.npy'))
     #amlx = np.load(os.path.join(DATA_ROOT, 'atom_descn_ex.npy'))
     #atom_vv10 = np.load(os.path.join(DATA_ROOT, 'atom_vv10.npy'))
     f = open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r')
@@ -1564,23 +1569,30 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
     mols = [gto.mole.unpack(mol) for mol in mols]
     for mol in mols:
         mol.build()
+    amols = [gto.mole.unpack(mol) for mol in amols]
+    for mol in amols:
+        mol.build()
 
     Z_to_ind = {}
+    Z_to_ind_bsl = {}
+    ind_to_Z_ion = {}
     formulas = {}
     ecounts = []
     for i, mol in enumerate(mols):
         ecounts.append(mol.nelectron)
         if len(mol._atom) == 1:
-            Z_to_ind[atomic_numbers[mol._atom[0][0]]] = i
+            Z = atomic_numbers[mol._atom[0][0]]
+            Z_to_ind[Z] = i
         else:
             atoms = [atomic_numbers[a[0]] for a in mol._atom]
             formulas[i] = Counter(atoms)
-    #        if formulas[i]['C'] == 4 and formulas[i]['H'] == 9 and len(mol._atom) == 13:
-    #            badind = i
-    #mlx = np.append(mlx[:i], mlx[i+1:], axis=0)
-    #mols = mols[:i] + mols[i+1:]
-    #ecounts = ecounts[:i] + ecounts[i+1:]
-    #valset_bools_init = np.append(valset_bools_init[:i], valset_bools_init[i+1:])
+
+    for i, mol in enumerate(amols):
+        Z = atomic_numbers[mol._atom[0][0]]
+        if mol.spin == ground_state_magnetic_moments[Z]:
+            Z_to_ind_bsl[Z] = i
+        else:
+            ind_to_Z_ion[i] = Z
 
     ecounts = np.array(ecounts)
 
@@ -1675,7 +1687,9 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 #E_c = np.append(E_c, mlx[:,3:4]-mlx[:,2:3], axis=1)
                 E_c = np.zeros((E_ccsd.shape[0], 0))
                 E_c = np.append(E_c, mlx[:,2:9], axis=1)
+                #E_c = np.append(E_c, mlx[:,3:9], axis=1)
                 E_c = np.append(E_c, mlx[:,9:17], axis=1)
+                #E_c = np.append(E_c, mlx[:,11:17], axis=1)
                 #E_c = np.append(E_c, mlx[:,17:25], axis=1)
                 E_c = np.append(E_c, mlx[:,25:30], axis=1)
                 E_c = np.append(E_c, mlx[:,30:53], axis=1)
@@ -1683,12 +1697,11 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                 #E_c = np.append(E_c, mlx[:,61:69], axis=1)
                 diff = E_ccsd - (E_dft - E_xscan + E_x + E_cscan)# + E_vv10)# - mlx[:,37])
                 means = np.mean(np.abs(E_c), axis=0)
-                noise = np.ones(E_c.shape[1]) * 1e-3
-                #noise[15:23] *= .1
-                #noise[7:15] *= 4
-                #noise[15:] /= 4
-                #noise[8:10] *= 100
-                #noise = np.ones(E_c.shape[1]) * 1e-3
+                noise = np.ones(E_c.shape[1]) * 0.5e-3
+                noise[7] /= 5
+                noise[8] /= 5
+                #noise[0] *= 4
+                noise[15:] /= 5
 
             return E_c, diff, E_ccsd, E_dft, E_xscan, E_x, E_cscan, noise
 
@@ -1712,7 +1725,8 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
-                weights.append(1.0)
+                #weights.append(1.0)
+                weights.append(1.0 / (len(mols[i]._atom) - 1))
                 formula = formulas[i]
                 if formula.get(1) == 2 and formula.get(8) == 1 and len(list(formula.keys()))==2:
                     waterind = i
@@ -1722,7 +1736,7 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                     y[i] -= formula[Z] * y[Z_to_ind[Z]]
                     Ecc[i] -= formula[Z] * Ecc[Z_to_ind[Z]]
                     Edf[i] -= formula[Z] * Edf[Z_to_ind[Z]]
-               # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
+                # print(formulas[i], y[i], Ecc[i], Edf[i], E_x[i] - E_xscan[i])
             else:
                 if mols[i].nelectron == 1:
                     hind = i
@@ -1736,7 +1750,17 @@ def solve_from_stored_ae(DATA_ROOT, version='a'):
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
                 #weights.append(0.0)
         for i in range(len(amols)):
-            weights.append(8 / mols[i].nelectron)
+            print(amols[i].nelectron, Ecc[len(mols)+i], Edf[len(mols)+i])
+            weights.append(8 / amols[i].nelectron)# if amols[i].nelectron <= 10 else 0.001)
+            if i in ind_to_Z_ion.keys():
+                j = len(mols) + i
+                k = len(mols) + Z_to_ind_bsl[ind_to_Z_ion[i]]
+                X[j,:] -= X[k,:]
+                y[j] -= y[k]
+                Ecc[j] -= Ecc[k]
+                Edf[j] -= Edf[k]
+                weights[-1] = 4
+                #weights[-1] = 0
 
         weights = np.array(weights)
         
