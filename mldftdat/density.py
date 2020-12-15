@@ -201,6 +201,40 @@ def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
         desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors_b(desc)
 
+def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
+    # desc[0:6]   = rho_data
+    # desc[6:12]  = ddrho
+    # desc[12:13] = g0
+    # desc[13:16] = g1
+    # desc[16:21] = g2
+    # desc[21] = g0-0.5
+    # desc[22] = g0-2
+    # g1 order: x, y, z
+    # g2 order: xy, yz, z^2, xz, x^2-y^2
+    lc = get_dft_input2(rho_data)[:3]
+    # size naux
+    density = np.einsum('npq,pq->n', ao_to_aux, rdm1)
+    desc = np.append(rho_data, ddrho, axis=0)
+    N = grid.weights.shape[0]
+    for l in range(3):
+        atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                          l = l, s = lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+        # (ngrid * (2l+1), naux)
+        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+        desc = np.append(desc, proj, axis=0)
+    l = 0
+    for mul in [0.25, 4.00]:
+        atm, bas, env = get_gaussian_grid_c(grid.coords, mul *rho_data[0],
+                                          l = 0, s = lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+        # (ngrid * (2l+1), naux)
+        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+        desc = np.append(desc, proj, axis=0)
+    return contract_exchange_descriptors(desc)
+
 def get_exchange_descriptors2(analyzer, restricted = True, version = 'a'):
     """
     A length-21 descriptor containing semi-local information
@@ -223,6 +257,8 @@ def get_exchange_descriptors2(analyzer, restricted = True, version = 'a'):
         _get_x_helper = _get_x_helper_a
     elif version == 'b':
         _get_x_helper = _get_x_helper_b
+    elif version == 'c':
+        _get_x_helper = _get_x_helper_c
     else:
         raise ValueError('unknown descriptor version')
     #auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
