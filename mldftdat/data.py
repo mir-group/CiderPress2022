@@ -1219,11 +1219,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 #with open(fname, 'r') as f:
                 #    settings = yaml.load(f, Loader=yaml.Loader)
                 if 'RKS' in path:
-                    from mldftdat.dft.sgx_corr import setup_rks_calc2
-                    mf = setup_rks_calc2(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_rks_calc4
+                    mf = setup_rks_calc4(mol, fterm_scale=2.0)
                 else:
-                    from mldftdat.dft.sgx_corr import setup_uks_calc2
-                    mf = setup_uks_calc2(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_uks_calc4
+                    mf = setup_uks_calc4(mol, fterm_scale=2.0)
                 mf.kernel()
                 #if mol.spin > 0:
                 #    uhf_internal(mf)
@@ -1235,21 +1235,21 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
-                    from mldftdat.dft.numint6 import setup_rks_calc
+                    from mldftdat.dft.numint6 import setup_rks_calc3 as setup_rks_calc
                     mf = run_scf(mol, 'RKS', functional = 'SCAN')
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_rks_calc(mol, FUNCTIONAL, grid_level=1)
+                    mf = setup_rks_calc(mol, FUNCTIONAL, grid_level=3)
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
                 else:
-                    from mldftdat.dft.numint6 import setup_uks_calc
+                    from mldftdat.dft.numint6 import setup_uks_calc3 as setup_uks_calc
                     mf = run_scf(mol, 'UKS', functional = 'SCAN')
                     #dm0 = mf.make_rdm1()
                     dm0 = None
                     #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_uks_calc(mol, FUNCTIONAL, grid_level=1)
+                    mf = setup_uks_calc(mol, FUNCTIONAL, grid_level=3)
                     mf.xc = None
                     #mf.xc = 'GGA_X_CHACHIYO'
                     #mf.init_guess = 'atom'
@@ -1466,6 +1466,8 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
         errs.append(pred_energy-energy)
     errs = np.array(errs)
     print(errs.shape)
+    me = np.mean(errs)
     mae = np.mean(np.abs(errs))
     rmse = np.sqrt(np.mean(errs**2))
-    return mae, rmse, result
+    std = np.std(errs)
+    return me, mae, rmse, std, result

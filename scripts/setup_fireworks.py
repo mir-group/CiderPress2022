@@ -1,5 +1,6 @@
 from mldftdat.pyscf_tasks import SCFCalc, CCSDCalc, TrainingDataCollector,\
-                                LoadCalcFromDB, DFTFromHF, MLSCFCalc, SGXCorrCalc
+                                LoadCalcFromDB, DFTFromHF, MLSCFCalc, SGXCorrCalc,\
+                                GridBenchmark
 from mldftdat.workflow_utils import get_save_dir
 from ase import Atoms
 from fireworks import Firework, LaunchPad
@@ -70,7 +71,7 @@ def get_sgx_tasks(struct, mol_id, basis, spin, mlfunc_name,
                      spin=spin, charge=charge, mlfunc_name = mlfunc_name,
                      mlfunc_settings_file = mlfunc_settings_file)
     t2 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id,
-                               skip_analysis = True)
+                               skip_analysis = False)
     return t1, t2
 
 def make_dft_from_hf_firework(functional, hf_type, basis, mol_id):
@@ -124,6 +125,10 @@ def make_ccsd_firework_no_hf(struct, mol_id, basis, spin, charge=0, name=None, *
     t2 = CCSDCalc()
     t3 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
     return Firework([t1, t2, t3], name=name)
+
+def make_benchmark_firework(functional, radi_method, rad, ang, prune, **kwargs):
+    t = GridBenchmark(functional=functional, radi_method=radi_method, rad=rad, ang=ang, prune=prune, **kwargs)
+    return Firework([t], name='benchmark')
 
 if __name__ == '__main__':
     fw1 = make_hf_firework(Atoms('He', positions=[(0,0,0)]), 'test/He', 'cc-pvdz', 0)
