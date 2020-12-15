@@ -716,6 +716,18 @@ class MLSCFCalcConvergenceFixer(FiretaskBase):
 
 @explicit_serialize
 class GridBenchmark(FiretaskBase):
+    """
+    Firetask object for benchmarking radial grid schemes using pyscf.
+    Args:
+        functional (str): XC functional name
+        radi_method (int): Radial scheme code (see list of radi methods in run_task)
+        rad (int): Number of radial grid points
+        ang (int): Number of angular grid points
+        prune (bool): Whether grid pruning was used.
+        mlfunc_file (str): For ML functional, parameter file
+        mlfunc_settings_file (str): For ML functional, settings file
+        normalize (str): Whether to use the overlap matrix normalization scheme.
+    """
 
     required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune']
     optional_params = ['mlfunc_file', 'mlfunc_settings_file', 'normalize']
@@ -725,6 +737,8 @@ class GridBenchmark(FiretaskBase):
     def run_task(self, fw_spec):
         import yaml, joblib
         from pyscf import gto, dft, scf
+
+        # initialize Mole objects for each system
         mols = {}
         mols['H'] = gto.M(atom='H', basis='def2-qzvppd', spin=1)
         mols['O'] = gto.M(atom='O', basis='def2-qzvppd', spin=2)
@@ -764,6 +778,7 @@ class GridBenchmark(FiretaskBase):
                         radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_jacobi]
         radi_method = RADI_METHODS[self['radi_method']]
 
+        # perform DFT calculations
         results = {}
         for name, mol in list(mols.items()) + list(dimers.items()):
             mol.build()
@@ -814,6 +829,7 @@ class GridBenchmark(FiretaskBase):
                 'time': stop_time - start_time
             }
 
+        # save data to file
         fname = 'gridbench_{}_{}_{}_{}_{}.yaml'.format(
                     self['functional'],
                     'nwchem' if self['prune'] else 'noprune',
