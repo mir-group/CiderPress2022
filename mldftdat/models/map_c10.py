@@ -623,8 +623,8 @@ class VSXCContribs():
         A = 17.0 / 3
         slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.d, achi[2:])
         dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.d, dachi[2:])
-        slc0 = np.dot(self.c, achi[[0,1,3,4,5,6,7,8]])
-        dslc0 = np.dot(self.c, dachi[[0,1,3,4,5,6,7,8]])
+        slc0 = np.dot(self.c[2:], achi[3:])
+        dslc0 = np.dot(self.c[2:], dachi[3:])
         slu, dsludx2, dsludchi = self.sl_terms(x2u[0], chiu[0], gammax, self.dx)
         sld, dslddx2, dslddchi = self.sl_terms(x2d[0], chid[0], gammax, self.dx)
         nlu, dnludf, dnludchi = self.nl_terms(fu, chiu[0], self.cx)
@@ -636,12 +636,15 @@ class VSXCContribs():
         tot += ldaxm[1] * sld
         tot += ldaxm[0] * nlu
         tot += ldaxm[1] * nld
+        tot += self.c[0] * c1 * amix * (ft - 1)
+        tot += self.c[1] * c0 * (ft - 1)
         # enhancment terms on c1 and c0
         vtmp[3] += (c1 - c0) * dslc
         vtmp[3] += c0 * dslc0
+        vtmp[4] += (self.c[0] * c1 * amix + self.c[1] * c0)
         
         # amix derivs and exchange-like rho derivs
-        tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld)
+        tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) + self.c[0] * c1 * (ft-1)
         cond = nt>1e-4
         vtmp[0][cond] += (tmp * vmixn)[cond]
         vtmp[1][cond] += (tmp * vmixz)[cond]
@@ -657,8 +660,8 @@ class VSXCContribs():
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
         # baseline derivs
-        fill_vxc_base_os_(vxc, v0, 1 - slc + slc0)
-        fill_vxc_base_os_(vxc, v1, slc)
+        fill_vxc_base_os_(vxc, v0, 1 - slc + slc0 + self.c[1] * (ft-1))
+        fill_vxc_base_os_(vxc, v1, slc + self.c[0] * amix * (ft-1))
         vxc[0][:,0] += dldaxu * amix * (slu + nlu)
         vxc[0][:,1] += dldaxd * amix * (sld + nld)
 

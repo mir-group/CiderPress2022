@@ -1219,11 +1219,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 #with open(fname, 'r') as f:
                 #    settings = yaml.load(f, Loader=yaml.Loader)
                 if 'RKS' in path:
-                    from mldftdat.dft.sgx_corr import setup_rks_calc3
-                    mf = setup_rks_calc3(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_rks_calc4
+                    mf = setup_rks_calc4(mol, fterm_scale=2.0)
                 else:
-                    from mldftdat.dft.sgx_corr import setup_uks_calc3
-                    mf = setup_uks_calc3(mol, fterm_scale=2.0)
+                    from mldftdat.dft.sgx_corr import setup_uks_calc4
+                    mf = setup_uks_calc4(mol, fterm_scale=2.0)
                 mf.kernel()
                 #if mol.spin > 0:
                 #    uhf_internal(mf)
