@@ -49,7 +49,7 @@ mlfunc = load('mlfunc10map_heg_v47_clean.joblib')
 #store_full_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS_DFT, IS_RESTRICTED_LIST, mlfunc, exact=True, mol_id_full=True)
 #FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/atom_descn3_ml')
 #store_full_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS_DFT, IS_RESTRICTED_LIST, mlfunc, exact=False, mol_id_full=True)
-FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/atom_beta3_ex')
+FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/ai_alpha6_ex')
 store_new_contribs_dataset(FNAME, SAVE_ROOT, MOL_IDS_DFT, IS_RESTRICTED_LIST, mlfunc, exact=True, mol_id_full=True)
 
 #FNAME = os.path.join(SAVE_ROOT, 'DATASETS/xefps_corrq/atom_vv10')

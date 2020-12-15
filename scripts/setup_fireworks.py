@@ -126,8 +126,8 @@ def make_ccsd_firework_no_hf(struct, mol_id, basis, spin, charge=0, name=None, *
     t3 = TrainingDataCollector(save_root_dir = SAVE_ROOT, mol_id=mol_id, **kwargs)
     return Firework([t1, t2, t3], name=name)
 
-def make_benchmark_firework(functional, radi_method, rad, ang, prune):
-    t = GridBenchmark(functional=functional, radi_method=radi_method, rad=rad, ang=ang, prune=prune)
+def make_benchmark_firework(functional, radi_method, rad, ang, prune, **kwargs):
+    t = GridBenchmark(functional=functional, radi_method=radi_method, rad=rad, ang=ang, prune=prune, **kwargs)
     return Firework([t], name='benchmark')
 
 if __name__ == '__main__':

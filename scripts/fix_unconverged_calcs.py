@@ -9,11 +9,17 @@ unknown_fail_reasons = []
 num_fws_added = 0
 MAX_NUM_FWS_ADDED = 1000
 #fw_ids = [5665, 5668, 5676]
-fw_ids = [5665, 5668, 5917, 5947, 6133, 6136]
+#fw_ids = [5665, 5668, 5917, 5947, 6133, 6136]
 
 for fw_id in fw_ids:
     fw = lpad.get_fw_by_id(fw_id)
     task = fw.tasks[0]
+    if fw_id < 10882:
+        continue
+    if fw_id in range(11925, 11964):
+        lpad.rerun_fw(fw_id)
+    else:
+        continue
     if fw.launches[-1].action is None:
         exception = 'MEMORY ERROR'
     else:
