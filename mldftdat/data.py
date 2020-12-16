@@ -207,12 +207,12 @@ def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BAS
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
-    rho_file = os.path.join(save_dir, 'rho.npz')
-    desc_file = os.path.join(save_dir, 'desc.npz')
-    val_file = os.path.join(save_dir, 'val.npz')
-    np.savetxt(rho_file, all_rho_data)
-    np.savetxt(desc_file, all_descriptor_data)
-    np.savetxt(val_file, all_values)
+    rho_file = os.path.join(save_dir, 'rho.npy')
+    desc_file = os.path.join(save_dir, 'desc.npy')
+    val_file = os.path.join(save_dir, 'val.npy')
+    np.save(rho_file, all_rho_data)
+    np.save(desc_file, all_descriptor_data)
+    np.save(val_file, all_values)
     #gp = DFTGP(descriptor_data, values, 1e-3)
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
@@ -314,16 +314,16 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
-    rho_file = os.path.join(save_dir, 'rho.npz')
-    desc_file = os.path.join(save_dir, 'desc.npz')
-    val_file = os.path.join(save_dir, 'val.npz')
-    wt_file = os.path.join(save_dir, 'wt.npz')
-    cut_file = os.path.join(save_dir, 'cut.npz')
-    np.savetxt(rho_file, all_rho_data)
-    np.savetxt(desc_file, all_descriptor_data)
-    np.savetxt(val_file, all_values)
-    np.savetxt(wt_file, all_weights)
-    np.savetxt(cut_file, np.array(cutoffs))
+    rho_file = os.path.join(save_dir, 'rho.npy')
+    desc_file = os.path.join(save_dir, 'desc.npy')
+    val_file = os.path.join(save_dir, 'val.npy')
+    wt_file = os.path.join(save_dir, 'wt.npy')
+    cut_file = os.path.join(save_dir, 'cut.npy')
+    np.save(rho_file, all_rho_data)
+    np.save(desc_file, all_descriptor_data)
+    np.save(val_file, all_values)
+    np.save(wt_file, all_weights)
+    np.save(cut_file, np.array(cutoffs))
 
 def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, BASIS,
                     Analyzer, spherical_atom = False, locx = False, lam = 0.5,
@@ -423,31 +423,6 @@ def ldax(n):
 
 def ldax_dens(n):
     return LDA_FACTOR * n**(1.0/3)
-
-def get_gp_x_descriptors(X, num=1, selection=None):
-    X = X[:,(0,1,2,3,4,5,7,6)]
-    if selection is not None:
-        num = 7
-    #print(np.max(X, axis=0))
-    #print(np.min(X, axis=0))
-    #rho, X = X[:,0], X[:,1:1+num]
-    rho, X = X[:,0], X[:,1:]
-    X[:,0] = np.log(1+X[:,0])
-    #X[:,1] = np.log(0.5 * (1 + X[:,1]))
-    X[:,1] = 1 / (1 + X[:,1]**2) - 0.5
-    X[:,3] = np.arcsinh(X[:,3])
-    X[:,4] = np.arcsinh(X[:,4])
-    X[:,6] = np.arcsinh(X[:,6])
-    X[:,5] = np.log(X[:,5] / 6)
-    #if num > 5:
-    #    X[:,5] = np.arcsinh(X[:,5])
-    #if num > 6:
-    #    X[:,6] = np.log(X[:,6] / 6)
-    if selection is None:
-        X = X[:,(0,1,2,5,4,3,6)]
-        return X[:,:num]
-    else:
-        return X[:,selection]
 
 def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False,
                      binary = False):
