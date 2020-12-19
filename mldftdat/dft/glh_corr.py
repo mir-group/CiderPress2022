@@ -501,16 +501,10 @@ class SGXCorr(SGX):
 
 class HFCNumInt(pyscf_numint.NumInt):
 
-    def __init__(self, css, cos, cx, cm, ca,
-                 dss, dos, dx, dm, da, vv10_coeff = None,
-                 fterm_scale=2.0):
+    def __init__(self, corr_model, vv10_coeff=None):
         print ("FTERM SCALE", fterm_scale)
         super(HFCNumInt, self).__init__()
-        from mldftdat.models import map_c6
-        self.corr_model = map_c6.VSXCContribs(
-                                css, cos, cx, cm, ca,
-                                dss, dos, dx, dm, da,
-                                fterm_scale=fterm_scale)
+        self.corr_model = corr_model
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -536,153 +530,16 @@ class HFCNumInt(pyscf_numint.NumInt):
 
     def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
                 verbose=None):
-        rho_data = rho
+        if deriv > 1:
+            raise NotImplementedError('Only 1st derivative supported')
         N = rho_data[0].shape[-1]
-        rhou = rho_data[0][0] + 1e-20
-        g2u = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[0][1:4])
-        tu = rho_data[0][5] + 1e-20
-        rhod = rho_data[1][0] + 1e-20
-        g2d = np.einsum('ir,ir->r', rho_data[1][1:4], rho_data[1][1:4])
-        td = rho_data[1][5] + 1e-20
-        ntup = (rhou, rhod)
-        gtup = (g2u, g2d)
-        ttup = (tu, td)
-        rhot = rhou + rhod
-        g2o = np.einsum('ir,ir->r', rho_data[0][1:4], rho_data[1][1:4])
-
-        vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
+        e = np.zeros(N)
+        vtot = [np.zeros((N,2)), np.zeros((N,3)), None,
                 np.zeros((N,2))]
-        F = np.zeros(N) 
-        exc, vxc = self.corr_model.xefc2(rhou, rhod, g2u, g2o, g2d,
-                                         tu, td, F, F,
-                                         include_baseline=True,
-                                         include_aug_sl=False,
-                                         include_aug_nl=False)
-        
-        vtot[0][:,:] += vxc[0]
-        vtot[1][:,:] += vxc[1]
-        vtot[3][:,:] += vxc[2]
-        for i in range(4):
-            vtot[i][rhou<1e-9,0] = 0
-            vtot[i][rhod<1e-9,1] = 0
-        
-        #exc *= 0
-        return exc / (rhot + 1e-20), vtot, None, None
-
-
-class HFCNumInt2(HFCNumInt):
-
-    def __init__(self, cx, c0, c1, dx, d0, d1,
-                 vv10_coeff = None, fterm_scale=2.0):
-        print ("FTERM SCALE", fterm_scale)
-        super(HFCNumInt, self).__init__()
-        from mldftdat.models import map_c8
-        self.corr_model = map_c8.VSXCContribs(
-                                cx, c0, c1, dx, d0, d1,
-                                fterm_scale=fterm_scale)
-
-        if vv10_coeff is None:
-            self.vv10 = False
-        else:
-            self.vv10 = True
-            self.vv10_b, self.vv10_c = vv10_coeff
-
-    def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
-                verbose=None):
-        print("NEW ITERATION")
-        e, vxc, _, _ = eval_xc(',MGGA_C_REVSCAN', rho, spin=1)
-        e *= 0
-        for i in [0, 1, 3]:
-            vxc[i][:] *= 0
-        """
-        thr = 1e-8
-        rhou, rhod = rho[0][0], rho[1][0]
-        vxc[0][rhou<thr,0] = 0
-        vxc[1][rhou<thr,0] = 0
-        vxc[2][rhou<thr,0] = 0
-        vxc[3][rhou<thr,0] = 0
-        vxc[0][rhod<thr,1] = 0
-        vxc[1][rhod<thr,2] = 0
-        vxc[2][rhod<thr,1] = 0
-        vxc[3][rhod<thr,1] = 0
-        vxc[1][np.sqrt(rhou*rhod)<thr,1] = 0
-        """
         return e, vxc, None, None
 
 
-class HFCNumInt3(HFCNumInt2):
-
-    def __init__(self, d, dx, cx,
-                 vv10_coeff = None,
-                 fterm_scale=2.0):
-        print ("FTERM SCALE", fterm_scale)
-        super(HFCNumInt, self).__init__()
-        from mldftdat.models import map_c9
-        self.corr_model = map_c9.VSXCContribs(d, dx, cx,
-                                fterm_scale=fterm_scale)
-        if vv10_coeff is None:
-            self.vv10 = False
-        else:
-            self.vv10 = True
-            self.vv10_b, self.vv10_c = vv10_coeff
-
-
-class HFCNumInt4(HFCNumInt2):
-
-    def __init__(self, d, c, dx, cx,
-                 vv10_coeff = None,
-                 fterm_scale=2.0):
-        print ("FTERM SCALE", fterm_scale)
-        super(HFCNumInt, self).__init__()
-        from mldftdat.models import map_c10
-        self.corr_model = map_c10.VSXCContribs(d, c, dx, cx,
-                                  fterm_scale=fterm_scale)
-        if vv10_coeff is None:
-            self.vv10 = False
-        else:
-            self.vv10 = True
-            self.vv10_b, self.vv10_c = vv10_coeff
-
-
-DEFAULT_COS = [-0.02481797,  0.00303413,  0.00054502,  0.00054913]
-DEFAULT_CX = [-0.03483633, -0.00522109, -0.00299816, -0.0022187 ]
-DEFAULT_CA = [-0.60154365, -0.06004444, -0.04293853, -0.03146755]
-DEFAULT_DOS = [-0.00041445, -0.01881556,  0.03186469,  0.00100642, -0.00333434,
-          0.00472453]
-DEFAULT_DX = [ 0.00094936,  0.09238444, -0.21472824, -0.00118991,  0.0023009 ,
-         -0.00096118]
-DEFAULT_DA = [ 7.92248007e-03, -2.11963128e-03,  2.72918353e-02,  4.57295468e-05,
-         -1.00450001e-05, -3.47808331e-04]
-DEFAULT_CM = None
-DEFAULT_DM = None
-DEFAULT_CSS = None
-DEFAULT_DSS = None
-"""
-DEFAULT_COS = [-3.33117906e-02,  3.42204832e-04, -5.12710933e-04,  7.23656600e-05]
-DEFAULT_CX = [-0.04660942, -0.00958024, -0.00461958, -0.00240451]
-DEFAULT_CA = [-0.60633633, -0.08913412, -0.06914276, -0.04692656]
-DEFAULT_DOS = [-0.00036989, -0.01618721,  0.04825873,  0.00083393, -0.00350275,
-          0.00700518]
-DEFAULT_DX = [ 0.00225735,  0.1098632 , -0.28697265, -0.00159427,  0.00498835,
-         -0.00549777]
-DEFAULT_DA = [ 1.50175274e-02, -2.45387696e-03,  3.01268545e-02,  3.90737069e-05,
-          2.57511213e-05, -3.90349785e-04]
-"""
-DEFAULT_COS = [-2.39744286e-02,  1.75450797e-03, -2.42249328e-04,  6.97484137e-05]
-DEFAULT_CX = [-0.03658478, -0.00711547, -0.00381782, -0.00216612]
-DEFAULT_CA = [-0.58796507, -0.07989303, -0.05758388, -0.03791681]
-DEFAULT_DOS = [-0.00019688, -0.02070159,  0.05712587,  0.00092075, -0.00387164,
-          0.00739471]
-DEFAULT_DX = [ 0.00214469,  0.118391  , -0.30686047, -0.00179011,  0.00568496,
-         -0.00611958]
-DEFAULT_DA = [ 9.86513001e-03, -2.74320674e-03,  3.13055397e-02,  3.85063943e-05,
-          3.93533240e-05, -4.02402091e-04]
-
-def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
-                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
-                   dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None, fterm_scale=2.0):
+def setup_rks_calc(mol, corr_model, vv10_coeff=None):
     rks = dft.RKS(mol)
     rks.xc = 'SCAN'
     rks._numint = HFCNumInt(css, cos, cx, cm, ca,
@@ -693,160 +550,13 @@ def setup_rks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
     rks.with_df.debug = False
     return rks
 
-def setup_uks_calc(mol, css=DEFAULT_CSS, cos=DEFAULT_COS,
-                   cx=DEFAULT_CX, cm=DEFAULT_CM, ca=DEFAULT_CA,
-                   dss=DEFAULT_DSS, dos=DEFAULT_DOS, dx=DEFAULT_DX,
-                   dm=DEFAULT_DM, da=DEFAULT_DA,
-                   vv10_coeff = None, fterm_scale=2.0):
+def setup_uks_calc(mol, corr_model, vv10_coeff=None):
     uks = dft.UKS(mol)
     uks.xc = 'SCAN'
     uks._numint = HFCNumInt(css, cos, cx, cm, ca,
                            dss, dos, dx, dm, da,
                            vv10_coeff=vv10_coeff,
                            fterm_scale=fterm_scale)
-    uks = sgx_fit_corr(uks)
-    uks.with_df.debug = True
-    return uks
-
-
-C0 = [-0.0832026 , -0.00055064, -0.01848143, -0.0170016 ]
-D0 = [ 0.90629786,  0.02032718,  1.49009087, -0.54915038]
-C1 = [-0.16454282,  0.04837192, -0.00352219, -0.00509764]
-D1 = [ 0.02282725, -0.07421893,  0.05141903,  0.0185473 ]
-DX = [ 0.22695484, -0.12095902,  0.0866335 , -0.24923292,  0.66716696,
-         -0.22696349,  0.19997966, -0.07734578,  0.18404767,  0.21032077,
-           0.00448633,  0.25818888,  0.05870056,  0.31011622,0,0,0,0,0]
-CX = [-0.9115515 , -0.42881507,  0.2129251 , -0.13101033,  0.22633599,
-          0.11535641, -0.33618047, -0.43040083, -0.22345689, -0.16472009,0,0,0,0,0]
-
-def setup_rks_calc2(mol, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
-                    vv10_coeff=None, fterm_scale=2.0):
-    rks = dft.RKS(mol)
-    rks.xc = 'SCAN'
-    rks._numint = HFCNumInt2(cx, c0, c1, dx, d0, d1,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
-    rks = sgx_fit_corr(rks)
-    rks.with_df.debug = False
-    return rks
-
-def setup_uks_calc2(mol, cx=CX, c0=C0, c1=C1, dx=DX, d0=D0, d1=D1,
-                    vv10_coeff=None, fterm_scale=2.0):
-    uks = dft.UKS(mol)
-    uks.xc = 'SCAN'
-    uks._numint = HFCNumInt2(cx, c0, c1, dx, d0, d1,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
-    uks = sgx_fit_corr(uks)
-    uks.with_df.debug = True
-    return uks
-
-
-V3_D = [0.08475391, 0.0427947 , 0.03463233, 0.04353208, 0.02628787, 0.05242813]
-V3_DX = [-0.00141521,  0.18502994, -0.09038544,  0.42324858,  0.33286124,
- -1.05846317,  0.66144542, -0.29924348,  0.41560909, -0.16269669,
-  0.39984217, -0.64210522,  0.02729158, -0.29241628, -0.20466746]
-V3_CX = [ 0.54600836,  0.27745626, -0.13378712,  0.12625273,  1.51027552,
- -1.33129655,  0.16013619, -0.21874093, -0.05200342, -0.60369591,
-  0.15577174, -0.1762938 , -1.651059  ]
-
-
-def setup_rks_calc3(mol, d=V3_D, dx=V3_DX, cx=V3_CX,
-                    vv10_coeff=None, fterm_scale=2.0):
-    rks = dft.RKS(mol)
-    rks.xc = 'SCAN'
-    rks._numint = HFCNumInt3(d, dx, cx,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
-    rks = sgx_fit_corr(rks)
-    rks.with_df.debug = False
-    return rks
-
-def setup_uks_calc3(mol, d=V3_D, dx=V3_DX, cx=V3_CX,
-                    vv10_coeff=None, fterm_scale=2.0):
-    uks = dft.UKS(mol)
-    uks.xc = 'SCAN'
-    uks._numint = HFCNumInt3(d, dx, cx,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
-    uks = sgx_fit_corr(uks)
-    uks.with_df.debug = True
-    return uks
-
-
-V4_D = [-0.17654427,  0.20982372,  0.17060646, -0.02551619,  0.01342819,
- -0.06299852, -0.01121752]
-V4_C = [ 0.20844183,  0.49877638, -0.19778921, -0.11459531,  0.09617469,
-  0.02539087,  0.11329777,  0.03291029]
-V4_DX = [-0.08935424,  0.18471635, -0.12302603,  0.62965171,  0.11379649,
- -0.24022591,  0.32674729, -0.14123412,  0.07535669, -0.04161861,
-  0.22269839, -0.1282896 ,  0.08055665,  0.00394882,  0.13084771]
-V4_CX = [-0.2886141 ,  0.238061  , -0.44752893, -0.0105108 ,  0.53289043,
- -0.39086948, -0.12705188, -0.11383656, -0.08579452, -0.15143574,
- -0.07660444, -0.02748063, -0.63002868]
-
-V4_D = [-0.18865666,  0.16240799,  0.16446337, -0.0098137 ,  0.02794549,
- -0.03939379,  0.00579824]
-V4_C = [ 0.20906501,  0.50250049, -0.15128372, -0.11806779,  0.06713877,
-  0.00155812,  0.07989697,  0.00971365]
-V4_DX = [-0.08689372,  0.18078203, -0.12108472,  0.6361696 ,  0.12550251,
- -0.2534927 ,  0.27033466, -0.1488401 ,  0.08964195, -0.02799688,
-  0.22164314, -0.11971853,  0.09690431,  0.01981082,  0.14193492]
-V4_CX = [-0.3150605 ,  0.24321077, -0.41131263, -0.0305937 ,  0.52504465,
- -0.40163631, -0.13133064, -0.1531787 , -0.07267969, -0.1553963 ,
- -0.06925903, -0.04133235, -0.6032124 ]
-
-V4_D = [-0.18548502,  0.16475539,  0.1592226 , -0.0259196 ,  0.01672691,
- -0.05448536, -0.00745176]
-V4_C = [ 0.22963254,  0.50425421, -0.14351119, -0.09574863,  0.09525819,
-  0.02411218,  0.10215742,  0.03011936]
-V4_DX = [-0.07623342,  0.16390846, -0.10994579,  0.63428847,  0.0732235 ,
- -0.25741776,  0.26702232, -0.1488389 ,  0.09949049, -0.04174723,
-  0.23223098, -0.13750363,  0.11241624,  0.00856857,  0.15382349]
-V4_CX = [-0.27547449,  0.23404196, -0.42269506, -0.01925928,  0.55875187,
- -0.37966458, -0.12941183, -0.12899478, -0.07868514, -0.13984068,
- -0.08242705, -0.03174694, -0.63366189]
-
-V4_D = [-0.1027168 ,  0.03827319,  0.04293587, -0.00418687,  0.0115513 ,
- -0.01129719,  0.01185563]
-V4_C = [ 0.79098942,  0.56160536, -0.0601292 , -0.0175552 ,  0.01659397,
- -0.00570834,  0.01788288, -0.0155585 ]
-V4_DX = [-0.02332872,  0.17769842, -0.10689876,  0.54003059,  0.16912394,
- -0.5819022 ,  0.54944346, -0.17273558,  0.18938691, -0.05721821,
-  0.36284656, -0.21454828,  0.09029132, -0.06960065,  0.10872598]
-V4_CX = [ 0.07761907,  0.20138557, -0.32252151,  0.03626855,  0.74874445,
- -0.91001075, -0.13028472, -0.26423681, -0.15839177, -0.34971198,
- -0.06223497, -0.08541965, -1.11753054]
-
-V4_D = [-0.16679003,  0.0376126 ,  0.0501223 ,  0.00016763,  0.01676084,
- -0.01311501,  0.02113193]
-V4_C = [ 7.87478372e-01,  6.48833144e-01, -8.80019102e-02,  1.25691057e-02,
-  1.58375734e-02, -3.99456191e-04,  2.27060865e-02, -2.41555695e-02]
-V4_DX = [-0.00676287,  0.16952077, -0.11267608,  0.54155303,  0.20921305,
- -0.87088519,  0.73638186, -0.05876943,  0.19152398, -0.11272358,
-  0.39121215, -0.1889955 ,  0.03522319, -0.11458125,  0.04348564]
-V4_CX = [ 0.17918093,  0.16582161, -0.13947252,  0.07150386,  0.85790881,
- -1.21533885, -0.05081611, -0.24293041, -0.21900011, -0.43408501,
- -0.0333972 , -0.05914576, -1.26060931]
-
-def setup_rks_calc4(mol, d=V4_D, c=V4_C, dx=V4_DX, cx=V4_CX,
-                    vv10_coeff=None, fterm_scale=2.0):
-    rks = dft.RKS(mol)
-    rks.xc = 'SCAN'
-    rks._numint = HFCNumInt4(d, c, dx, cx,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
-    rks = sgx_fit_corr(rks)
-    rks.with_df.debug = False
-    return rks
-
-def setup_uks_calc4(mol, d=V4_D, c=V4_C, dx=V4_DX, cx=V4_CX,
-                    vv10_coeff=None, fterm_scale=2.0):
-    uks = dft.UKS(mol)
-    uks.xc = 'SCAN'
-    uks._numint = HFCNumInt4(d, c, dx, cx,
-                             vv10_coeff=vv10_coeff,
-                             fterm_scale=fterm_scale)
     uks = sgx_fit_corr(uks)
     uks.with_df.debug = True
     return uks

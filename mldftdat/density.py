@@ -16,6 +16,29 @@ def ldaxp(n):
 def lsda(nu, nd):
     return ldaxp(nu) + ldaxp(nd)
 
+def get_ldax_dens(n):
+    return LDA_FACTOR * n**(4.0/3)
+
+def get_ldax(n):
+    return LDA_FACTOR * n**(1.0/3)
+
+def get_xed_from_y(y, rho):
+    """
+    Get the exchange energy density (n * epsilon_x)
+    from the exchange enhancement factor y
+    and density rho.
+    """
+    return rho * get_x(y, rho)
+
+def get_x(y, rho):
+    return (y + 1) * get_ldax(rho)
+
+def get_y_from_xed(xed, rho):
+    """
+    Get the exchange enhancement factor minus one.
+    """
+    return xed / (get_ldax_dens(rho) - 1e-12) - 1
+
 # check this all makes sense with scaling
 
 def get_x_nonlocal_descriptors_nsp(rho_data, tau_data, coords, weights):

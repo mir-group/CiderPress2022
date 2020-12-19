@@ -2,8 +2,9 @@ import time, psutil, os
 from pyscf import gto, lib
 import numpy as np
 from mldftdat.pyscf_utils import CALC_TYPES
+from ase import Atoms
 
-SAVE_ROOT = os.environ['MLDFTDB']
+SAVE_ROOT = os.environ.get('MLDFTDB')
 ACCDB_DIR = os.environ.get('ACCDB')
 
 def safe_mem_cap_mb():
@@ -21,7 +22,33 @@ def get_functional_db_name(functional):
     functional = functional.upper()
     return functional
 
-def get_save_dir(root, calc_type, basis, mol_id, functional=None):
+def get_save_dir(root, calc_type, basis, mol_id, functional=None, ks_to_hf=True):
     if functional is not None:
         calc_type = calc_type + '/' + get_functional_db_name(functional)
+        if ks_to_hf:
+            calc_type = calc_type.replace('KS/HF', 'HF')
     return os.path.join(root, calc_type, basis, mol_id)
+
+def read_accdb_structure(struct_id):
+    fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
+    with open(fname, 'r') as f:
+        print(fname)
+        lines = f.readlines()
+        natom = int(lines[0])
+        charge_and_spin = lines[1].split()
+        charge = int(charge_and_spin[0].strip().strip(','))
+        spin = int(charge_and_spin[1].strip().strip(',')) - 1
+        symbols = []
+        coords = []
+        for i in range(natom):
+            line = lines[2+i]
+            symbol, x, y, z = line.split()
+            if symbol.isdigit():
+                symbol = int(symbol)
+            else:
+                symbol = symbol[0] + symbol[1:].lower()
+            symbols.append(symbol)
+            coords.append([x,y,z])
+        struct = Atoms(symbols, positions = coords)
+        print(charge, spin, struct)
+    return struct, os.path.join('ACCDB', struct_id), spin, charge

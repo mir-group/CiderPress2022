@@ -10,7 +10,7 @@ import itertools
 import os
 from mldftdat.gp import DFTGPR
 from mldftdat.models.correlation_gps import CorrGPR
-from mldftdat.models.matrix_rbf import MatrixRBF
+from mldftdat.models.kernels import MatrixRBF
 import sys
 
 SAVE_ROOT = os.environ['MLDFTDB']

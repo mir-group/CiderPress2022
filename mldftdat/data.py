@@ -1,8 +1,7 @@
 import numpy as np 
-import matplotlib.pyplot as plt 
-from mpl_toolkits import mplot3d
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2, edmgga
+from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2,\
+                             edmgga, LDA_FACTOR
 import os, json
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
@@ -10,11 +9,9 @@ from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
-#from mldftdat.models.nn import Predictor
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.scf.stability import uhf_internal
 
-LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
 def get_unique_coord_indexes_spherical(coords):
     rs = np.linalg.norm(coords, axis=1)
@@ -71,25 +68,6 @@ def rho_data_from_calc(calc, grid, is_ccsd = False):
     rho = eval_rho(calc.mol, ao, dm, xctype='MGGA')
     return rho
 
-def plot_data_atom(mol, coords, values, value_name, rmax, units,
-                   ax=None):
-    mol.build()
-    rs = np.linalg.norm(coords, axis=1)
-    if ax is None:
-        plt.scatter(rs, values, label=value_name)
-        plt.xlim(0, rmax)
-        plt.xlabel('$r$ (Bohr radii)')
-        plt.ylabel(units)
-        plt.legend()
-        plt.title(mol._atom[0][0])
-    else:
-        ax.scatter(rs, values, label=value_name)
-        ax.set_xlim(0, rmax)
-        ax.set_xlabel('$r$ (Bohr radii)')
-        ax.set_ylabel(units)
-        ax.legend()
-        #plt.title(mol._atom[0][0])
-
 def get_zr_diatomic(mol, coords):
     mol.build()
     diff = np.array(mol._atom[1][1]) - np.array(mol._atom[0][1])
@@ -99,330 +77,6 @@ def get_zr_diatomic(mol, coords):
     print(zvecs.shape)
     rs = np.linalg.norm(coords - zvecs, axis=1)
     return zs, rs
-
-def plot_data_diatomic(mol, coords, values, value_name, units, bounds,
-                        ax = None):
-    mol.build()
-    diff = np.array(mol._atom[1][1]) - np.array(mol._atom[0][1])
-    direction = diff / np.linalg.norm(diff)
-    zs = np.dot(coords, direction)
-    print(zs.shape, values.shape)
-    if ax is None:
-        plt.scatter(zs, values, label=value_name)
-        plt.xlabel('$z$ (Bohr radii)')
-        plt.ylabel(units)
-        plt.xlim(bounds[0], bounds[1])
-        plt.legend()
-    else:
-        ax.scatter(zs, values, label=value_name)
-        ax.set_xlabel('$z$ (Bohr radii)')
-        ax.set_ylabel(units)
-        ax.set_xlim(bounds[0], bounds[1])
-        ax.legend()
-    if mol._atom[0][0] == mol._atom[1][0]:
-        title = '{}$_2$'.format(mol._atom[0][0])
-    else:
-        title = mol._atom[0][0] + mol._atom[1][0]
-    #plt.title(title)
-
-def plot_surface_diatomic(mol, zs, rs, values, value_name, units,
-                            bounds, scales = None):
-    condition = np.logical_and(rs < bounds[2],
-                    np.logical_and(zs > bounds[0], zs < bounds[1]))
-    rs = rs[condition]
-    zs = zs[condition]
-    values = values[condition]
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-    print(zs.shape, rs.shape, values.shape)
-    ax.scatter(zs, rs, values)
-    print(scales)
-    ax.set_title('Surface plot')
-
-def compile_dataset(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False,
-                    append_all_rho_data = False):
-
-    import time
-    all_descriptor_data = None
-    all_rho_data = None
-    all_values = []
-
-    for MOL_ID in MOL_IDS:
-        print('Working on {}'.format(MOL_ID))
-        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
-        start = time.monotonic()
-        analyzer = Analyzer.load(data_dir + '/data.hdf5')
-        end = time.monotonic()
-        print('analyzer load time', end - start)
-        if spherical_atom:
-            start = time.monotonic()
-            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
-            end = time.monotonic()
-            print('index scanning time', end - start)
-        start = time.monotonic()
-        descriptor_data = get_exchange_descriptors(analyzer.rho_data,
-                                                   analyzer.tau_data,
-                                                   analyzer.grid.coords,
-                                                   analyzer.grid.weights,
-                                                   restricted = True)
-        if append_all_rho_data:
-            from mldftdat import pyscf_utils
-            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
-                                                        analyzer.grid,
-                                                        analyzer.rdm1)
-            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
-                                                    analyzer.grid,
-                                                    analyzer.rdm1,
-                                                    ao_data)
-            descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
-            descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
-            descriptor_data = np.append(descriptor_data, ddrho, axis=0)
-        end = time.monotonic()
-        print('get descriptor time', end - start)
-        if locx:
-            print('Getting loc fx')
-            #values = analyzer.get_loc_fx_energy_density()
-            values = analyzer.get_smooth_fx_energy_density()
-        else:
-            values = analyzer.get_fx_energy_density()
-        descriptor_data = descriptor_data
-        rho_data = analyzer.rho_data
-        if spherical_atom:
-            values = values[indexes]
-            descriptor_data = descriptor_data[:,indexes]
-            rho_data = rho_data[:,indexes]
-
-        if all_descriptor_data is None:
-            all_descriptor_data = descriptor_data
-        else:
-            all_descriptor_data = np.append(all_descriptor_data, descriptor_data,
-                                            axis = 1)
-        if all_rho_data is None:
-            all_rho_data = rho_data
-        else:
-            all_rho_data = np.append(all_rho_data, rho_data, axis=1)
-        all_values = np.append(all_values, values)
-
-    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    rho_file = os.path.join(save_dir, 'rho.npy')
-    desc_file = os.path.join(save_dir, 'desc.npy')
-    val_file = os.path.join(save_dir, 'val.npy')
-    np.save(rho_file, all_rho_data)
-    np.save(desc_file, all_descriptor_data)
-    np.save(val_file, all_values)
-    #gp = DFTGP(descriptor_data, values, 1e-3)
-
-def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom = False, locx = False, lam = 0.5,
-                    version = 'a'):
-
-    import time
-    from pyscf import scf
-    all_descriptor_data = None
-    all_rho_data = None
-    all_values = []
-    all_weights = []
-    cutoffs = []
-
-    for MOL_ID in MOL_IDS:
-        print('Working on {}'.format(MOL_ID))
-        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
-        start = time.monotonic()
-        analyzer = Analyzer.load(data_dir + '/data.hdf5')
-        analyzer.get_ao_rho_data()
-        if type(analyzer.calc) == scf.hf.RHF:
-            restricted = True
-        else:
-            restricted = False
-        end = time.monotonic()
-        print('analyzer load time', end - start)
-        if spherical_atom:
-            start = time.monotonic()
-            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
-            end = time.monotonic()
-            print('index scanning time', end - start)
-        start = time.monotonic()
-        if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True, version=version)
-        else:
-            descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer, restricted = False, version=version)
-            descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
-                                        axis = 1)
-        """
-        if append_all_rho_data:
-            from mldftdat import pyscf_utils
-            ao_data, rho_data = pyscf_utils.get_mgga_data(analyzer.mol,
-                                                        analyzer.grid,
-                                                        analyzer.rdm1)
-            ddrho = pyscf_utils.get_rho_second_deriv(analyzer.mol,
-                                                    analyzer.grid,
-                                                    analyzer.rdm1,
-                                                    ao_data)
-            if restricted:
-                descriptor_data = np.append(descriptor_data, analyzer.rho_data, axis=0)
-                descriptor_data = np.append(descriptor_data, analyzer.tau_data, axis=0)
-                descriptor_data = np.append(descriptor_data, ddrho, axis=0)
-            else:
-                tmp1 = 2 * np.append(analyzer.rho_data[0], analyzer.rho_data[1], axis=1)
-                tmp2 = 2 * np.append(analyzer.tau_data[0], analyzer.tau_data[1], axis=1)
-                tmp3 = 2 * np.append(ddrho[0], ddrho[1], axis=1)
-                descriptor_data = np.append(descriptor_data, tmp1, axis=0)
-                descriptor_data = np.append(descriptor_data, tmp2, axis=0)
-                descriptor_data = np.append(descriptor_data, tmp3, axis=0)
-        """
-        end = time.monotonic()
-        print('get descriptor time', end - start)
-        if locx:
-            print('Getting loc fx')
-            values = analyzer.get_loc_fx_energy_density(lam = lam, overwrite=True)
-            if not restricted:
-                values = 2 * np.append(analyzer.loc_fx_energy_density_u,
-                                       analyzer.loc_fx_energy_density_d)
-        else:
-            values = analyzer.get_fx_energy_density()
-            if not restricted:
-                values = 2 * np.append(analyzer.fx_energy_density_u,
-                                       analyzer.fx_energy_density_d)
-        rho_data = analyzer.rho_data
-        if not restricted:
-            rho_data = 2 * np.append(rho_data[0], rho_data[1], axis=1)
-        if spherical_atom:
-            values = values[indexes]
-            descriptor_data = descriptor_data[:,indexes]
-            rho_data = rho_data[:,indexes]
-
-        if all_descriptor_data is None:
-            all_descriptor_data = descriptor_data
-        else:
-            all_descriptor_data = np.append(all_descriptor_data, descriptor_data,
-                                            axis = 1)
-        if all_rho_data is None:
-            all_rho_data = rho_data
-        else:
-            all_rho_data = np.append(all_rho_data, rho_data, axis=1)
-        all_values = np.append(all_values, values)
-        all_weights = np.append(all_weights, analyzer.grid.weights)
-        if not restricted:
-            # two copies for unrestricted case
-            all_weights = np.append(all_weights, analyzer.grid.weights)
-        cutoffs.append(all_values.shape[0])
-
-    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    rho_file = os.path.join(save_dir, 'rho.npy')
-    desc_file = os.path.join(save_dir, 'desc.npy')
-    val_file = os.path.join(save_dir, 'val.npy')
-    wt_file = os.path.join(save_dir, 'wt.npy')
-    cut_file = os.path.join(save_dir, 'cut.npy')
-    np.save(rho_file, all_rho_data)
-    np.save(desc_file, all_descriptor_data)
-    np.save(val_file, all_values)
-    np.save(wt_file, all_weights)
-    np.save(cut_file, np.array(cutoffs))
-
-def compile_dataset_corr(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, BASIS,
-                    Analyzer, spherical_atom = False, locx = False, lam = 0.5,
-                    version = 'a'):
-
-    import time
-    from pyscf import scf
-    all_descriptor_data_u = None
-    all_descriptor_data_d = None
-    all_rho_data_u = None
-    all_rho_data_d = None
-    all_values = []
-    all_weights = []
-    cutoffs = []
-
-    for MOL_ID in MOL_IDS:
-        print('Working on {}'.format(MOL_ID))
-        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID)
-        start = time.monotonic()
-        analyzer = Analyzer.load(data_dir + '/data.hdf5')
-        analyzer.get_ao_rho_data()
-        if type(analyzer.calc) == scf.hf.RHF or CALC_TYPE == 'CCSD':
-            restricted = True
-        else:
-            restricted = False
-        end = time.monotonic()
-        print('analyzer load time', end - start)
-        if spherical_atom:
-            start = time.monotonic()
-            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
-            end = time.monotonic()
-            print('index scanning time', end - start)
-        start = time.monotonic()
-        if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer,
-                restricted = True, version=version)
-            descriptor_data_u = descriptor_data
-            descriptor_data_d = descriptor_data
-        else:
-            descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer,
-                                    restricted = False, version=version)
-        end = time.monotonic()
-        print('get descriptor time', end - start)
-        
-        values = analyzer.get_corr_energy_density()
-
-        rho_data = analyzer.rho_data
-        if not restricted:
-            rho_data_u, rho_data_d = 2 * rho_data[0], 2 * rho_data[1]
-        else:
-            rho_data_u, rho_data_d = rho_data, rho_data
-        if spherical_atom:
-            values = values[indexes]
-            descriptor_data_u = descriptor_data_u[:,indexes]
-            descriptor_data_d = descriptor_data_d[:,indexes]
-            rho_data_u = rho_data_u[:,indexes]
-            rho_data_d = rho_data_d[:,indexes]
-
-        if all_descriptor_data_u is None:
-            all_descriptor_data_u = descriptor_data_u
-            all_descriptor_data_d = descriptor_data_d
-        else:
-            all_descriptor_data_u = np.append(all_descriptor_data_u, descriptor_data_u,
-                                              axis = 1)
-            all_descriptor_data_d = np.append(all_descriptor_data_d, descriptor_data_d,
-                                              axis = 1)
-        if all_rho_data_u is None:
-            all_rho_data_u = rho_data_u
-            all_rho_data_d = rho_data_d
-        else:
-            all_rho_data_u = np.append(all_rho_data_u, rho_data_u, axis=1)
-            all_rho_data_d= np.append(all_rho_data_d, rho_data_d, axis=1)
-        all_values = np.append(all_values, values)
-        all_weights = np.append(all_weights, analyzer.grid.weights)
-        if not restricted:
-            # two copies for unrestricted case
-            all_weights = np.append(all_weights, analyzer.grid.weights)
-        cutoffs.append(all_values.shape[0])
-
-    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    rho_file = os.path.join(save_dir, 'rho.npy')
-    desc_file = os.path.join(save_dir, 'desc.npy')
-    val_file = os.path.join(save_dir, 'val.npy')
-    wt_file = os.path.join(save_dir, 'wt.npy')
-    cut_file = os.path.join(save_dir, 'cut.npy')
-    np.save(rho_file, np.stack([all_rho_data_u, all_rho_data_d], axis=0))
-    np.save(desc_file, np.stack([all_descriptor_data_u, all_descriptor_data_d], axis=0))
-    np.save(val_file, all_values)
-    np.save(wt_file, all_weights)
-    np.save(cut_file, np.array(cutoffs))
-
-def ldax(n):
-    return LDA_FACTOR * n**(4.0/3)
-
-def ldax_dens(n):
-    return LDA_FACTOR * n**(1.0/3)
 
 def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False,
                      binary = False):
@@ -483,34 +137,18 @@ def get_descriptors(dirname, num=1, count=None, tol=1e-3):
 
     return filter_descriptors(X, y, rho_data, tol)
 
-def get_xed_from_y(y, rho):
-    """
-    Get the exchange energy density (n * epsilon_x)
-    from the exchange enhancement factor y
-    and density rho.
-    """
-    return rho * get_x(y, rho)
-
-def get_x(y, rho):
-    #return np.exp(y) * ldax_dens(rho)
-    return (y + 1) * ldax_dens(rho)
-
-def get_y_from_xed(xed, rho):
-    #return np.log(xed / (ldax(rho) - 1e-7) + 1e-7)
-    return xed / (ldax(rho) - 1e-12) - 1
-
 def true_metric(y_true, y_pred, rho):
     """
     Find relative and absolute mse, as well as r2
-    score, for the exchange energy density (n * epsilon_x)
+    score, for the exchange energy per particle (epsilon_x)
     from the true and predicted enhancement factor
     y_true and y_pred.
     """
     res_true = get_x(y_true, rho)
     res_pred = get_x(y_pred, rho)
     return np.sqrt(np.mean(((res_true - res_pred) / (1))**2)),\
-            np.sqrt(np.mean(((res_true - res_pred) / (res_true + 1e-7))**2)),\
-            score(res_true, res_pred)
+           np.sqrt(np.mean(((res_true - res_pred) / (res_true + 1e-7))**2)),\
+           score(res_true, res_pred)
 
 def score(y_true, y_pred):
     """
@@ -519,21 +157,6 @@ def score(y_true, y_pred):
     #y_mean = np.mean(y_true)
     #return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
     return r2_score(y_true, y_pred)
-
-def quick_plot(rho, v_true, v_pred, name = None):
-    """
-    Plot true and predicted values against charge density
-    """
-    plt.scatter(rho, v_true, label='true')
-    plt.scatter(rho, v_pred, label='predicted')
-    plt.xlabel('density')
-    plt.legend()
-    if name is None:
-        plt.show()
-    else:
-        plt.title(name)
-        plt.savefig(name)
-        plt.cla()
 
 def predict_exchange(analyzer, model=None, num=1,
                      restricted = True, return_desc = False, version = 'a'):
@@ -557,8 +180,8 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / (rho + 1e-7)
     elif model == 'EDM':
         fx = edmgga(rho_data)
-        neps = fx * ldax(rho)
-        eps = fx * ldax_dens(rho)
+        neps = fx * get_ldax_dens(rho)
+        eps = fx * get_ldax(rho)
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data)[0]
         neps = eps * rho
@@ -613,17 +236,7 @@ def predict_exchange(analyzer, model=None, num=1,
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
-    """else:
-        xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
-                                         weights, restricted = restricted)
-        #neps = model.predict(xdesc.transpose(), rho)
-        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
-        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
-        eps = neps / rho
-        if return_desc:
-            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
-    """
-    xef = neps / (ldax(rho) - 1e-7)
+    xef = neps / (get_ldax_dens(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
         return xef, eps, neps, fx_total, X
@@ -645,7 +258,8 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
     elif model == 'EDM':
         fxu = edmgga(2 * rho_data[0])
         fxd = edmgga(2 * rho_data[1])
-        neps = 0.5 * fxu * ldax(2 * rho[0]) + 0.5 * fxd * ldax(2 * rho[1])
+        neps = 0.5 * fxu * get_ldax_dens(2 * rho[0]) \
+             + 0.5 * fxd * get_ldax_dens(2 * rho[1])
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data, spin=analyzer.mol.spin)[0]
         #epsu = eval_xc(model + ',', 2 * rho_data[0])[0]
@@ -1406,7 +1020,6 @@ def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
     if single:
         return result[data_point_names[0]]
     return result
-
 
 def get_accdb_formulas(dataset_eval_name):
     with open(dataset_eval_name, 'r') as f:
