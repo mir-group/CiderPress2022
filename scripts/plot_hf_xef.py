@@ -2,13 +2,13 @@ from mldftdat.loc_analyzers import RHFAnalyzer
 import numpy as np 
 from pyscf.dft.libxc import eval_xc
 from mldftdat.pyscf_utils import get_single_orbital_tau, get_gradient_magnitude
-from mldftdat.data import ldax, ldax_dens
+from mldftdat.density import get_ldax_dens, get_ldax
 
 analyzer = RHFAnalyzer.load('test_files/RHF_HF.hdf5')
 rho = analyzer.rho_data[0,:]
 rho_data = analyzer.rho_data
 
-from mldftdat import data
+from mldftdat import plots
 import matplotlib.pyplot as plt
 
 lams = [0.5, 0.62, 0.68, 0.74, 0.80, 0.86, 0.92, 0.96]
@@ -23,8 +23,8 @@ for i in range(8):
     lam = lams[i]
     ax = axs[i//3,i%3]
     loc_dens = analyzer.get_loc_fx_energy_density(lam = lam, overwrite = True)
-    data.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
-                        loc_dens[condition] / (data.ldax(rho[condition]) - 1e-7),
+    plots.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
+                        loc_dens[condition] / (get_ldax_dens(rho[condition]) - 1e-7),
                         '$\\lambda$=%.2f'%lam, '$F_x$ (a.u)', [-3, 6], ax=ax)
     ax.set_ylim(0.0, 2.5)
     ax.scatter([0],[0], s=10, color='black')
@@ -45,19 +45,11 @@ def make_space_above(axes, topmargin=1):
     fig.set_figheight(figh)
 
 ax = axs[-1,-1]
-data.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
-                    analyzer.fx_energy_density[condition] / (data.ldax(rho[condition]) - 1e-7),
-                    '$\\lambda$=1.00', '$F_x$ (a.u)', [-3, 6])
+plots.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
+                    analyzer.fx_energy_density[condition] / (get_ldax_dens(rho[condition]) - 1e-7),
+                    '$\\lambda$=1.00', '$F_x$ (a.u)', [-3, 6], ax=ax)
 tauw = np.linalg.norm(rho_data[1:4])**2 / (8 * rho)
 frac = tauw / rho_data[5]
-#data.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
-#                    eval_xc('MGGA_X_TM,', analyzer.rho_data)[0][condition]\
-#                    / (data.ldax_dens(rho[condition]) - 1e-7),
-#                    'TM16', '$F_x$ (a.u)', [-3, 6])
-#data.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
-#                    eval_xc('MGGA_X_TM,', analyzer.rho_data)[0][condition]\
-#                    / (data.ldax_dens(rho[condition]) - 1e-7),
-#                    'TM16', '$F_x$ (a.u)', [-3, 6])
 ax.set_ylim(0.0, 2.5)
 ax.scatter([0],[0], s=10, color='black')
 ax.scatter([1.1/0.5291],[0], s=10, color='black')
@@ -66,10 +58,4 @@ ax.annotate('F', xy=(1.1/0.5291, 0), xytext=(1.1/0.5291-0.1, 0.05), fontsize=15)
 fig.tight_layout()
 fig.suptitle('XEF of Transformed Exchange Holes for Varying $\\lambda$')
 make_space_above(axs)
-#fig.tight_layout()
-plt.show()
-
-data.plot_data_diatomic(analyzer.mol, analyzer.grid.coords[condition],
-                    frac[condition],
-                    'tauw/tau', '$F_x$ (a.u)', [-3, 6])
 plt.show()

@@ -4,7 +4,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
-from mldftdat.utilf import utils as utilf
+import logging
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
@@ -52,12 +52,12 @@ def run_scf(mol, calc_type, functional = None, remove_ld = False, dm0 = None):
 
     calc = SCF_TYPES[calc_type](mol)
     if remove_ld:
-        print("Removing linear dependence from overlap matrix")
+        logging.info("Removing linear dependence from overlap matrix")
         calc = scf.addons.remove_linear_dep_(calc)
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
         if functional == 'wB97M_V':
-            print ('Specialized wB97M-V params')
+            logging.info('Using Specialized wB97M-V params')
             calc.nlc = 'VV10'
             calc.grids.prune = None
             calc.grids.level = 4
@@ -117,7 +117,7 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
     cond = ascale < GG_AMIN
     ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
     env[bas[:,5]] = ascale
-    print(np.sqrt(np.min(env[bas[:,5]])))
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format( np.sqrt(np.min(env[bas[:,5]]))))
     #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
     env[bas[:,6]] = np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
@@ -146,7 +146,7 @@ def get_gaussian_grid_c(coords, rho, l = 0, s = None, alpha = None):
     cond = ascale < GG_AMIN
     ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
     env[bas[:,5]] = ascale
-    print(np.sqrt(np.min(env[bas[:,5]])))
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format( np.sqrt(np.min(env[bas[:,5]]))))
     #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
     env[bas[:,6]] = fac**1.5 * np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
@@ -174,7 +174,7 @@ def get_gaussian_grid_b(coords, rho, l = 0, s = None, alpha = None):
     bas[:,1] = l
     env[bas[:,5]] = a * scale
     env[bas[rho<1e-8,5]] = 1e16
-    print(np.sqrt(np.min(env[bas[:,5]])))
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format( np.sqrt(np.min(env[bas[:,5]]))))
     env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
 
     return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
@@ -668,9 +668,12 @@ def get_single_orbital_tau(rho, mag_grad):
 def get_uniform_tau(rho):
     return (3.0/10) * (3*np.pi**2)**(2.0/3) * rho**(5.0/3)
 
-def get_normalized_tau(tau, tau_w, tau_unif):
+def get_regularized_tau(tau, tau_w, tau_unif):
     alpha = (tau - tau_w) / (tau_unif + 1e-4)
     return alpha**3 / (alpha**2 + 1e-3)
+
+def get_normalized_tau(tau, tau_w, tau_unif):
+    return (tau - tau_w) / (tau_unif + 1e-16)
 
 def get_dft_input(rho_data):
     rho = rho_data[0,:]
@@ -679,7 +682,7 @@ def get_dft_input(rho_data):
     s = get_normalized_grad(rho, mag_grad)
     tau_w = get_single_orbital_tau(rho, mag_grad)
     tau_unif = get_uniform_tau(rho)
-    alpha = get_normalized_tau(rho_data[5], tau_w, tau_unif)
+    alpha = get_regularized_tau(rho_data[5], tau_w, tau_unif)
     return rho, s, alpha, tau_w, tau_unif
 
 def get_dft_input2(rho_data):
@@ -689,65 +692,8 @@ def get_dft_input2(rho_data):
     s = get_normalized_grad(rho, mag_grad)
     tau_w = get_single_orbital_tau(rho, mag_grad)
     tau_unif = get_uniform_tau(rho)
-    alpha = (rho_data[5] - tau_w) / (tau_unif + 1e-16)
+    alpha = get_normalized_tau(rho_data[5], tau_w, tau_unif)
     return rho, s, alpha, tau_w, tau_unif
-
-def get_vh(rho, rs, weights):
-    return np.dot(rho / rs, weights)
-
-def get_dvh(drho, rs, weights):
-    return np.dot(drho / rs, weights)
-
-def get_hartree_potential(rho_data, coords, weights):
-    init_shape = rho_data.shape
-    if len(init_shape) == 1:
-        rho_data = rho_data.reshape((1, rho_data.shape[0]))
-    print('getting hartree potential')
-    return utilf.hartree_potential(rho_data, coords.transpose(),
-                                   weights)[1].reshape(init_shape)
-
-def get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights):
-    coords = coords.transpose()
-    vh_data = utilf.hartree_potential(rho_data, coords, weights)[1]
-    if np.isnan(vh_data).any():
-        raise ValueError('Part of vh_data is nan %d' % np.count_nonzero(np.isnan(vh_data)))
-    print('getting nonlocal_data')
-    return utilf.nonlocal_dft_data(rho_data[:4], tau_data[1:4],
-                                   vh_data[1:4], ws_radii,
-                                   coords, weights)[1]
-
-def get_nonlocal_data_slow(rho_data, tau_data, ws_radii, coords, weights):
-    vals = []
-    rho = rho_data[0,:]
-    drho = rho_data[1:4,:]
-    vals = np.zeros((5, rho.shape[0]))
-    dvh = np.zeros((rho.shape[0], 3))
-    for i in range(weights.shape[0]):
-        vecs = coords - coords[i]
-        rs = np.linalg.norm(vecs, axis=1)
-        rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
-        dvh[i,:] = get_dvh(drho, rs, weights)
-    for i in range(weights.shape[0]):
-        ws_radius = ws_radii[i]
-        vecs = coords - coords[i]
-        rs = np.linalg.norm(vecs, axis=1)
-        exp_weights = np.exp(- rs / ws_radius) * weights
-        # r dot nabla rho
-        rddrho = np.einsum('pu,up->p', vecs, drho)
-        # r dot nabla v_ha
-        rddvh = np.einsum('pu,pu->p', vecs, dvh)
-        rddvh_int = np.dot(exp_weights, rho * rddvh)
-        rddrho_int = np.dot(exp_weights, rho * rddrho)
-        dtau = tau_data[1:4,:]
-        # r dot nabla tau
-        rddtau = np.einsum('pu,up->p', vecs, dtau)
-        rddtau_int = np.dot(exp_weights, rho * rddtau)
-        rho_int = np.dot(exp_weights, rho)
-
-        vals[:,i] = np.array([np.linalg.norm(dvh[i,:]), rddvh_int, rddrho_int,\
-                              rddtau_int, rho_int])
-
-    return vals
 
 def squish_density(rho_data, coords, weights, alpha):
     new_coords = coords / alpha
@@ -763,41 +709,6 @@ def squish_tau(tau_data, alpha):
     tau_data[0,:] *= alpha**5
     tau_data[1:4] *= alpha**6
     return tau_data
-
-def get_regularized_nonlocal_data(nonlocal_data, rho_data):
-    """
-    INPUT:
-        0 : | nabla v_H |
-        1 : \int exp(r'/r_s) n(r+r') r' dot nabla' v_H(r+r')
-        2 : \int exp(r'/r_s) n(r+r') r' dot nabla' n(r+r')
-        3 : \int exp(r'/r_s) n(r+r') r' dot nabla' tau(r+r')
-        4 : \int exp(r'/r_s) n(r+r')
-        5 : \int exp(r'/r_s) n(r+r')^(4/3)
-        6 : \int exp(r'/r_s) n(r+r')^(5/3)
-        7 : \int exp(r'/r_s) n(r+r')^2
-    OUTPUT:
-        0 : INPUT[0] * RHO / (INPUT[0] * RHO + TAU)
-        1 : INPUT[1] / INPUT[5]
-        2 : INPUT[2] / INPUT[7]
-        3 : INPUT[3] / INPUT[6]
-        4 : INPUT[4]
-    """
-    nonlocal_data = nonlocal_data.copy()
-    rho = rho_data[0,:]
-    ws_radii = get_ws_radii(rho)
-    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
-    n43 = rho**(4.0/3)
-    tau_unif = get_uniform_tau(rho)
-    mag_grad = get_gradient_magnitude(rho_data)
-    tau_w = get_single_orbital_tau(rho, mag_grad)
-    #nonlocal_data[0,:] /= np.sqrt(n43) + 1e-6
-    ndvh = rho_data[0,:] * nonlocal_data[0,:]
-    nonlocal_data[0,:] = ndvh / (ndvh + rho_data[5,:] + 1e-6)
-    nonlocal_data[1,:] /= nonlocal_data[5,:] + 1e-6
-    nonlocal_data[2,:] /= nonlocal_data[7,:] + 1e-6
-    # TODO: below value is not normalized properly
-    nonlocal_data[3,:] /= nonlocal_data[6,:] + 1e-6
-    return nonlocal_data[:5,:]
 
 import scipy
 def get_proj(mol, grids):

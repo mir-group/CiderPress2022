@@ -2,7 +2,7 @@ import yaml
 import numpy as np
 from interpolation.splines import UCGrid, CGrid, nodes
 from interpolation.splines import filter_cubic, eval_cubic
-from mldftdat.models.matrix_rbf import PartialQARBF, qarbf_args
+from mldftdat.models.kernels import PartialQARBF, qarbf_args
 from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
                                                    vec_eval_cubic_splines_G_2,\
                                                    vec_eval_cubic_splines_G_3

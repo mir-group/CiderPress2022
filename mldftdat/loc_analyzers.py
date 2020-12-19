@@ -9,6 +9,7 @@ import scipy.linalg
 import numpy as np
 from scipy.linalg.lapack import dgetrf, dgetri
 from scipy.linalg.blas import dgemm, dgemv
+from scipy.linalg import cho_factor, cho_solve
 from mldftdat.workflow_utils import safe_mem_cap_mb
 
 DEFAULT_LAMBDA = 0.5
@@ -137,9 +138,8 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         return self.num_chunks
 
     def setup_etb(self, lam=DEFAULT_LAMBDA):
-        auxbasis = df.aug_etb(self.mol, beta=1.6)
         nao = self.mol.nao_nr()
-        self.auxmol = df.make_auxmol(self.mol, auxbasis)
+        self.auxmol = df.make_auxmol(self.mol, 'weigendjkfit')
         naux = self.auxmol.nao_nr()
         # shape (naux, naux), symmetric
         aug_J = self.auxmol.intor('int2c2e')
@@ -147,12 +147,10 @@ class RHFAnalyzer(lowmem_analyzers.RHFAnalyzer):
         aux_e2 = df.incore.aux_e2(self.mol, self.auxmol)
         print(aux_e2.shape)
         # shape (naux, nao * nao)
-        aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
-        aux_e2 = np.ascontiguousarray(aux_e2)
-        self.augJ = aug_J.copy()
-        lu, piv, info = dgetrf(aug_J, overwrite_a = True)
-        inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
-        self.ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+        aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+        c_and_lower = cho_factor(aug_J)
+        ao_to_aux = cho_solve(c_and_lower, aux_e2)
+        self.ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
         print(self.ao_to_aux.shape)
         # phi_i phi_j = \sum_{mu,nu,P} c_{i,mu} c_{j,nu} d_{P,mu,nu}
         self.mo_to_aux = np.matmul(self.mo_coeff.transpose(),
@@ -224,9 +222,8 @@ class UHFAnalyzer(lowmem_analyzers.UHFAnalyzer):
         return self.num_chunks 
 
     def setup_etb(self, lam=DEFAULT_LAMBDA):
-        auxbasis = df.aug_etb(self.mol, beta=1.6)
         nao = self.mol.nao_nr()
-        self.auxmol = df.make_auxmol(self.mol, auxbasis)
+        self.auxmol = df.make_auxmol(self.mol, 'weigendjkfit')
         naux = self.auxmol.nao_nr()
         # shape (naux, naux), symmetric
         aug_J = self.auxmol.intor('int2c2e')
@@ -234,21 +231,11 @@ class UHFAnalyzer(lowmem_analyzers.UHFAnalyzer):
         aux_e2 = df.incore.aux_e2(self.mol, self.auxmol)
         print(aux_e2.shape)
         # shape (naux, nao * nao)
-        aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
-        aux_e2 = np.ascontiguousarray(aux_e2)
-        self.augJ = aug_J.copy()
-        #self.inv_aug_J = scipy.linalg.inv(aug_J, overwrite_a = True)
-        # d(Q,rs) shape (naux, nao * nao)
-        # \sum_P \Theta_P * d(P,rs) \approx rho_{rs}
-        print(aug_J.shape, aux_e2.shape)
-        #self.ao_to_aux = scipy.linalg.solve(aug_J, aux_e2, overwrite_a=True,
-        #                 overwrite_b=True, debug=None, check_finite=True,
-        #                 assume_a='sym', transposed=False)
-        lu, piv, info = dgetrf(aug_J, overwrite_a = True)
-        inv_aug_J, info = dgetri(lu, piv, overwrite_lu = True)
-        #self.ao_to_aux = np.matmul(inv_aug_J, aux_e2)
-        self.ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
-        print(self.ao_to_aux.shape)
+        aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+        c_and_lower = cho_factor(aug_J)
+        ao_to_aux = cho_solve(c_and_lower, aux_e2)
+        self.ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
+
         # phi_i phi_j = \sum_{mu,nu,P} c_{i,mu} c_{j,nu} d_{P,mu,nu}
         self.mo_to_aux = [np.matmul(self.mo_coeff[0].transpose(),
                                    np.matmul(self.ao_to_aux.reshape(naux, nao, nao),

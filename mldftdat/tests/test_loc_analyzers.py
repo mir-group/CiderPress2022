@@ -14,12 +14,12 @@ import os
 
 TMP_TEST = 'test_files/tmp'
 
-# TODO: Current working error is approx 8e-4. Could possibly improve?
+
 class TestRHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'sto-3g')
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'def2-svp')
         cls.mol.build()
         cls.rhf = run_scf(cls.mol, 'RHF')
         cls.analyzer = RHFAnalyzer(cls.rhf)
@@ -28,16 +28,15 @@ class TestRHFAnalyzer():
     def test_get_loc_fx_energy_density(self):
         fx_density = self.analyzer.get_loc_fx_energy_density()
         fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
-        assert_almost_equal(fx_tot, self.fx_tot_ref, 3)
+        assert_almost_equal(fx_tot, self.fx_tot_ref, 4)
         assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)
 
 
-# TODO: Current working error is approx 2e-3. Could possibly improve?
 class TestUHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'sto-3g', spin = 1)
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'def2-svp', spin = 1)
         cls.mol.build()
         cls.uhf = run_scf(cls.mol, 'UHF')
         cls.analyzer = UHFAnalyzer(cls.uhf)
@@ -46,5 +45,6 @@ class TestUHFAnalyzer():
     def test_get_loc_fx_energy_density(self):
         fx_density = self.analyzer.get_loc_fx_energy_density()
         fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
-        assert_almost_equal(fx_tot, self.fx_tot_ref, 2)
+        # Precision is about 2e-4 in practice, a bit higher than 4-digit thresh
+        assert_almost_equal(fx_tot, self.fx_tot_ref, 3)
         assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)

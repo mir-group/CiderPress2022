@@ -1,8 +1,7 @@
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-from mldftdat.data import get_gp_x_descriptors, get_y_from_xed, get_xed_from_y,\
-                          score, true_metric
-from mldftdat import data
+from mldftdat.data import score, true_metric
+from mldftdat import density
 import numpy as np
 
 from scipy.linalg import solve_triangular
@@ -22,6 +21,9 @@ from scipy.linalg import solve_triangular
 """
 
 class ALGPR(GaussianProcessRegressor):
+    # TODO this is WIP, DO NOT USE!!!
+    # active learning GP with utility to add
+    # one training point at a time efficiently.
 
     def fit_single(self, x, y):
         # following Rasmussen A.12 (p. 201)
@@ -69,16 +71,13 @@ class ALGPR(GaussianProcessRegressor):
 
 class DFTGPR():
 
-    def __init__(self, num_desc, descriptor_getter = None, xed_y_converter = None,
+    def __init__(self, num_desc, descriptor_getter, xed_y_converter = None,
                  init_kernel = None, use_algpr = False, selection = None):
-        if descriptor_getter is None:
-            self.get_descriptors = data.get_gp_x_descriptors
-        else:
-            self.get_descriptors = descriptor_getter
+        self.get_descriptors = descriptor_getter
         self.selection = selection
         if xed_y_converter is None:
-            self.xed_to_y = data.get_y_from_xed
-            self.y_to_xed = data.get_xed_from_y
+            self.xed_to_y = density.get_y_from_xed
+            self.y_to_xed = density.get_xed_from_y
         else:
             self.xed_to_y = xed_y_converter[0]
             self.y_to_xed = xed_y_converter[1]

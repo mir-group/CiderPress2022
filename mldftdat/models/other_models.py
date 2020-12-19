@@ -2,7 +2,7 @@ from mldftdat.gp import DFTGPR
 from mldftdat.pyscf_utils import *
 from mldftdat.density import *
 from mldftdat.data import *
-from mldftdat.models.matrix_rbf import *
+from mldftdat.models.kernels import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *

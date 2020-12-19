@@ -355,8 +355,6 @@ class TestPyscfUtils(unittest.TestCase):
         MAX_R = 2
         coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
         rs = np.linalg.norm(coords, axis=1)
-        coords = coords[rs<MAX_R,:]
-        weights = weights[rs<MAX_R]
         rhf_ao_data = eval_ao(self.FH, coords, deriv=2)
         rho_data = dft.numint.eval_rho(self.FH, rhf_ao_data, self.rhf_rdm1,
                                         xctype='mGGA')
@@ -370,87 +368,46 @@ class TestPyscfUtils(unittest.TestCase):
         print(np.flip(np.sort(alpha)))
         assert (alpha >= -1e-16).all()
 
-        assert_almost_equal(rho * ALPHA**3, squish_rho)
-        assert_almost_equal(s, squish_s, 4)
+        assert_almost_equal((rho * ALPHA**3)[rho>1e-10],
+                            squish_rho[rho>1e-10])
+        assert_almost_equal(s[rho>1e-6], squish_s[rho>1e-6])
         # TODO: adjust this unit test to account for imprecise coordinate
         # scaling of the regularized alpha
-        assert_almost_equal(alpha, squish_alpha, 2)
-        assert_almost_equal(tau_w * ALPHA**5, squish_tau_w, 4)
-        assert_almost_equal(tau_unif * ALPHA**5, squish_tau_unif, 4)
+        assert_almost_equal(alpha[rho>1e-1], squish_alpha[rho>1e-1], 3)
+        assert_almost_equal(tau_w[rho>1e-6] * ALPHA**5,
+                            squish_tau_w[rho>1e-6])
+        assert_almost_equal(tau_unif[rho>1e-6] * ALPHA**5,
+                            squish_tau_unif[rho>1e-6])
 
-    """
-    def test_get_vh(self):
-        vh = []
-        for i in range(self.tst_weights.shape[0]):
-            coords = self.tst_coords - self.tst_coords[i]
-            weights = self.tst_weights
-            rs = np.linalg.norm(coords, axis=1)
-            rs[i] = (2.0/3) * (3 * weights[i] / (4 * np.pi))**(1.0 / 3)
-            vh.append(get_vh(self.tst_dens, rs, weights))
-        assert_almost_equal(np.array(vh), self.tst_vh, 6)
-    """
-
-    def test_get_hartree_potential(self):
-        vh = get_hartree_potential(self.tst_dens, self.tst_coords, self.tst_weights)
-        assert_almost_equal(vh[self.tst_weights>0], self.tst_vh[self.tst_weights>0], 3)
-
-    @nottest
-    def test_get_nonlocal_data(self):
-        # should check that the values make sense when passed
-        # the dummy density
-        rho_data = np.append(self.tst_dens.reshape((1, self.tst_dens.shape[0])),
-                                self.tst_grad, axis=0)
-        tau_data = np.append(self.tst_tau.reshape((1, self.tst_dens.shape[0])),
-                                self.tst_grad_tau, axis=0)
-        ws_radii = get_ws_radii(rho_data[0])
-        nldat = get_nonlocal_data(rho_data, tau_data, ws_radii,
-                                self.tst_coords, self.tst_weights)
-        #nldat_slow = get_nonlocal_data_slow(rho_data, tau_data, ws_radii,
-        #                        self.tst_coords, self.tst_weights)
-        #assert_almost_equal(nldat, nldat_slow)
-
-        #import matplotlib.pyplot as plt
-        #plt.scatter(self.tst_rs, np.abs(self.tst_grad_vh))
-        #plt.scatter(self.tst_rs, nldat[0])
-        #plt.show()
-        assert_almost_equal(nldat[0], np.abs(self.tst_grad_vh), 4)
-        # TODO should try to add tests for the other items in the list
-        # here, but not sure how to verify them because the integrals
-        # are not analytical
-
-    def test_get_regularized_nonlocal_data(self):
-        # should just test that the resulting values
-        # obey density scaling relations
+    def test_get_dft_input2(self):
+        # NOTE: might need to work on the precision here, though
+        # not certain how to accomplish that.
+        # At the very least, I need to att some controls for the uncertainty
+        # at low densities.
         ALPHA = 1.2
-        rho_data = np.append(self.tst_dens.reshape((1, self.tst_dens.shape[0])),
-                                self.tst_grad, axis=0)
-        # TODO: rho_data[4] has tau instead of nabla^2, should fix
-        rho_data = np.append(rho_data, (self.tst_tau, self.tst_tau), axis=0)
-        tau_data = np.append(self.tst_tau.reshape((1, self.tst_dens.shape[0])),
-                                self.tst_grad_tau, axis=0)
-        coords = self.tst_coords
-        weights = self.tst_weights
-        ws_radii = get_ws_radii(rho_data[0])
-        squish_coords, squish_weights, squish_rho_data = squish_density(rho_data,
-                                                            coords, weights, ALPHA)
-        squish_ws_radii = get_ws_radii(squish_rho_data[0])
-        squish_tau_data = squish_tau(tau_data, ALPHA)
-        nlc_data = get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights)
-        squish_nlc_data = get_nonlocal_data(squish_rho_data, squish_tau_data,
-                                            squish_ws_radii, squish_coords, squish_weights)
-        nlc_data_reg = get_regularized_nonlocal_data(nlc_data, rho_data)
-        squish_nlc_data_reg = get_regularized_nonlocal_data(squish_nlc_data, squish_rho_data)
-        print(nlc_data_reg.shape, squish_nlc_data_reg.shape)
-        nlc_data_reg = nlc_data_reg[:,self.tst_rs < 2]
-        squish_nlc_data_reg = squish_nlc_data_reg[:,self.tst_rs < 2]
-        #import matplotlib.pyplot as plt
-        for i in range(5):
-            print(i, nlc_data_reg[i].shape, squish_nlc_data_reg[i].shape,
-                type(nlc_data_reg[i]), type(squish_nlc_data_reg[i]))
-            #plt.scatter(self.tst_rs[self.tst_rs < 2], np.log(nlc_data_reg[i]))
-            #plt.scatter(self.tst_rs[self.tst_rs < 2], np.log(squish_nlc_data_reg[i]))
-            #plt.show()
-            if i == 3:
-                assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-2)
-            else:
-                assert_allclose(nlc_data_reg[i], squish_nlc_data_reg[i], rtol=1e-3)
+        MAX_R = 2
+        coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
+        rs = np.linalg.norm(coords, axis=1)
+        rhf_ao_data = eval_ao(self.FH, coords, deriv=2)
+        rho_data = dft.numint.eval_rho(self.FH, rhf_ao_data, self.rhf_rdm1,
+                                        xctype='mGGA')
+        coords, weights = self.rhf_grid.coords, self.rhf_grid.weights
+        rho, s, alpha, tau_w, tau_unif = get_dft_input2(rho_data)
+        squish_coords, squish_weights, squish_rho_data = \
+            squish_density(rho_data, coords, weights, ALPHA)
+        squish_rho, squish_s, squish_alpha, squish_tau_w, squish_tau_unif = \
+            get_dft_input2(squish_rho_data)
+
+        print(np.flip(np.sort(alpha)))
+        assert (alpha >= -1e-16).all()
+
+        assert_almost_equal((rho * ALPHA**3)[rho>1e-10],
+                            squish_rho[rho>1e-10])
+        assert_almost_equal(s[rho>1e-6], squish_s[rho>1e-6])
+        # TODO: adjust this unit test to account for imprecise coordinate
+        # scaling of the regularized alpha
+        assert_almost_equal(alpha[rho>1e-6], squish_alpha[rho>1e-6], 3)
+        assert_almost_equal(tau_w[rho>1e-6] * ALPHA**5,
+                            squish_tau_w[rho>1e-6])
+        assert_almost_equal(tau_unif[rho>1e-6] * ALPHA**5,
+                            squish_tau_unif[rho>1e-6])
