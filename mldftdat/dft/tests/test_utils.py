@@ -143,6 +143,8 @@ class TestFunctionalDerivatives():
         a = gridmol._env[gridmol._bas[:,5]]
         norm = mol.intor('int1e_ovlp')
         print(norm**0.5)
+        g = a[:,np.newaxis] * gto.mole.intor_cross('int1e_r2_origj', mol, gridmol).T
+        assert_almost_equal(g.flatten(), 3)
         g = gto.mole.intor_cross('int1e_ovlp', gridmol, mol)
         assert_almost_equal(g, 2)
 
