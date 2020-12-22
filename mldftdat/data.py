@@ -158,8 +158,7 @@ def score(y_true, y_pred):
     #return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
     return r2_score(y_true, y_pred)
 
-def predict_exchange(analyzer, model=None, num=1,
-                     restricted = True, return_desc = False, version = 'a'):
+def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
     """
     model:  If None, return exact exchange results
             If str, evaluate the exchange energy of that functional.
@@ -185,23 +184,16 @@ def predict_exchange(analyzer, model=None, num=1,
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data)[0]
         neps = eps * rho
-    elif type(model) == GPR:
-        xdesc = get_exchange_descriptors(rho_data, tau_data, coords,
-                                         weights, restricted = restricted)
-        rho = xdesc[0,:]
-        X = get_gp_x_descriptors(xdesc.transpose(), num=num)
-        y = get_xed_from_y(analyzer.get_fx_energy_density(), rho)
-        y_pred, std = model.predict(X, return_std = True)
-        eps = get_x(y_pred, rho)
-        neps = rho * eps
     elif isinstance(model, Predictor):
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+                                          version=model.desc_version)
         neps = model.predict(xdesc.transpose(), rho_data)
         eps = neps / rho
         if return_desc:
-            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+            X = model.get_descriptors(xdesc.transpose(), rho_data, num=model.num)
     elif hasattr(model, 'coeff_sets'):
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+                                          version=model.desc_version)
         neps = model.predict(xdesc.transpose(), rho_data, vec_eval = True)
         eps = neps / rho
         if return_desc:
@@ -210,7 +202,8 @@ def predict_exchange(analyzer, model=None, num=1,
         N = analyzer.grid.weights.shape[0]
         desc  = np.zeros((N, len(model.desc_list)))
         ddesc = np.zeros((N, len(model.desc_list)))
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+                                          version=model.desc_version)
         for i, d in enumerate(model.desc_list):
             desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
         xef = model.get_F(desc)
@@ -218,19 +211,21 @@ def predict_exchange(analyzer, model=None, num=1,
         neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
     elif isinstance(model, AddEDMGPR) or isinstance(model, AddEDMGPR2):
         from pyscf import lib
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+                                          version=model.desc_version)
         gridsize = xdesc.shape[1]
         neps, std = np.zeros(gridsize), np.zeros(gridsize)
         blksize = 20000
         for p0, p1 in lib.prange(0, gridsize, blksize):
             neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1],
-                                                    rho_data[:,p0:p1], return_std = True)
+                                                    rho_data[:,p0:p1], return_std=True)
         print('integrated uncertainty', np.dot(np.abs(std), np.abs(weights)))
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     else:# type(model) == integral_gps.NoisyEDMGPR:
-        xdesc = get_exchange_descriptors2(analyzer, restricted = restricted, version = version)
+        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+                                          version=model.desc_version)
         neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
         print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
         eps = neps / rho
@@ -243,9 +238,9 @@ def predict_exchange(analyzer, model=None, num=1,
     else:
         return xef, eps, neps, fx_total
 
-def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = 'a'):
+def predict_total_exchange_unrestricted(analyzer, model=None):
     if isinstance(analyzer, RHFAnalyzer):
-        return predict_exchange(analyzer, model, num, version = version)[3]
+        return predict_exchange(analyzer, model)[3]
     from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
     rho_data = analyzer.rho_data
@@ -269,7 +264,8 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
     elif isinstance(model, MLFunctional):
         N = analyzer.grid.weights.shape[0]
         neps = 0
-        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
+                                                   version=model.desc_version)
         for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
             desc  = np.zeros((N, len(model.desc_list)))
             ddesc = np.zeros((N, len(model.desc_list)))
@@ -278,21 +274,15 @@ def predict_total_exchange_unrestricted(analyzer, model=None, num=1, version = '
             xef = model.get_F(desc)
             neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
-        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted = False, version = version)
+        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
+                                                   version=model.desc_version)
         neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
         neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
-    """
-    else:
-        xdescu, xdescd = get_exchange_descriptors(rho_data, tau_data, coords,
-                                         weights, restricted = False)
-        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
-        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
-    """
     fx_total = np.dot(neps, weights)
     return fx_total
 
 def predict_correlation(analyzer, model=None, num=1,
-                        restricted = True, version = 'a'):
+                        restricted=True, version='a'):
     """
     model:  If None, return ccsd correlation energy (density)
             If str, evaluate the correlation energy of that functional.
@@ -341,388 +331,6 @@ def predict_correlation(analyzer, model=None, num=1,
     eps = neps / (rho + 1e-20)
     fx_total = np.dot(neps, weights)
     return eps, neps, fx_total
-
-def error_table(dirs, Analyzer, mlmodel, num = 1):
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
-    errlst = [[] for _ in models]
-    fxlst_pred = [[] for _ in models]
-    fxlst_true = []
-    count = 0
-    NMODEL = len(models)
-    ise = np.zeros(NMODEL)
-    tse = np.zeros(NMODEL)
-    rise = np.zeros(NMODEL)
-    rtse = np.zeros(NMODEL)
-    for d in dirs:
-        print(d.split('/')[-1])
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        weights = analyzer.grid.weights
-        rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-3
-        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
-        fxlst_true.append(fx_total_true)
-        count += eps_true.shape[0]
-        for i, model in enumerate(models):
-            xef_pred, eps_pred, neps_pred, fx_total_pred = \
-                predict_exchange(analyzer, model = model, num = num)
-            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
-
-            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
-            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
-            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
-            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
-
-            fxlst_pred[i].append(fx_total_pred)
-            errlst[i].append(fx_total_pred - fx_total_true)
-        print(errlst[-1][-1])
-        print()
-    fxlst_true = np.array(fxlst_true)
-    fxlst_pred = np.array(fxlst_pred)
-    errlst = np.array(errlst)
-
-    print(count, len(dirs))
-
-    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    rmise = np.sqrt(ise / len(dirs))
-    rmse = np.sqrt(tse / count)
-    rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / count)
-
-    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
-
-    return (fxlst_true, fxlst_pred, errlst),\
-           (columns, rows, errtbl)
-
-def error_table_unrestricted(dirs, Analyzer, mlmodel, num = 1):
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
-    errlst = [[] for _ in models]
-    fxlst_pred = [[] for _ in models]
-    fxlst_true = []
-    count = 0
-    NMODEL = len(models)
-    ise = np.zeros(NMODEL)
-    tse = np.zeros(NMODEL)
-    rise = np.zeros(NMODEL)
-    rtse = np.zeros(NMODEL)
-    for d in dirs:
-        print(d.split('/')[-1])
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        analyzer.get_ao_rho_data()
-        weights = analyzer.grid.weights
-        rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-3
-        fx_total_true = predict_total_exchange_unrestricted(analyzer)
-        fxlst_true.append(fx_total_true)
-        count += 1
-        for i, model in enumerate(models):
-            fx_total_pred = predict_total_exchange_unrestricted(analyzer, model = model, num = num)
-            print(fx_total_pred - fx_total_true)
-
-            #ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
-            #tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
-            #rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
-            #rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
-
-            fxlst_pred[i].append(fx_total_pred)
-            errlst[i].append(fx_total_pred - fx_total_true)
-        print(errlst[-1][-1])
-        print()
-    fxlst_true = np.array(fxlst_true)
-    fxlst_pred = np.array(fxlst_pred)
-    errlst = np.array(errlst)
-
-    print(count, len(dirs))
-
-    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    rmise = np.sqrt(ise / len(dirs))
-    rmse = np.sqrt(tse / count)
-    rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / count)
-
-    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
-
-    return (fxlst_true, fxlst_pred, errlst),\
-           (columns, rows, errtbl)
-
-def error_table2(dirs, Analyzer, mlmodel, num = 1):
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
-    errlst = [[] for _ in models]
-    fxlst_pred = [[] for _ in models]
-    fxlst_true = []
-    count = 0
-    NMODEL = len(models)
-    ise = np.zeros(NMODEL)
-    tse = np.zeros(NMODEL)
-    rise = np.zeros(NMODEL)
-    rtse = np.zeros(NMODEL)
-    data_dict = {}
-    data_dict['true'] = {'rho_data': None, 'eps_data': []}
-    for model in models:
-        if type(model) != str:
-            data_dict['ML'] = {'eps_data': [], 'desc_data': None}
-        else:
-            data_dict[model] = {'eps_data': []}
-    for d in dirs:
-        print(d.split('/')[-1])
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        weights = analyzer.grid.weights
-        rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-3
-        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
-        fxlst_true.append(fx_total_true)
-        count += eps_true.shape[0]
-        data_dict['true']['eps_data'] = np.append(data_dict['true']['eps_data'], eps_true)
-        if data_dict['true'].get('rho_data') is None:
-            data_dict['true']['rho_data'] = analyzer.rho_data
-        else:
-            data_dict['true']['rho_data'] = np.append(data_dict['true']['rho_data'],
-                                                analyzer.rho_data, axis=1)
-        for i, model in enumerate(models):
-            if type(model) == str:
-                xef_pred, eps_pred, neps_pred, fx_total_pred = \
-                    predict_exchange(analyzer, model = model, num = num)
-                desc_data = None
-            else:
-                xef_pred, eps_pred, neps_pred, fx_total_pred, desc_data = \
-                    predict_exchange(analyzer, model = model, num = num,
-                        return_desc = True)
-            print(fx_total_pred - fx_total_true, np.std(xef_pred[condition]))
-
-            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
-            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
-            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
-            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
-
-            fxlst_pred[i].append(fx_total_pred)
-            errlst[i].append(fx_total_pred - fx_total_true)
-
-            if desc_data is None:
-                data_dict[model]['eps_data'] = np.append(
-                                data_dict[model]['eps_data'],
-                                eps_pred)
-            else:
-                data_dict['ML']['eps_data'] = np.append(
-                                data_dict['ML']['eps_data'],
-                                eps_pred)
-                if data_dict['ML'].get('desc_data') is None:
-                    data_dict['ML']['desc_data'] = desc_data
-                else:
-                    data_dict['ML']['desc_data'] = np.append(
-                                data_dict['ML']['desc_data'],
-                                desc_data, axis=0)
-
-        print(errlst[-1][-1])
-        print()
-    fxlst_true = np.array(fxlst_true)
-    fxlst_pred = np.array(fxlst_pred)
-    errlst = np.array(errlst)
-
-    print(count, len(dirs))
-
-    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    rmise = np.sqrt(ise / len(dirs))
-    rmse = np.sqrt(tse / count)
-    rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / count)
-
-    columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
-
-    return (fxlst_true, fxlst_pred, errlst),\
-           (columns, rows, errtbl),\
-           data_dict
-
-def error_table3(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
-    from collections import Counter
-    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['GGA_X_CHACHIYO', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
-    errlst = [[] for _ in models]
-    ae_errlst = [[] for _ in models]
-    fxlst_pred = [[] for _ in models]
-    ae_fxlst_pred = [[] for _ in models]
-    fxlst_true = []
-    ae_fxlst_true = []
-    count = 0
-    NMODEL = len(models)
-    ise = np.zeros(NMODEL)
-    tse = np.zeros(NMODEL)
-    rise = np.zeros(NMODEL)
-    rtse = np.zeros(NMODEL)
-    for d in dirs:
-        print(d.split('/')[-1])
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
-        formula = Counter(atoms)
-        element_analyzers = {}
-        for Z in list(formula.keys()):
-            symbol = chemical_symbols[Z]
-            spin = int(ground_state_magnetic_moments[Z])
-            letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        dbpath, letter, Z, symbol, spin)
-            if letter == 'R':
-                element_analyzers[Z] = RHFAnalyzer.load(path)
-            else:
-                element_analyzers[Z] = UHFAnalyzer.load(path)
-        weights = analyzer.grid.weights
-        rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-5
-        fx_total_ref_true = 0
-        for Z in list(formula.keys()):
-            fx_total_ref_true += formula[Z] \
-                                 * predict_total_exchange_unrestricted(
-                                        element_analyzers[Z], version=version)
-        xef_true, eps_true, neps_true, fx_total_true = predict_exchange(analyzer, version = version)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
-        fxlst_true.append(fx_total_true)
-        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
-        count += eps_true.shape[0]
-        for i, model in enumerate(models):
-            fx_total_ref = 0
-            for Z in list(formula.keys()):
-                fx_total_ref += formula[Z] \
-                                * predict_total_exchange_unrestricted(
-                                    element_analyzers[Z],
-                                    model = model, num = num, version = version)
-            xef_pred, eps_pred, neps_pred, fx_total_pred = \
-                predict_exchange(analyzer, model = model, num = num, version = version)
-            print(fx_total_pred, fx_total_true, fx_total_ref, fx_total_ref_true)
-            print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
-                                                 - (fx_total_ref - fx_total_ref_true))
-
-            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
-            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
-            rise[i] += np.dot((xef_pred[condition] - xef_true[condition])**2, weights[condition])
-            rtse[i] += ((xef_pred[condition] - xef_true[condition])**2).sum()
-
-            fxlst_pred[i].append(fx_total_pred)
-            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
-            errlst[i].append(fx_total_pred - fx_total_true)
-            ae_errlst[i].append(fx_total_pred - fx_total_true \
-                                - (fx_total_ref - fx_total_ref_true))
-        print(errlst[-1][-1], ae_errlst[-1][-1])
-        print()
-    fxlst_true = np.array(fxlst_true)
-    fxlst_pred = np.array(fxlst_pred)
-    errlst = np.array(errlst)
-    ae_errlst = np.array(ae_errlst)
-
-    print(count, len(dirs))
-
-    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
-    rmise = np.sqrt(ise / len(dirs))
-    rmse = np.sqrt(tse / count)
-    rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / count)
-
-    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
-
-    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
-           (columns, rows, errtbl)
-
-def error_table_corr(dirs, Analyzer, mlmodel, dbpath, num = 1, version='a'):
-    from collections import Counter
-    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['LDA_C_PW_MOD', 'GGA_C_PBE', 'MGGA_C_SCAN', mlmodel]
-    errlst = [[] for _ in models]
-    ae_errlst = [[] for _ in models]
-    fxlst_pred = [[] for _ in models]
-    ae_fxlst_pred = [[] for _ in models]
-    fxlst_true = []
-    ae_fxlst_true = []
-    count = 0
-    NMODEL = len(models)
-    ise = np.zeros(NMODEL)
-    tse = np.zeros(NMODEL)
-    rise = np.zeros(NMODEL)
-    rtse = np.zeros(NMODEL)
-    for d in dirs:
-        print(d.split('/')[-1])
-        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
-        analyzer.get_ao_rho_data()
-        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
-        formula = Counter(atoms)
-        element_analyzers = {}
-        for Z in list(formula.keys()):
-            symbol = chemical_symbols[Z]
-            spin = int(ground_state_magnetic_moments[Z])
-            letter = '' if spin == 0 else 'U'
-            path = '{}/{}CCSD/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        dbpath, letter, Z, symbol, spin)
-            if letter == '':
-                element_analyzers[Z] = CCSDAnalyzer.load(path)
-            else:
-                element_analyzers[Z] = UCCSDAnalyzer.load(path)
-            element_analyzers[Z].get_ao_rho_data()
-        weights = analyzer.grid.weights
-        rho = analyzer.rho_data[0,:]
-        condition = rho > 3e-5
-        fx_total_ref_true = 0
-        for Z in list(formula.keys()):
-            restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
-            _, _, fx_total_ref_tmp = predict_correlation(
-                                        element_analyzers[Z], version=version,
-                                        restricted = restricted)
-            fx_total_ref_true += formula[Z] * fx_total_ref_tmp
-        eps_true, neps_true, fx_total_true = predict_correlation(
-                                                analyzer, version = version)
-        fxlst_true.append(fx_total_true)
-        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
-        count += eps_true.shape[0]
-        for i, model in enumerate(models):
-            fx_total_ref = 0
-            for Z in list(formula.keys()):
-                restricted = True if type(element_analyzers[Z]) == CCSDAnalyzer else False
-                _, _, fx_total_tmp = predict_correlation(
-                                        element_analyzers[Z],
-                                        model = model, num = num, version = version,
-                                        restricted = restricted)
-                fx_total_ref += formula[Z] * fx_total_tmp
-            eps_pred, neps_pred, fx_total_pred = \
-                predict_correlation(analyzer, model = model, num = num, version = version)
-            print(fx_total_pred - fx_total_true, fx_total_pred - fx_total_true \
-                                                 - (fx_total_ref - fx_total_ref_true))
-
-            ise[i] += np.dot((eps_pred[condition] - eps_true[condition])**2, weights[condition])
-            tse[i] += ((eps_pred[condition] - eps_true[condition])**2).sum()
-
-            fxlst_pred[i].append(fx_total_pred)
-            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
-            errlst[i].append(fx_total_pred - fx_total_true)
-            ae_errlst[i].append(fx_total_pred - fx_total_true \
-                                - (fx_total_ref - fx_total_ref_true))
-        print(errlst[-1][-1], ae_errlst[-1][-1])
-        print()
-    fxlst_true = np.array(fxlst_true)
-    fxlst_pred = np.array(fxlst_pred)
-    errlst = np.array(errlst)
-    ae_errlst = np.array(ae_errlst)
-
-    print(count, len(dirs))
-
-    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
-    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
-    rmise = np.sqrt(ise / len(dirs))
-    rmse = np.sqrt(tse / count)
-    rrmise = np.sqrt(rise / len(dirs))
-    rrmse = np.sqrt(rtse / count)
-
-    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
-    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
-
-    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
-           (columns, rows, errtbl)
 
 def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                  FUNCTIONAL = None, mol = None,

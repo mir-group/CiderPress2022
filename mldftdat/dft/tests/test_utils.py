@@ -111,18 +111,12 @@ class TestFunctionalDerivatives():
             assert_almost_equal(v_nst[i][cond1], v_ref[i][cond1], 4)
             assert_almost_equal(v_nst[i][cond2], v_ref[i][cond2], 5)
 
-    def test_integration(self):
+    def eval_integration(self, func):
         LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
         mol = gto.Mole(atom = 'He')
         norm = 1.0 / (2 / np.pi)**(0.75) * 1e12
         print(norm)
-        """
-        mol.basis = {'He' : gto.basis.parse('''
-        He   S
-             1.00000000     1.00000000
-        ''')}
-        """
         mol.basis = {'He' : gto.basis.parse('''
         BASIS "ao basis" PRINT
         He    S
@@ -144,18 +138,16 @@ class TestFunctionalDerivatives():
         rho, s, alpha, tau_w, tau_unif = get_dft_input2(rho_data)
         alpha += 1
         rho_data[5] = tau_unif
-        atm, bas, env = get_gaussian_grid(grid.coords, rho[0], l = 0, s = s, alpha = alpha)
+        atm, bas, env = func(grid.coords, rho[0], l=0, s=s, alpha=alpha)
         gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
         a = gridmol._env[gridmol._bas[:,5]]
         norm = mol.intor('int1e_ovlp')
         print(norm**0.5)
-        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, mol)
-        proj = ovlp
-        print('proj', np.max(proj))
+        g = gto.mole.intor_cross('int1e_ovlp', gridmol, mol)
+        assert_almost_equal(g, 2)
 
         dfdg = 3.2 * np.ones(r.shape)
         print('shape', dfdg.shape)
-        g = proj
         density = np.ones(1)
 
         fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
@@ -179,6 +171,10 @@ class TestFunctionalDerivatives():
         v_npa = v_nonlocal(rho_data, grid, dfdg, density, mol, g, l = 0, mul = 1.0)
         print(np.mean(v_npa[0][r < 3] - vbas[r < 3]), np.max(ref_dn))
         print(np.mean(v_npa[0][r < 3]), np.max(ref_dn))
-        assert_almost_equal(v_npa[0][r < 3] - vbas[r < 3], ref_dn[r < 3], 2)
+        assert_almost_equal(v_npa[0][r < 3] - vbas[r < 3], ref_dn[r < 3], 3)
         #assert_almost_equal(v_npa[1][r < 3], ref_dp[r < 3], 2)
-        assert_almost_equal(v_npa[3][r < 3], ref_dalpha[r < 3], 2)
+        assert_almost_equal(v_npa[3][r < 3], ref_dalpha[r < 3], 3)
+
+    def test_integration(self):
+        self.eval_integration(get_gaussian_grid)
+        self.eval_integration(get_gaussian_grid_c)
