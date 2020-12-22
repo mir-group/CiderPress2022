@@ -165,6 +165,7 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
                         ao_to_aux, deriv=False,
                         return_ovlp=False,
                         a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+    # Contains convolutions up to second-order
     # desc[0:6]   = rho_data
     # desc[6:7] = g0
     # desc[7:10] = g1
@@ -195,9 +196,10 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
     l = 0
     integral_name = 'int1e_r4_origj' if deriv else 'int1e_r2_origj'
     atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
-                                        l = 0, s = lc[1], alpha=lc[2],
+                                        l=0, s=lc[1], alpha=lc[2],
                                         a0=a0, fac_mul=fac_mul,
                                         amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
     # (ngrid * (2l+1), naux)
     ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
