@@ -1,0 +1,141 @@
+import time
+from pyscf import scf
+import os, time
+import nympy as np
+from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
+from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2,\
+                             edmgga, LDA_FACTOR
+import logging
+
+from argparse import ArgumentParser
+
+def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
+                    Analyzer, spherical_atom=False, locx=False, lam=0.5,
+                    version='a'):
+
+    all_descriptor_data = None
+    all_rho_data = None
+    all_values = []
+    all_weights = []
+    cutoffs = []
+
+    for MOL_ID in MOL_IDS:
+        logging.info('Computing descriptors for {}'.format(MOL_ID))
+        data_dir = get_save_dir(SAVE_ROOT, CALC_TYPE, BASIS, MOL_ID, FUNCTIONAL)
+        start = time.monotonic()
+        analyzer = Analyzer.load(data_dir + '/data.hdf5')
+        analyzer.get_ao_rho_data()
+        if type(analyzer.calc) == scf.hf.RHF:
+            restricted = True
+        else:
+            restricted = False
+        end = time.monotonic()
+        logging.info('Analyzer load time', end - start)
+        if spherical_atom:
+            start = time.monotonic()
+            indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
+            end = time.monotonic()
+            logging.info('Index scanning time', end - start)
+        start = time.monotonic()
+        if restricted:
+            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True, version=version)
+        else:
+            descriptor_data_u, descriptor_data_d = \
+                              get_exchange_descriptors2(analyzer, restricted = False, version=version)
+            descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
+                                        axis = 1)
+        end = time.monotonic()
+        logging.info('Get descriptor time', end - start)
+        if locx:
+            logging.info('Getting loc fx with lambda={}'.format(lam))
+            values = analyzer.get_loc_fx_energy_density(lam = lam, overwrite=True)
+            if not restricted:
+                values = 2 * np.append(analyzer.loc_fx_energy_density_u,
+                                       analyzer.loc_fx_energy_density_d)
+        else:
+            values = analyzer.get_fx_energy_density()
+            if not restricted:
+                values = 2 * np.append(analyzer.fx_energy_density_u,
+                                       analyzer.fx_energy_density_d)
+        rho_data = analyzer.rho_data
+        if not restricted:
+            rho_data = 2 * np.append(rho_data[0], rho_data[1], axis=1)
+        if spherical_atom:
+            values = values[indexes]
+            descriptor_data = descriptor_data[:,indexes]
+            rho_data = rho_data[:,indexes]
+
+        if all_descriptor_data is None:
+            all_descriptor_data = descriptor_data
+        else:
+            all_descriptor_data = np.append(all_descriptor_data, descriptor_data,
+                                            axis = 1)
+        if all_rho_data is None:
+            all_rho_data = rho_data
+        else:
+            all_rho_data = np.append(all_rho_data, rho_data, axis=1)
+        all_values = np.append(all_values, values)
+        all_weights = np.append(all_weights, analyzer.grid.weights)
+        if not restricted:
+            # two copies for unrestricted case
+            all_weights = np.append(all_weights, analyzer.grid.weights)
+        cutoffs.append(all_values.shape[0])
+
+    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+    rho_file = os.path.join(save_dir, 'rho.npy')
+    desc_file = os.path.join(save_dir, 'desc.npy')
+    val_file = os.path.join(save_dir, 'val.npy')
+    wt_file = os.path.join(save_dir, 'wt.npy')
+    cut_file = os.path.join(save_dir, 'cut.npy')
+    np.save(rho_file, all_rho_data)
+    np.save(desc_file, all_descriptor_data)
+    np.save(val_file, all_values)
+    np.save(wt_file, all_weights)
+    np.save(cut_file, np.array(cutoffs))
+
+if __name__ == '__main__':
+    m_desc = 'Compile datset of exchange descriptors'
+
+    parser = ArgumentParser(description=m_desc)
+    parser.add_argument('file', metavar='mol_id_file', type=str,
+                        nargs=1, help='yaml file from which to read mol_ids to parse')
+    parser.add_argument('basis', metavar='basis', type=str,
+                        nargs=1, help='basis set code')
+    parser.add_argument('--functional', metavar='functional', type=str, default=None,
+                        nargs=1, help='exchange-correlation functional, HF for Hartree-Fock')
+    parser.add_argument('--spherical_atom', action='store_true',
+                        default=False, help='whether dataset contains spherical atoms')
+    parser.add_argument('--locx', action='store_true',
+                        default=False, help='whether to use transformed exchange hole')
+    parser.add_argument('--lam', default=0.5, type=float,
+                        help='lambda factor for exchange hole, only used if locx=True')
+    parser.add_argument('--version', default='a', type=str,
+                        help='version of descriptor set. Default a')
+    args = parser.parse_args()
+
+    version = args.version.lower()
+    assert verion in ['a', 'b', 'c']
+
+    calc_type, mol_ids = load_mol_ids(args.mol_id_file)
+    assert ('HF' in calc_type) or (args.functional is not None),\
+           'Must specify functional if not using HF reference.'
+    if args.mol_id_file.endswith('.yaml'):
+        mol_id_code = args.mol_id_file[:-5]
+    else:
+        mol_id_code = args.mol_id_file
+
+    dataname = 'XTR{}_{}'.format(version.upper(), mol_id_code.upper())
+    if args.spherical_atom:
+        dataname += 'SPH_'
+    if args.locx:
+        dataname += 'LOCX_'
+
+    compile_dataset2(
+        dataname, mol_ids, root, calc_type, args.functional, args.basis, 
+        spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
+        version=args.version.lower()
+    )
+
