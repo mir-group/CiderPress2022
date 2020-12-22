@@ -1,0 +1,17 @@
+calc_type: UKS
+mols:
+- augG2/NH_t
+- augG2/CH3CO_d
+- augG2/BN_t
+- augG2/O2_t
+- augG2/B2_t
+- augG2/SH_d
+- augG2/BO2_d
+- augG2/BC_q
+- augG2/MgF_d
+- augG2/C2H3_d
+- augG2/C2H6CH_d
+- augG2/NF_t
+- augG2/PF_t
+- augG2/SCl_d
+- augG2/CP_d
