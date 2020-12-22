@@ -1,0 +1,9 @@
+calc_type: RKS
+mols:
+- atoms/2-He-0
+- atoms/4-Be-0
+- atoms/10-Ne-0
+- atoms/12-Mg-0
+- atoms/18-Ar-0
+- atoms/30-Zn-0
+- atoms/36-Kr-0
