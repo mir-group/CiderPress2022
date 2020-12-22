@@ -3,6 +3,7 @@ from pyscf import gto, lib
 import numpy as np
 from mldftdat.pyscf_utils import CALC_TYPES
 from ase import Atoms
+import yaml
 
 SAVE_ROOT = os.environ.get('MLDFTDB')
 ACCDB_DIR = os.environ.get('ACCDB')
@@ -28,6 +29,13 @@ def get_save_dir(root, calc_type, basis, mol_id, functional=None, ks_to_hf=True)
         if ks_to_hf:
             calc_type = calc_type.replace('KS/HF', 'HF')
     return os.path.join(root, calc_type, basis, mol_id)
+
+def load_mol_ids(mol_id_file):
+    if not mol_id_file.endswith('.yaml'):
+        mol_id_file += '.yaml'
+    with open(mol_id_file, 'r') as f:
+        contents = yaml.load(f, Loader=yaml.Loader)
+    return contents['calc_type'], contents['mol_ids']
 
 def read_accdb_structure(struct_id):
     fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
