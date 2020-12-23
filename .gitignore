@@ -7,3 +7,4 @@
 *.hdf5
 *.pth
 *.so
+*.pyc
