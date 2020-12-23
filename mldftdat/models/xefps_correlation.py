@@ -6,7 +6,6 @@ from mldftdat.dft.correlation import *
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
-from mldftdat.models.map_c2 import VSXCContribs
 from mldftdat.density import get_exchange_descriptors2
 import os
 import numpy as np

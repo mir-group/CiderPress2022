@@ -305,11 +305,12 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                                         l=0, s=lc[1], alpha=lc[2],
                                         a0=a0, fac_mul=fac_mul,
                                         amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
     ovlp = gto.mole.intor_cross('int1e_r2_origj', gridmol, auxmol)
     proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     desc = np.append(desc, proj, axis=0)
-    return contract_exchange_descriptors(desc)
+    return contract_exchange_descriptors_c(desc)
 
 def get_exchange_descriptors2(analyzer, restricted=True, version='a',
                               **kwargs):
@@ -671,7 +672,7 @@ def contract_exchange_descriptors_c(desc):
     g2_mat[2,1,:] = g2[1]
 
     # g1_norm and 1d dot product
-    g1_norm = np.linalg.norm(g1, axis=0)
+    g1_norm = np.linalg.norm(g1, axis=0)**2
     dot1 = np.einsum('an,an->n', svec, g1)
 
     # Clebsch Gordan https://en.wikipedia.org/wiki/Table_of_Clebsch%E2%80%93Gordan_coefficients
@@ -709,42 +710,6 @@ def contract_exchange_descriptors_c(desc):
     # 10: g0-r^2
     return res
 
-
-"""
-The following two routines are from
-J. Tao, J. Chem. Phys. 115, 3519 (2001) (doi: 10.1063/1.1388047)
-"""
-
-A = 0.704 # maybe replace with sqrt(6/5)?
-B = 2 * np.pi / 9 * np.sqrt(6.0/5)
-FXP0 = 27 / 50 * 10 / 81
-FXI = 1.0 / 3 * (4*np.pi**2 / 3)**(1.0/3)
-#MU = 10/81
-MU = 0.21
-C1 = 1.0 / 3 * (4*np.pi**2 / 3)**(1.0/3)
-C2 = 1 - C1
-C3 = 0.19697 * np.sqrt(0.704)
-C4 = (C3**2 - 0.09834 * MU) / C3**3
-
-def edmgga(rho_data):
-    gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
-    tauw = get_single_orbital_tau(rho_data[0], gradn)
-    QB = tau0 - rho_data[5] + tauw + 0.25 * rho_data[4]
-    QB /= tau0
-    x = A * QB + np.sqrt(1 + (A*QB)**2)
-    FX = C1 + (C2 * x) / (1 + C3 * np.sqrt(x) * np.arcsinh(C4 * (x-1)))
-    return FX
-
-def edmgga_loc(rho_data):
-    gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    tau0 = get_uniform_tau(rho_data[0]) + 1e-6
-    tauw = get_single_orbital_tau(rho_data[0], gradn)
-    QB = tau0 - rho_data[5] + 0.125 * rho_data[4]
-    QB /= tau0
-    x = A * QB + np.sqrt(1 + (A*QB)**2)
-    FX = C1 + (C2 * x) / (1 + C3 * np.sqrt(x) * np.arcsinh(C4 * (x-1)))
-    return FX
 
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))

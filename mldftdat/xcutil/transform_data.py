@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod, abstractproperty
 import numpy as np
+import yaml
 
 
 class FeatureNormalizer(ABC):
@@ -310,8 +311,16 @@ class FeatureList():
         # now xdesc (ninp, nsamp)
         tdesc = np.zeros((self.nfeat, xdesc.shape[1]))
         for i in range(self.nfeat):
-            self.feat_list[i].fill_feat(tdesc, xdesc)
-        return tdesc
+            self.feat_list[i].fill_feat_(tdesc, xdesc)
+        return tdesc.T
+
+    def fill_vals_(self, tdesc, xdesc):
+        for i in range(self.nfeat):
+            self.feat_list[i].fill_feat_(tdesc, xdesc)
+
+    def fill_derivs_(self, dfdx, dfdy, xdesc):
+        for i in range(self.nfeat):
+            self.feat_list[i].fill_deriv_(dfdx, dfdy, xdesc)
 
     def as_dict(self):
         d = {
@@ -320,10 +329,21 @@ class FeatureList():
         }
         return d
 
+    def dump(self, fname):
+        d = self.as_dict()
+        with open(fname, 'w') as f:
+            yaml.dump(d, f)
+
     @classmethod
     def from_dict(cls, d):
         return cls([FeatureNormalizer.from_dict(d['feat_list'][i])\
                     for i in range(len(d['feat_list']))])
+
+    @classmethod
+    def load(cls, fname):
+        with open(fname 'r') as f:
+            d = yaml.load(f, Loader=yaml.Loader)
+        return cls.from_dict(d)
 
 
 """
@@ -357,3 +377,98 @@ XMap(6, 0, 3, 6, gammax, gamma1)
 VMap(7, 7, gamma0b, scale=1.0, center=center0b)
 YMap(8, 0, 3, 4, 8, gammax, gamma1, gamma2)
 """
+
+SCALE_FAC = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+
+def xed_to_y_tail(xed, rho_data):
+    y = xed / (ldax(rho_data[0]) - 1e-10)
+    return y / tail_fx(rho_data) - 1
+
+def y_to_xed_tail(y, rho_data):
+    return (y + 1) * tail_fx(rho_data) * ldax(rho_data[0])
+
+def xed_to_y_scan(xed, rho_data):
+    pbex = eval_xc('SCAN,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
+
+def y_to_xed_scan(y, rho_data):
+    yp = y * ldax(rho_data[0])
+    pbex = eval_xc('SCAN,', rho_data)[0] * rho_data[0]
+    return yp + pbex
+
+def xed_to_y_pbe(xed, rho_data):
+    pbex = eval_xc('PBE,', rho_data)[0] * rho_data[0]
+    return (xed - pbex) / (ldax(rho_data[0]) - 1e-7)
+
+def y_to_xed_pbe(y, rho_data):
+    yp = y * ldax(rho_data[0])
+    pbex = eval_xc('PBE,', rho_data)[0] * rho_data[0]
+    return yp + pbex
+
+def xed_to_y_lda(xed, rho_data):
+    return get_y_from_xed(xed, rho_data[0])
+
+def y_to_xed_lda(y, rho_data):
+    return get_xed_from_y(y, rho_data[0])
+
+def chachiyo_fx(s2):
+    c = 4 * np.pi / 9
+    x = c * np.sqrt(s2)
+    dx = c / (2 * np.sqrt(s2))
+    Pi = np.pi
+    Log = np.log
+    chfx = (3*x**2 + Pi**2*Log(1 + x))/((Pi**2 + 3*x)*Log(1 + x))
+    dchfx = (-3*x**2*(Pi**2 + 3*x) + 3*x*(1 + x)*(2*Pi**2 + 3*x)*Log(1 + x) - 3*Pi**2*(1 + x)*Log(1 + x)**2)/((1 + x)*(Pi**2 + 3*x)**2*Log(1 + x)**2)
+    dchfx *= dx
+    chfx[s2<1e-8] = 1 + 8 * s2[s2<1e-6] / 27
+    dchfx[s2<1e-8] = 8.0 / 27
+    return chfx, dchfx
+
+def xed_to_y_chachiyo(xed, rho, s2):
+    return xed / get_ldax_dens(rho) - chachiyo_fx(s2)[0]
+
+def y_to_xed_chachiyo(y, rho, s2):
+    return (y + chachiyo_fx(s2)[0]) * get_ldax_dens(rho)
+
+def get_unity():
+    return 1
+
+def get_identity(x):
+    return x
+
+XED_Y_CONVERTERS = {
+    # method_name: (xed_to_y, y_to_xed, fx_baseline, nfeat--rho, s2, alpha...)
+    'LDA': (xed_to_y_lda, y_to_xed_lda, get_unity, 1),
+    'CHACHIYO': (xed_to_y_chachiyo, y_to_xed_chachiyo, chachiyo_fx, 2)
+}
+
+def get_agpr_kernel(length_scale, scale=None, order=2, nsingle=1):
+    start=1
+    if scale is None:
+        scale = [1.0] * (order+1)
+    n = 0
+    if nsingle > 0:
+        singles = SingleRBF(length_scale=length_scale[n], index=start+n)
+        n += 1
+        for i in range(1,nsingle):
+            singles *= SingleRBF(length_scale=length_scale[n], index=start+n)
+            n += 1
+    cov_kernel = PartialARBF(order=order, length_scale=length_scale[n:],
+                             scale=scale, length_scale_bounds=(0.01, 10),
+                             start=start+n)
+    return singles * cov_kernel
+
+def get_density_noise_kernel(noise0=1e-5, noise1=1e-3):
+    wk0 = WhiteKernel(noise_level=noise0, noise_level_bounds=(1e-6,1e-3))
+    wk1 = WhiteKernel(noise_level=noise1)
+    return wk0 + wk1 * DensityNoise()
+
+def get_fitted_density_noise_kernel(decay1=2.0, decay2=600.0, noise0=3e-5,
+                                    noise1=0.002, noise2=0.02):
+    rhok1 = FittedDensityNoise(decay_rate=decay1)
+    rhok2 = FittedDensityNoise(decay_rate=decay2)
+    wk = WhiteKernel(noise_level=noise0, noise_level_bounds=(1e-6,1e-3))
+    wk1 = WhiteKernel(noise_level=noise1)
+    wk2 = WhiteKernel(noise_level=noise2)
+    noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+    return cov_kernel + noise_kernel

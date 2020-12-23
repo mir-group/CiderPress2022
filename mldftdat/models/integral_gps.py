@@ -720,19 +720,18 @@ class AddEDMGPR2(EDMGPR):
         y_pred, y_std = self.gp.predict(x, return_std=True)
         return (y_std > threshold).any()
 
-    def add_heg_limit(self, wt=1, add_approx_grad=False):
-        # wt should always be 1
-        wt = 1
+    def add_heg_limit(self):
+        # set the feature vector to the HEG (all zeros).
         hegx = (0 * self.X[0])
+        # set the density to be large -> low uncertainty.
         hegx[0] = 1e8
+        # Assume heg y-value is zero.
         hegy = 0
         self.y = np.append([hegy], self.y)
         self.X = np.append([hegx], self.X, axis=0)
         self.gp.y_train_ = self.y
         self.gp.X_train_ = self.X
         K = self.gp.kernel_(self.gp.X_train_)
-        K[:,0] *= np.sqrt(wt)
-        K[0,:] *= np.sqrt(wt)
         K[np.diag_indices_from(K)] += self.gp.alpha
         # from sklearn gpr
         from scipy.linalg import cholesky, cho_solve

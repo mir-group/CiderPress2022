@@ -59,8 +59,9 @@ class ALGPR(GaussianProcessRegressor):
 
 class DFTGPR():
 
-    def __init__(self, feature_list, xed_y_converter=None,
-                 init_kernel=None, use_algpr=False, selection=None):
+    def __init__(self, feature_list, desc_order=None,
+                 xed_y_converter=XED_Y_CONVERTERS['LDA'],
+                 init_kernel=None, use_algpr=False):
         """
         Args:
             feature_list (e.g. xgp.FeatureList): An object containing
@@ -68,14 +69,20 @@ class DFTGPR():
                 input descriptors to features for the GP to use.
         """
         num_desc = feature_list.nfeat
-        self.get_descriptors = feature_list
-        self.selection = selection
-        if xed_y_converter is None:
-            self.xed_to_y = density.get_y_from_xed
-            self.y_to_xed = density.get_xed_from_y
+        if desc_order is None:
+            desc_order = np.arange(num_desc)
+        self.get_descriptors = lambda x: feature_list(x[:,desc_order])
+
+        if xed_y_converter[-1] == 1:
+            self.xed_to_y = lambda y, x: xed_y_converter[0](y, x[:,0])
+            self.y_to_xed = lambda y, x: xed_y_converter[1](y, x[:,0])
+        elif xed_y_converter[-1] == 2:
+            self.xed_to_y = lambda y, x: xed_y_converter[0](y, x[:,0], x[:,1])
+            self.y_to_xed = lambda y, x: xed_y_converter[1](y, x[:,0], x[:,1])
         else:
-            self.xed_to_y = xed_y_converter[0]
-            self.y_to_xed = xed_y_converter[1]
+            self.xed_to_y = lambda y, x: xed_y_converter[0](y)
+            self.y_to_xed = lambda y, x: xed_y_converter[1](y)
+
         if init_kernel is None:
             rbf = RBF([1.0] * num_desc, length_scale_bounds=(1.0e-5, 1.0e5))
             wk = WhiteKernel(noise_level=1.0e-3, noise_level_bounds=(1e-04, 1.0e5))
@@ -92,14 +99,14 @@ class DFTGPR():
             self.al = False
         self.init_kernel = kernel
 
-    def fit(self, xdesc, xed, rho_data, optimize_theta=True):
+    def fit(self, xdesc, xed, optimize_theta=True):
         if optimize_theta:
             optimizer = 'fmin_l_bfgs_b'
         else:
             optimizer = None
         self.gp.optimizer = optimizer
         self.X = self.get_descriptors(xdesc)
-        self.y = self.xed_to_y(xed, rho_data)
+        self.y = self.xed_to_y(xed, xdesc)
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
         self.gp.fit(self.X, self.y)
@@ -197,3 +204,25 @@ class DFTGPR():
                         % self.gp.kernel_,) + exc.args
             raise
         self.gp.alpha_ = cho_solve((self.gp.L_, True), self.gp.y_train_)  # Line 3
+
+    @classmethod
+    def from_settings(cls, X, feature_list, args):
+        if args.desc_order is None:
+            desc_order = np.arange(X.shape[1])
+        else:
+            desc_order = args.desc_order
+        X = X[:,desc_order]
+
+        if args.length_scale is None:
+            XT = feature_list(X)
+            length_scale = np.std(XT, axis=0) * args.length_scale_mul
+        else:
+            length_scale = args.length_scale
+
+        cov_kernel = get_agpr_kernel(length_scale, args.agpr_scale,
+                                     args.agpr_order, args.agpr_nsingle)
+        noise_kernel = get_density_noise_kernel()
+        init_kernel = cov_kernel + noise_kernel
+        xed_y_converter = XED_Y_CONVERTERS[args.xed_y_code]
+
+        return cls(feature_list, desc_order, xed_y_converter, init_kernel)
