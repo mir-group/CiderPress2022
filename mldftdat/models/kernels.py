@@ -361,6 +361,27 @@ class SingleDot(DotProduct):
         return super(SingleDot, self).__call__(X, Y, eval_gradient)
 
 
+class DensityNoise(StationaryKernelMixin, GenericKernelMixin, Kernel):
+
+    def __init__(self, index=0):
+        self.index = index
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is not None and eval_gradient:
+            raise ValueError("Gradient can only be evaluated when Y is None.")
+
+        if Y is None:
+            K = np.diag(self.diag(X))
+            if eval_gradient:
+                grad = np.empty((_num_samples(X), _num_samples(X), 0))
+                return K, grad
+        else:
+            return np.zeros((_num_samples(X), _num_samples(Y)))
+
+    def diag(self, X):
+        return 1 / X[:,self.index]
+
+
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
                    Kernel):
     """
@@ -368,7 +389,7 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
     on the density. 1 / (1 + decay_rate * rho)
     """
 
-    def __init__(self, decay_rate = 4.0, decay_rate_bounds = (1e-5, 1e5)):
+    def __init__(self, decay_rate=4.0, decay_rate_bounds=(1e-5, 1e5)):
         self.decay_rate = decay_rate
         self.decay_rate_bounds = decay_rate_bounds
 
