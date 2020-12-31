@@ -4,7 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 import numpy as np
-from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
+from mldftdat.density import get_x_helper_full, get_x_helper_full, LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21
 import scipy.linalg
@@ -457,11 +457,11 @@ def _eval_c_0(mlfunc, mol, rho_data, grid, rdm1):
         print('r2', spin, np.dot(pr2, grid.weights))
         desc[spin]  = np.zeros((N, len(mlfunc.desc_list)))
         ddesc[spin] = np.zeros((N, len(mlfunc.desc_list)))
-        raw_desc[spin], ovlps[spin] = get_x_helper_full2(
+        raw_desc[spin], ovlps[spin] = get_x_helper_full(
                                                 auxmol, rho_data[spin], grid,
                                                 density[spin], ao_to_aux,
                                                 return_ovlp = True)
-        raw_desc_r2[spin] = get_x_helper_full2(auxmol, rho_data[spin], grid,
+        raw_desc_r2[spin] = get_x_helper_full(auxmol, rho_data[spin], grid,
                                                density[spin], ao_to_aux,
                                                integral_name = 'int1e_r2_origj')
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])

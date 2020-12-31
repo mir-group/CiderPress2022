@@ -1,7 +1,6 @@
 import numpy as np 
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2,\
-                             edmgga, LDA_FACTOR
+from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR
 import os, json
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc

@@ -5,6 +5,7 @@ from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from scipy.linalg.blas import dgemm
 import numpy as np
 import logging
+import scipy.linalg
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
@@ -86,96 +87,14 @@ def run_cc(hf):
     calc.kernel()
     return calc
 
-def get_grid(mol):
+def get_grid(mol, level=3):
     """
     Get the real-space grid of a molecule for numerical integration.
     """
     grid = Grids(mol)
+    grid.level = level
     grid.kernel()
     return grid
-
-def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
-    N = coords.shape[0]
-    auxmol = gto.fakemol_for_charges(coords)
-    atm = auxmol._atm.copy()
-    bas = auxmol._bas.copy()
-    start = auxmol._env.shape[0] - 2
-    env = np.zeros(start + 2 * N)
-    env[:start] = auxmol._env[:-2]
-    bas[:,5] = start + np.arange(N)
-    bas[:,6] = start + N + np.arange(N)
-
-    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
-    scale = 1
-    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    if s is not None:
-        scale += GG_SMUL * fac * s**2
-    if alpha is not None:
-        scale += GG_AMUL * 0.6 * fac * (alpha - 1)
-    bas[:,1] = l
-    ascale = a * scale
-    cond = ascale < GG_AMIN
-    ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
-    env[bas[:,5]] = ascale
-    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
-    #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
-    env[bas[:,6]] = np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
-
-    return atm, bas, env
-
-def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
-                        a0=8.0, fac_mul=1.0, amin=GG_AMIN):
-    N = coords.shape[0]
-    auxmol = gto.fakemol_for_charges(coords)
-    atm = auxmol._atm.copy()
-    bas = auxmol._bas.copy()
-    start = auxmol._env.shape[0] - 2
-    env = np.zeros(start + 2 * N)
-    env[:start] = auxmol._env[:-2]
-    bas[:,5] = start + np.arange(N)
-    bas[:,6] = start + N + np.arange(N)
-    ratio = alpha + 5./3 * s**2
-
-    fac = fac_mul * 1.2 * (6 * np.pi**2)**(2.0/3) / np.pi
-    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
-    scale = a0 + ratio * fac
-    bas[:,1] = l
-    ascale = a * scale
-    cond = ascale < amin
-    ascale[cond] = amin * np.exp(ascale[cond] / amin - 1)
-    env[bas[:,5]] = ascale
-    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
-    env[bas[:,6]] = (a0 + fac)**1.5 * np.sqrt(4 * np.pi**(1-l)) \
-                    * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
-
-    return atm, bas, env
-
-def get_gaussian_grid_b(coords, rho, l=0, s=None, alpha=None):
-    N = coords.shape[0]
-    auxmol = gto.fakemol_for_charges(coords)
-    atm = auxmol._atm.copy()
-    bas = auxmol._bas.copy()
-    start = auxmol._env.shape[0] - 2
-    env = np.zeros(start + 2 * N)
-    env[:start] = auxmol._env[:-2]
-    bas[:,5] = start + np.arange(N)
-    bas[:,6] = start + N + np.arange(N)
-
-    a = np.pi * (rho / 2 + 1e-6)**(2.0 / 3)
-    scale = 1
-    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    if s is not None:
-        scale += fac * s**2
-    if alpha is not None:
-        scale += 3.0 / 5 * fac * (alpha - 1)
-    bas[:,1] = l
-    env[bas[:,5]] = a * scale
-    env[bas[rho<1e-8,5]] = 1e16
-    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
-    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
-
-    return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
 
 def get_ha_total(rdm1, eeint):
     return np.sum(np.sum(eeint * rdm1, axis=(2,3)) * rdm1)
@@ -708,7 +627,6 @@ def squish_tau(tau_data, alpha):
     tau_data[1:4] *= alpha**6
     return tau_data
 
-import scipy
 def get_proj(mol, grids):
     nao = mol.nao_nr()
     sn = np.zeros((nao, nao))
