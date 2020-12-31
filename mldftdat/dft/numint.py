@@ -4,7 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 
-from mldftdat.density import get_x_helper_full, get_x_helper_full2, LDA_FACTOR,\
+from mldftdat.density import get_x_helper_full, get_x_helper_full, LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
@@ -315,17 +315,16 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         rho43 = ntup[spin]**(4.0/3)
         rho13 = ntup[spin]**(1.0/3)
         desc[spin] = np.zeros((N, len(mlfunc.desc_list)))
-        raw_desc[spin], ovlps[spin] = get_x_helper_full2(
+        raw_desc[spin], ovlps[spin] = get_x_helper_full(
                                                 auxmol, 2 * rho_data[spin], grid,
                                                 density[spin], ao_to_aux,
                                                 return_ovlp = True)
-        raw_desc_r2[spin] = get_x_helper_full2(auxmol, 2 * rho_data[spin], grid,
+        raw_desc_r2[spin] = get_x_helper_full(auxmol, 2 * rho_data[spin], grid,
                                                density[spin], ao_to_aux,
                                                integral_name = 'int1e_r2_origj')
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
-        for i, d in enumerate(mlfunc.desc_list):
-            desc[spin][:,i] = d.transform_descriptor(contracted_desc[spin])
-        F[spin], dF[spin] = mlfunc.get_F_and_derivative(desc[spin], 2*ntup[spin])
+        contracted_desc[spin] = contracted_desc[spin][mlfunc.desc_order]
+        F[spin], dF[spin] = mlfunc.get_F_and_derivative(contracted_desc[spin])
         #F[spin][(ntup[spin]<1e-8)] = 0
         #dF[spin][(ntup[spin]<1e-8)] = 0
         exc += (self.xmix * 2**(1.0/3) * LDA_FACTOR) * rho43 * F[spin]
@@ -367,7 +366,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
     for spin in range(2):
         v_nst[spin], v_grad[spin], vmol[spin] = \
-            functional_derivative_loop(
+            functional_derivative_loop_c(
                 mol, mlfunc, dEddesc[spin],
                 contracted_desc[spin],
                 raw_desc[spin], raw_desc_r2[spin],

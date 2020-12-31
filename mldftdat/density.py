@@ -39,87 +39,94 @@ def get_y_from_xed(xed, rho):
     """
     return xed / (get_ldax_dens(rho) - 1e-12) - 1
 
-# check this all makes sense with scaling
 
-def get_x_nonlocal_descriptors_nsp(rho_data, tau_data, coords, weights):
-    # calc ws_radii for single spin (1/n is factor of 2 larger)
-    ws_radii = get_ws_radii(rho_data[0]) * 2**(1.0/3)
-    nonlocal_data = get_nonlocal_data(rho_data, tau_data, ws_radii, coords, weights)
-    if np.isnan(nonlocal_data).any():
-        raise ValueError('Part of nonlocal_data is nan %d' % np.count_nonzero(np.isnan(nonlocal_data)))
-    # note: ws_radii calculated in the regularization call does not have the
-    # factor of 2^(1/3), but it only comes in linearly so it should be fine
-    res = get_regularized_nonlocal_data(nonlocal_data, rho_data)
-    if np.isnan(res).any():
-        raise ValueError('Part of regularized result is nan %d' % np.count_nonzero(np.isnan(res)))
-    return res
+def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
 
-def get_exchange_descriptors(rho_data, tau_data, coords,
-                             weights, restricted = True):
-    if restricted:
-        lc = get_dft_input(rho_data)[:3]
-        nlc = get_x_nonlocal_descriptors_nsp(rho_data, tau_data,
-                                                coords, weights)
-        return np.append(lc, nlc, axis=0)
-    else:
-        lcu = get_dft_input(rho_data[0] * 2)[:3]
-        nlcu = get_x_nonlocal_descriptors_nsp(rho_data[0] * 2,
-                                                tau_data[0] * 2,
-                                                coords, weights)
-        lcd = get_dft_input(rho_data[1] * 2)[:3]
-        nlcd = get_x_nonlocal_descriptors_nsp(rho_data[1] * 2,
-                                                tau_data[1] * 2,
-                                                coords, weights)
-        return np.append(lcu, nlcu, axis=0),\
-               np.append(lcd, nlcd, axis=0)
+    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
+    scale = 1
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    if s is not None:
+        scale += GG_SMUL * fac * s**2
+    if alpha is not None:
+        scale += GG_AMUL * 0.6 * fac * (alpha - 1)
+    bas[:,1] = l
+    ascale = a * scale
+    cond = ascale < GG_AMIN
+    ascale[cond] = GG_AMIN * np.exp(ascale[cond] / GG_AMIN - 1)
+    env[bas[:,5]] = ascale
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
+    #env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+    env[bas[:,6]] = np.sqrt(4 * np.pi**(1-l)) * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
-def get_x_helper_full(auxmol, rho_data, ddrho, grid, density,
-                      ao_to_aux, integral_name = 'int1e_ovlp',
-                      return_ovlp = False):
-    # desc[0:6]   = rho_data
-    # desc[6:12]  = ddrho
-    # desc[12:13] = g0
-    # desc[13:16] = g1
-    # desc[16:21] = g2
-    # desc[21] = g0-0.5
-    # desc[22] = g0-2
-    # g1 order: x, y, z
-    # g2 order: xy, yz, z^2, xz, x^2-y^2
-    lc = get_dft_input2(rho_data)[:3]
-    # size naux
-    desc = np.append(rho_data, ddrho, axis=0)
-    N = grid.weights.shape[0]
-    if return_ovlp:
-        ovlps = []
-    for l in range(3):
-        atm, bas, env = get_gaussian_grid(grid.coords, rho_data[0],
-                                          l = l, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
-        # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
-        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
-        desc = np.append(desc, proj, axis=0)
-        if return_ovlp:
-            ovlps.append(ovlp)
-    l = 0
-    for mul in [0.25, 4.00]:
-        atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
-                                          l = 0, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
-        # (ngrid * (2l+1), naux)
-        ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
-        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
-        desc = np.append(desc, proj, axis=0)
-        if return_ovlp:
-            ovlps.append(ovlp)
-    if return_ovlp:
-        return desc, ovlps
-    else:
-        return desc
+    return atm, bas, env
 
-def get_x_helper_full2(auxmol, rho_data, grid, density,
-                       ao_to_aux, integral_name='int1e_ovlp',
-                       return_ovlp=False):
+def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
+                        a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+    ratio = alpha + 5./3 * s**2
+
+    fac = fac_mul * 1.2 * (6 * np.pi**2)**(2.0/3) / np.pi
+    a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
+    scale = a0 + ratio * fac
+    bas[:,1] = l
+    ascale = a * scale
+    cond = ascale < amin
+    ascale[cond] = amin * np.exp(ascale[cond] / amin - 1)
+    env[bas[:,5]] = ascale
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
+    env[bas[:,6]] = (a0 + fac)**1.5 * np.sqrt(4 * np.pi**(1-l)) \
+                    * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
+
+    return atm, bas, env
+
+def get_gaussian_grid_b(coords, rho, l=0, s=None, alpha=None):
+    N = coords.shape[0]
+    auxmol = gto.fakemol_for_charges(coords)
+    atm = auxmol._atm.copy()
+    bas = auxmol._bas.copy()
+    start = auxmol._env.shape[0] - 2
+    env = np.zeros(start + 2 * N)
+    env[:start] = auxmol._env[:-2]
+    bas[:,5] = start + np.arange(N)
+    bas[:,6] = start + N + np.arange(N)
+
+    a = np.pi * (rho / 2 + 1e-6)**(2.0 / 3)
+    scale = 1
+    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
+    if s is not None:
+        scale += fac * s**2
+    if alpha is not None:
+        scale += 3.0 / 5 * fac * (alpha - 1)
+    bas[:,1] = l
+    env[bas[:,5]] = a * scale
+    env[bas[rho<1e-8,5]] = 1e16
+    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
+    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
+
+    return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
+
+
+def get_x_helper_full(auxmol, rho_data, grid, density,
+                      ao_to_aux, integral_name='int1e_ovlp',
+                      return_ovlp=False):
     # desc[0:6]   = rho_data
     # desc[6:12]  = 0
     # desc[12:13] = g0
@@ -213,7 +220,7 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
     else:
         return desc
 
-def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
+def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux, **kwargs):
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
     # desc[12:13] = g0
@@ -230,8 +237,8 @@ def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     N = grid.weights.shape[0]
     for l in range(3):
         atm, bas, env = get_gaussian_grid(grid.coords, rho_data[0],
-                                          l = l, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+                                          l=l, s=lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
         # (ngrid * (2l+1), naux)
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
@@ -239,15 +246,15 @@ def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
     l = 0
     for mul in [0.25, 4.00]:
         atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
-                                          l = 0, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+                                          l=0, s=lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
         # (ngrid * (2l+1), naux)
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors(desc)
 
-def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
+def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux, **kwargs):
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
     # desc[12:13] = g0
@@ -279,10 +286,10 @@ def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux):
 def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                     a0=8.0, fac_mul=1.0, amin=GG_AMIN):
     # desc[0:6]   = rho_data
-    # desc[12:13] = g0
-    # desc[13:16] = g1
-    # desc[16:21] = g2
-    # desc[21] = g0-r^2
+    # desc[6] = g0
+    # desc[7:10] = g1
+    # desc[10:15] = g2
+    # desc[15] = g0-r^2
     # g1 order: x, y, z
     # g2 order: xy, yz, z^2, xz, x^2-y^2
     lc = get_dft_input2(rho_data)[:3]
@@ -307,7 +314,7 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                                         amin=amin)
     env[bas[:,6]] *= env[bas[:,5]]
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
-    ovlp = gto.mole.intor_cross('int1e_r2_origj', gridmol, auxmol)
+    ovlp = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).T
     proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors_c(desc)
@@ -636,7 +643,7 @@ def contract_exchange_descriptors_c(desc):
     # desc[6:7] = g0
     # desc[7:10] = g1
     # desc[10:15] = g2
-    # desc[16] = g0-r^2
+    # desc[15] = g0-r^2
     # g1 order: x, y, z
     # g2 order: xy, yz, z^2, xz, x^2-y^2
 
@@ -701,9 +708,9 @@ def contract_exchange_descriptors_c(desc):
     # 1:  s
     # 2:  alpha
     # 3:  g0
-    # 4:  norm(g1)
+    # 4:  norm(g1)**2
     # 5:  g1 dot svec
-    # 6:  norm(g2)
+    # 6:  norm(g2)**2
     # 7:  svec dot g2 dot svec
     # 8:  g1 dot g2 dot svec
     # 9:  g1 dot g2 dot g1

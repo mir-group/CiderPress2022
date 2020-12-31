@@ -11,6 +11,7 @@ from pyscf.dft.gen_grid import Grids
 
 from mldftdat.pyscf_utils import get_gradient_magnitude, get_dft_input2
 from mldftdat.analyzers import RHFAnalyzer
+from mldftdat.density import get_gaussian_grid, get_gaussian_grid_c
 from mldftdat.dft.utils import *
 import numpy as np
 import numbers
@@ -179,4 +180,6 @@ class TestFunctionalDerivatives():
 
     def test_integration(self):
         self.eval_integration(get_gaussian_grid)
+
+    def test_integration_c(self):
         self.eval_integration(get_gaussian_grid_c)

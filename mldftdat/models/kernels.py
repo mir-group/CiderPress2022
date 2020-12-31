@@ -107,7 +107,7 @@ class ARBF(RBF):
                               self.scale_bounds,
                               len(self.scale))
 
-    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
+    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels=False):
         if self.anisotropic:#np.iterable(self.length_scale):
             num_scale = len(self.length_scale)
         else:
@@ -189,6 +189,21 @@ def qarbf_args(arbf_base):
     scale += [arbf_base.scale[1]] * (ndim)
     scale += [arbf_base.scale[2]] * (ndim * (ndim - 1) // 2)
     return ndim, np.array(length_scale), scale
+
+def arbf_args(arbf_base):
+    ndim = len(arbf_base.length_scale)
+    length_scale = arbf_base.length_scale
+    order = arbf_base.order
+    scale = [arbf_base.scale[0]]
+    if order > 0:
+        scale += [arbf_base.scale[1]] * (ndim)
+    if order > 1:
+        scale += [arbf_base.scale[2]] * (ndim * (ndim - 1) // 2)
+    if order > 2:
+        scale += [arbf_base.scale[3]] * (ndim * (ndim - 1) * (ndim - 2) // 6)
+    if order > 3:
+        raise ValueError('Order too high for mapping')
+    return ndim, np.array(length_scale), scale, order
 
 class QARBF(StationaryKernelMixin, Kernel):
     """
@@ -280,7 +295,7 @@ class PartialARBF(ARBF):
         self.start = start
         self.active_dims = active_dims
 
-    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels = False):
+    def __call__(self, X, Y=None, eval_gradient=False, get_sub_kernels=False):
         # hasattr check for back-compatibility
         if not np.iterable(self.scale):
             self.scale = [self.scale] * (self.order + 1)
@@ -382,8 +397,43 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin, Kernel):
         return 1 / X[:,self.index]
 
 
+class ExponentialDensityNoise(StationaryKernelMixin, GenericKernelMixin,
+                              Kernel):
+
+    def __init__(self, exponent=1.0, exponent_bounds=(0.1, 10)):
+        self.exponent = exponent
+        self.exponent_bounds = exponent_bounds
+
+    @property
+    def hyperparamter_decay_rate(self):
+        return Hyperparameter("exponent", self.exponent_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if Y is not None and eval_gradient:
+            raise ValueError("Gradient can only be evaluated when Y is None.")
+
+        if Y is None:
+            K = np.diag(self.diag(X))
+            if eval_gradient and not self.hyperparameter_decay_rate.fixed:
+                rho = X[:,0]
+                grad = np.empty((_num_samples(X), _num_samples(X), 1))
+                grad[:,:,0] = np.diag(-self.exponent * np.log(rho) \
+                                      / rho**self.exponent)
+                return K, grad
+            elif eval_gradient:
+                grad = np.zeros((X.shape[0], X.shape[0], 0))
+                return K, grad
+            else:
+                return K
+        else:
+            return np.zeros((_num_samples(X), _num_samples(Y)))
+
+    def diag(self, X):
+        return 1 / X[:,0]**self.exponent
+
+
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
-                   Kernel):
+                         Kernel):
     """
     Kernel to model the noise of the exchange enhancement factor based
     on the density. 1 / (1 + decay_rate * rho)

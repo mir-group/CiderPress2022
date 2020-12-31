@@ -172,397 +172,57 @@ class SCANFunctional(MLFunctional):
         return np.array([dFdp, dFda]).T
 
 
-class GPFunctional(MLFunctional):
+class RBFFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
 
-    def __init__(self, kernel, alpha, X_train, desc_list, y_to_f_mul = None):
-        """
-        desc_type_list should have the l value of each nonlocal
-        descriptor, -1 for p, -2 for alpha
-        """
-        self.ndesc = len(kernel.length_scale)
-        #self._y_train_mean = gpr.gp._y_train_mean
-        #self._y_train_std = gpr.gp._y_train_std
-        self.X_train_ = X_train
-        self.alpha_ = alpha
-        # assume that k1 is the covariance
-        # and that k2 is the noise kernel
-        # TODO: take into account the constant kernel
-        # in front.
-        self.kernel = kernel
-        self.desc_list = desc_list
-        if y_to_f_mul is not None:
-            self.y_to_f_mul, self.y_to_f_mul_deriv = y_to_f_mul
-        else:
-            self.y_to_f_mul, self.y_to_f_mul_deriv = None, None
+    def __init__(self, gpr):
+        # Assumes kernel_ is (const * rbf) + noise
+        cov = gpr.gp.kernel_.k1
+        self.alpha_ = cov.k1.constant_value * gpr.gp.alpha_
+        self.kernel = RBF(length_scale=cov.ks.length_scale)
+        self.X_train = gpr.gp.X_train_[:,1:]
+        self.feature_list = gpr.feature_list
+        self.nfeat = self.feature_list.nfeat
+        self.fx_baseline = gpr.args.xed_y_converter[2]
+        self.fxb_num = gpr.args.xed_y_converter[3]
 
-    def get_F(self, X, s = None):
-        k = self.kernel(X, self.X_train_)
-        y_mean = k.dot(self.alpha_)
-        #y = y_mean * self._y_train_std + self._y_train_mean
-        if self.y_to_f_mul is None:
-            return y_mean + 1
-        else:
-            return (y_mean + 1) * self.y_to_f_mul(s)
-        #F = self.y_to_f(y)
+    def get_F_and_derivative(self, X):
+        mat = np.zeros((self.nfeat, X.shape[1]))
+        self.feature_list.fill_vals_(mat, X)
 
-    def get_derivative(self, X, s = None, F = None):
-        # shape n_test, n_train
         k = self.kernel(X, self.X_train_)
+        F = k.dot(self.alpha_)
+
         # X has shape n_test, n_desc
         # X_train_ has shape n_train, n_desc
         ka = k * self.alpha_
         # shape n_test, n_desc
         kaxt = np.dot(ka, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        if self.y_to_f_mul is None:
-            return (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
-        else:
-            term1 = (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
-            term1 *= self.y_to_f_mul(s).reshape(-1,1)
-            term2 = self.y_to_f_mul_deriv(s) * F
-            term1[:,0] += term2
-            return term1
+        dF = (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
 
-    def get_F_and_derivative(self, X):
-        return self.get_F(X), self.get_derivative(X)
+        dFddesc = np.zeros(X.shape)
+        self.feature_list.fill_derivs_(dFddesc, dF, X)
 
-
-def get_ref_corr(rho_data_u, rho_data_d, ref_functional):
-    cu = eval_xc(ref_functional, (rho_data_u, 0), spin = 1)[0]
-    cd = eval_xc(ref_functional, (rho_data_d, 0), spin = 1)[0]
-
-
-class CorrGPFunctional(GPFunctional):
-
-    def __init__(self, kernel, alpha, X_train, num_desc):
-        self.ref_functional = ',MGGA_C_SCAN'
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(0, identity, single, mul = 1.0)
-        ]
-        cov_kernel = kernel.k1
-        cov_ss = cov_kernel.k1
-        cov_os = cov_kernel.k2
-        const_ss = cov_ss.k1.constant_value
-        const_os = cov_os.k1.constant_value
-        self.alpha_up = const_ss * alpha * X_train[:,0]
-        self.alpha_down = const_ss * alpha * X_train[:,num_desc]
-        self.alpha_os = const_os * alpha * X_train[:,2*num_desc]
-        self.rbf_os = cov_os.k2.k2
-        self.rbf_ss = cov_ss.k2.k.k2
-        self.X_train = X_train
-
-    def get(self, Xup, Xdown):
-        kup = self.rbf_ss(Xup, self.X_train[1:num_desc])
-        kdown = self.rbf_ss(Xdown, self.X_train[num_desc+1:2*num_desc])
-        kos = self.rbf_os((Xup+Xdown)/2, self.X_train[2*num_desc+1:3*num_desc])
-        return np.dot(kup, self.alpha),\
-               np.dot(kdown, self.alpha),\
-               np.dot(kos, self.alpha)
-
-
-#import mldftdat.models.map_v2 as mapper_corr
-
-def density_mapper(x1, x2):
-    matrix = np.zeros((2, x1.shape[0]))
-    dmatrix = np.zeros((2, 2, x1.shape[0]))
-
-    matrix[0] = 1.*np.log(1 + 32.97531959770354*(x1 + x2)**0.3333333333333333 + 53.15594987261972*(x1 + x2)**0.6666666666666666)
-    matrix[1] = (x1 - x2)**2/(x1 + x2 + 0.5e-20)**2
-
-    dmatrix[0,0] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2 + 1e-20)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
-    dmatrix[0,1] = (0.20678349696646658 + 0.6666666666666665*(x1 + x2)**0.3333333333333333)/((x1 + x2 + 1e-20)**0.6666666666666666*(0.01881256947522056 + 0.6203504908993999*(x1 + x2)**0.3333333333333333 + 1.*(x1 + x2)**0.6666666666666666))
-    dmatrix[1,0] = (4*(x1 - x2)*x2)/(x1 + x2 + 0.5e-20)**3
-    dmatrix[1,1] = (-4*x1*(x1 - x2))/(x1 + x2 + 0.5e-20)**3
-
-    return matrix, dmatrix
-
-
-def density_mapper2(x1, x2):
-    matrix = np.zeros((2, x1.shape[0]))
-    dmatrix = np.zeros((2, 2, x1.shape[0]))
-
-    #matrix[0] = np.arcsinh(20.4562557*(x1 + x2))
-    matrix[0] = np.log10(1e-3 + (x1 + x2))
-    matrix[1] = 0
-
-    dmatrix[0,0] = 1.0 / np.log(10.0) / (1e-3 + x1 + x2)
-    dmatrix[0,1] = 1.0 / np.log(10.0) / (1e-3 + x1 + x2)
-    dmatrix[1,0] = 0
-    dmatrix[1,1] = 0
-
-    return matrix, dmatrix
-
-
-class CorrGPFunctional2(GPFunctional):
-
-    def __init__(self, evaluator):
-        self.ref_functional = ',MGGA_C_SCAN'
-        self.y_to_f_mul = None
-        self.evaluator = evaluator
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(12, identity, single, mul = 1.00),\
-            Descriptor(6, identity, single, mul = 1.00),\
-            Descriptor(15, identity, single, mul = 0.25),\
-            Descriptor(16, identity, single, mul = 4.00),\
-        ]
-
-    def get_F_and_derivative(self, X, rho_data, compare = None):
-        # TODO: The derivative wrt p is incorrect, must take into account
-        # spin polarization
-        #tmp = ( np.sqrt(X[0][:,0]) + np.sqrt(X[1][:,0]) ) / 2
-        X = (X[0] + X[1]) / 2
-        #X[:,0] = tmp**2
-        rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
-        mat, dmat = mapper.desc_and_ddesc_corr(X.T)
-        #if compare is not None:
-        #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
-        tmat = np.append(mat, rmat, axis=0)
-        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 0)
-        if False:#compare is not None:
-            Xinit = compare
-            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
-            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
-
-        FUNCTIONAL = ',MGGA_C_SCAN'
-        rho_data_u, rho_data_d = rho_data
-        eu, vu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[:2]
-        ed, vd = eval_xc(FUNCTIONAL, (0 * rho_data_d, rho_data_d), spin = 1)[:2]
-        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
-        cu = eu * rho_data_u[0]
-        cd = ed * rho_data_d[0]
-        co = eo * (rho_data_u[0] + rho_data_d[0])
-        co -= cu + cd
-        E = (F * co + cu + cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
-        vo = list(vo)
-        for i in range(4):
-            j = 2 if i == 1 else 1
-            vo[i][:,0] -= vu[i][:,0]
-            vo[i][:,j] -= vd[i][:,j]
-            vo[i] *= F.reshape(-1,1)
-            vo[i][:,0] += vu[i][:,0]
-            vo[i][:,j] += vd[i][:,j]
-
-        dFddesc = np.einsum('ni,ijn->nj', dF[:,:-2], dmat)
-        #dF[:,-1] = 0
-        dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-2:], rdmat)
-        vo[0][:,0] += co * dFddesc_rho[:,0]
-        vo[0][:,1] += co * dFddesc_rho[:,1]
-
-        return E, vo, co.reshape(-1,1) * dFddesc
-
-
-class CorrGPFunctional4(GPFunctional):
-
-    def __init__(self, evaluator):
-        self.ref_functional = ',MGGA_C_SCAN'
-        self.y_to_f_mul = None
-        self.evaluator = evaluator
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(12, identity, single, mul = 1.00),\
-            Descriptor(6, identity, single, mul = 1.00),\
-            Descriptor(15, identity, single, mul = 0.25),\
-            Descriptor(16, identity, single, mul = 4.00),\
-            Descriptor(13, identity, single, mul = 1.00)
-        ]
-
-    def get_F_and_derivative(self, X, rho_data, compare = None):
-        # TODO: The derivative wrt p is incorrect, must take into account
-        # spin polarization
-        #tmp = ( np.sqrt(X[0][:,0]) + np.sqrt(X[1][:,0]) ) / 2
-        X = (X[0] + X[1]) / 2
-        #X[:,0] = tmp**2
-        rmat, rdmat = density_mapper(rho_data[0][0], rho_data[1][0])
-        mat, dmat = mapper.desc_and_ddesc(X.T)
-        #if compare is not None:
-        #    print(np.linalg.norm(mat.T - compare[:,1:], axis=0))
-        tmat = np.append(mat, rmat[:1], axis=0)
-        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True, subind = 0)
-        if compare is not None:
-            Xinit = compare
-            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
-            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
-
-        FUNCTIONAL = ',MGGA_C_SCAN'
-        rho_data_u, rho_data_d = rho_data
-        eu, vu = eval_xc(FUNCTIONAL, (rho_data_u, 0 * rho_data_u), spin = 1)[:2]
-        ed, vd = eval_xc(FUNCTIONAL, (0 * rho_data_d, rho_data_d), spin = 1)[:2]
-        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u, rho_data_d), spin = 1)[:2]
-        cu = eu * rho_data_u[0]
-        cd = ed * rho_data_d[0]
-        co = eo * (rho_data_u[0] + rho_data_d[0])
-        co -= cu + cd
-        E = (F * co + cu + cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
-        vo = list(vo)
-        for i in range(4):
-            j = 2 if i == 1 else 1
-            vo[i][:,0] -= vu[i][:,0]
-            vo[i][:,j] -= vd[i][:,j]
-            vo[i] *= F.reshape(-1,1)
-            vo[i][:,0] += vu[i][:,0]
-            vo[i][:,j] += vd[i][:,j]
-
-        dFddesc = np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
-        #dF[:,-1] = 0
-        dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-1:], rdmat[:1,:])
-        vo[0][:,0] += co * dFddesc_rho[:,0]
-        vo[0][:,1] += co * dFddesc_rho[:,1]
-
-        return E, vo, co.reshape(-1,1) * dFddesc
-
-
-class CorrGPFunctional5(GPFunctional):
-
-    def __init__(self, evaluator):
-        self.ref_functional = ',MGGA_C_SCAN'
-        self.y_to_f_mul = None
-        self.evaluator = evaluator
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(12, identity, single, mul = 1.00),\
-            Descriptor(6, identity, single, mul = 1.00),\
-            Descriptor(15, identity, single, mul = 0.25),\
-            Descriptor(16, identity, single, mul = 4.00),\
-            Descriptor(13, identity, single, mul = 1.00)
-        ]
-
-    def get_F_and_derivative(self, X, rho_data, compare = None):
-        rho_data_u, rho_data_d = rho_data
-        rhou, rhod = rho_data_u[0].reshape(-1,1), rho_data_d[0].reshape(-1,1)
-        rhot = rhou + rhod + 1e-20
-        Xi = X
-        X = (rhou * X[0] + rhod * X[1]) / rhot
-        rmat, rdmat = density_mapper2(rho_data[0][0], rho_data[1][0])
-        rmat, rdmat = rmat[:1], rdmat[0,:,:]
-        mat, dmat = mapper.desc_and_ddesc(X.T)
-        tmat = np.concatenate([mat, rmat], axis=0)
-        F, dF = self.evaluator.predict_from_desc(tmat.T, vec_eval = True)
-        if compare is not None:
-            Xinit = compare
-            test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
-            print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
-            rhott = rho_data[0][0] + rho_data[1][0]
-            print(np.max(np.abs(rhott * F), axis=0), np.max(np.abs(rhott.reshape(-1,1) * dF), axis=0))
-
-        FUNCTIONAL = ',LDA_C_PW_MOD'
-        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u[0], rho_data_d[0]), spin = 1)[:2]
-        co = eo * (rho_data_u[0] + rho_data_d[0])
-        E = eo * (F)
-        vo = list(vo)
-        for i in range(1):
-            j = 2 if i == 1 else 1
-            vo[i] *= (F).reshape(-1,1)
-
-        dEddesc = co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
-        #dEddesc[:,:2] = 0
-        dEddesc_u = dEddesc * rhou / rhot
-        dEddesc_d = dEddesc * rhod / rhot
-        print(np.max(np.abs(dEddesc_u), axis=0), np.max(np.abs(dEddesc_d), axis=0))
-        dEdrhou = np.sum(dEddesc * (Xi[0] - Xi[1]) * rhod / (rhot + 1e-8)**2, axis=1)
-        dEdrhod = np.sum(dEddesc * (Xi[1] - Xi[0]) * rhou / (rhot + 1e-8)**2, axis=1)
-        dFddesc_rho = (dF[:,-1] * rdmat).T
-        vo[0][:,0] += co * dFddesc_rho[:,0]
-        vo[0][:,1] += co * dFddesc_rho[:,1]
-        vo[0][:,0] += dEdrhou
-        vo[0][:,1] += dEdrhod
-
-        #return E, vo, dEddesc
-        return E, vo, (dEddesc_u, dEddesc_d)
-
-
-import mldftdat.models.map_v4 as mapper
-
-def cutoff_and_deriv(scale):
-    x = np.exp(0.35 * (scale - 10**1.45))
-    return 1.0 / (1 + x), 0.35 * x / (1 + x)**2
-
-def cutoff_and_deriv(scale):
-    x = (1 + 1e-2 * (scale-1)**2)
-    return 1 / x, 1e-2 * (scale-1) / x**2
-
-def chachiyo_fx(s2):
-    c = 4 * np.pi / 9
-    x = c * np.sqrt(s2)
-    dx = c / (2 * np.sqrt(s2))
-    Pi = np.pi
-    Log = np.log
-    chfx = (3*x**2 + Pi**2*Log(1 + x))/((Pi**2 + 3*x)*Log(1 + x))
-    dchfx = (-3*x**2*(Pi**2 + 3*x) + 3*x*(1 + x)*(2*Pi**2 + 3*x)*Log(1 + x) - 3*Pi**2*(1 + x)*Log(1 + x)**2)/((1 + x)*(Pi**2 + 3*x)**2*Log(1 + x)**2)
-    dchfx *= dx
-    #chfx_old = chfx.copy()
-    #dchfx_old = dchfx.copy()
-    #print('TINYGRAD', (s2<1e-12).any())
-    chfx[s2<1e-6] = 1 + 8 * s2[s2<1e-6] / 27
-    dchfx[s2<1e-6] = 8.0 / 27
-    #print(np.linalg.norm(chfx-chfx_old), np.linalg.norm(dchfx-dchfx_old), chfx.shape, chfx_old.shape, dchfx.shape, dchfx_old.shape)
-    return chfx, dchfx
-
-class NormGPFunctional(GPFunctional):
-
-    def __init__(self, evaluator, normp = True):
-        # for use with Chachiyo reference
-        self.evaluator = evaluator
-        self.y_to_f_mul = None
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, square, single, mul = 1.0),\
-            Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(12, identity, single, mul = 1.00),\
-            Descriptor(6, identity, single, mul = 1.00),\
-            Descriptor(15, identity, single, mul = 0.25),\
-            Descriptor(16, identity, single, mul = 4.00),\
-            Descriptor(13, identity, single, mul = 1.00),\
-        ]
-        self.normp = normp
-
-    def get_F_and_derivative(self, X, rho=None):
-        mat, dmat, scale, dscaledp, dscaledalpha = \
-            mapper.desc_and_ddesc(X.T)
-        #F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1, min_order=3)
-        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval = True, subind = 1)
-        dFddesc = np.einsum('ni,ijn->nj', dF, dmat)
-        #cut, cut_deriv = cutoff_and_deriv(scale**2)
-        #cut[scale**2>70] = 0
-        #cut_deriv[scale**2>70] = 0
-        #dFddesc *= cut[:,np.newaxis]
-        
-        #dFddesc[:,0] += F * cut_deriv * 2 * scale * dscaledp
-        #dFddesc[:,1] += F * cut_deriv * 2 * scale * dscaledalpha
-        #F *= cut
         if rho is not None:
             highcut = 1e-3
             ecut = 1.0/2
             lowcut = 1e-6
-            #F[rho<highcut] *= np.sqrt(rho[rho<highcut] / highcut)
-            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut] / highcut)**ecut))
-            dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
-            #F[rho<lowcut] = 0
+            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut] \
+                                                / highcut)**ecut))
+            dFddesc[rho<highcut,:] *= 0.5 * \
+                (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
             dFddesc[rho<lowcut,:] = 0
 
-        chfx, dchfx = chachiyo_fx(X[:,0])
+        if self.fxb_num == 1:
+            chfx = 1
+        elif self.fxb_num == 2:
+            chfx, dchfx = self.fx_baseline(X[:,1])
+            dFddesc[:,1] += dchfx
+        else:
+            raise ValueError('Unsupported basline fx order.')
         F += chfx
-        dFddesc[:,0] += dchfx
     
         if rho is not None:
             F[rho<1e-9] = 0
@@ -571,99 +231,57 @@ class NormGPFunctional(GPFunctional):
         return F, dFddesc
 
     def get_F(self, X):
-        #x = np.sqrt(X[:,0]) * 4 * np.pi / 9
-        #fch_num = 3 * x**2 + np.pi**2 * np.log(x + 1)
-        #fch_den = (3 * x + np.pi**2) * np.log(x + 1)
-        #fch = (fch_num + 1e-10) / (fch_den + 1e-10)
-        return self.get_F_and_derivative(X)[0]# + fch
+        return self.get_F_and_derivative(X)[0]
 
     def get_derivative(self, X):
         return self.get_F_and_derivative(X)[1]
 
 
-class CorrGPFunctional6(GPFunctional):
+class NormGPFunctional(GPFunctional):
 
     def __init__(self, evaluator):
-        self.ref_functional = ',MGGA_C_SCAN'
-        self.y_to_f_mul = None
+        # For use with evaluators generated using gp_to_spline.py
         self.evaluator = evaluator
-        self.desc_list = [
-            Descriptor(1, square, single, mul = 1.0),\
-            Descriptor(2, identity, single, mul = 1.0),\
-            Descriptor(4, identity, single, mul = 1.0),\
-            Descriptor(5, identity, single, mul = 1.0),\
-            Descriptor(8, identity, single, mul = 1.0),\
-            Descriptor(12, identity, single, mul = 1.00),\
-            Descriptor(6, identity, single, mul = 1.00),\
-            Descriptor(15, identity, single, mul = 0.25),\
-            Descriptor(16, identity, single, mul = 4.00),\
-            Descriptor(13, identity, single, mul = 1.00)
-        ]
+        self.desc_order = evaluator.desc_order
+        self.fxb_num = evaluator.fxb_num
+        self.fx_baseline = evaluator.fx_baseline
+        self.nfeat = evaluator.feature_list.nfeat
+        self.feature_list = evaluator.feature_list
 
-    def get_F_and_derivative(self, X, rho_data, compare = None):
-        # TODO: The derivative wrt p is incorrect, must take into account
-        # spin polarization
-        #tmp = ( np.sqrt(X[0][:,0]) + np.sqrt(X[1][:,0]) ) / 2
-        amat, admat = mapper.desc_and_ddesc(X[0].T)
-        bmat, bdmat = mapper.desc_and_ddesc(X[1].T)
-        ramat, radmat = density_mapper2(2 * rho_data[0][0], 0 * rho_data[0][0])
-        rbmat, rbdmat = density_mapper2(2 * rho_data[1][0], 0 * rho_data[1][0])
-        ssind = np.array([0,1,2])
-        amat, admat = amat[ssind], admat[ssind[:,None],ssind,:]
-        ramat, radmat = ramat[:1], 2 * radmat[0,0]
-        bmat, bdmat = bmat[ssind], bdmat[ssind[:,None],ssind,:]
-        rbmat, rbdmat = rbmat[:1], 2 * rbdmat[0,0]
+    def get_F_and_derivative(self, X):
+        mat = np.zeros((self.nfeat, X.shape[1]))
+        self.feature_list.fill_vals_(mat, X)
+        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval=True)
+        dFddesc = np.zeros(X.shape)
+        self.feature_list.fill_derivs_(dFddesc, dF, X)
 
-        X = (X[0] + X[1]) / 2
-        rmat, rdmat = density_mapper2(rho_data[0][0], rho_data[1][0])
-        rmat, rdmat = rmat[:1], rdmat[0,:,:]
-        mat, dmat = mapper.desc_and_ddesc(X.T)
-        tmat = np.concatenate([mat, rmat], axis=0)
-        F, dF = self.evaluator.eval_os.predict_from_desc(tmat.T, vec_eval = True)
-        tmat = np.concatenate([amat, ramat], axis=0)
-        Fu, dFu = self.evaluator.eval_ss.predict_from_desc(tmat.T, vec_eval = True)
-        tmat = np.concatenate([bmat, rbmat], axis=0)
-        Fd, dFd = self.evaluator.eval_ss.predict_from_desc(tmat.T, vec_eval = True)
-        #if compare is not None:
-        #    Xinit = compare
-        #    test_desc = self.evaluator.get_descriptors(Xinit[0].T, Xinit[1].T, rho_data[0], rho_data[1], num = self.evaluator.num)
-        #    print('COMPARE', test_desc.shape, np.linalg.norm(test_desc[:,2:] - tmat.T, axis=0))
+        if rho is not None:
+            highcut = 1e-3
+            ecut = 1.0/2
+            lowcut = 1e-6
+            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut] \
+                                                / highcut)**ecut))
+            dFddesc[rho<highcut,:] *= 0.5 * \
+                (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
+            dFddesc[rho<lowcut,:] = 0
 
-        FUNCTIONAL = ',LDA_C_PW_MOD'
-        rho_data_u, rho_data_d = rho_data
-        eu, vu = eval_xc(FUNCTIONAL, (rho_data_u[0], 0 * rho_data_u[0]), spin = 1)[:2]
-        ed, vd = eval_xc(FUNCTIONAL, (0 * rho_data_d[0], rho_data_d[0]), spin = 1)[:2]
-        eo, vo = eval_xc(FUNCTIONAL, (rho_data_u[0], rho_data_d[0]), spin = 1)[:2]
-        cu = eu * rho_data_u[0]
-        cd = ed * rho_data_d[0]
-        co = eo * (rho_data_u[0] + rho_data_d[0])
-        co -= cu + cd
-        Fu = 1
-        Fd = 1
-        dFu *= 0
-        dFd *= 0
-        E = (F * co + Fu * cu + Fd * cd) / (rho_data_u[0] + rho_data_d[0] + 1e-20)
-        vo = list(vo)
-        for i in range(1):
-            j = 2 if i == 1 else 1
-            vo[i][:,0] -= vu[i][:,0]
-            vo[i][:,j] -= vd[i][:,j]
-            vo[i] *= F.reshape(-1,1)
-            #print(vo[i][:,0].shape, vu[i][:,0].shape, Fu.shape)
-            vo[i][:,0] += vu[i][:,0] * Fu
-            vo[i][:,j] += vd[i][:,j] * Fd
+        if self.fxb_num == 1:
+            chfx = 1
+        elif self.fxb_num == 2:
+            chfx, dchfx = self.fx_baseline(X[:,1])
+            dFddesc[:,1] += dchfx
+        else:
+            raise ValueError('Unsupported basline fx order.')
+        F += chfx
+    
+        if rho is not None:
+            F[rho<1e-9] = 0
+            dFddesc[rho<1e-9,:] = 0
 
-        dEddesc_u = 0.5 * co.reshape(-1,1) * np.einsum('ni,ijn->nj', dF[:,:-1], dmat)
-        dEddesc_d = dEddesc_u.copy()
-        print(admat.shape, bdmat.shape)
-        dEddesc_u[:,ssind] += cu.reshape(-1,1) * np.einsum('ni,ijn->nj', dFu[:,:-1], admat)
-        dEddesc_d[:,ssind] += cd.reshape(-1,1) * np.einsum('ni,ijn->nj', dFd[:,:-1], bdmat)
-        #dF[:,-1] = 0
-        #dFddesc_rho = np.einsum('ni,ijn->nj', dF[:,-2:], rdmat)
-        dFddesc_rho = (dF[:,-1] * rdmat).T
-        vo[0][:,0] += co * dFddesc_rho[:,0]
-        vo[0][:,0] += cu * dFu[:,-1] * radmat
-        vo[0][:,1] += co * dFddesc_rho[:,1]
-        vo[0][:,1] += cd * dFd[:,-1] * rbdmat
+        return F, dFddesc
 
-        return E, vo, (dEddesc_u, dEddesc_d)
+    def get_F(self, X):
+        return self.get_F_and_derivative(X)[0]
+
+    def get_derivative(self, X):
+        return self.get_F_and_derivative(X)[1]

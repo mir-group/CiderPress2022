@@ -1,4 +1,4 @@
-from mldftdat.gp import ALGPR, DFTGPR
+from mldftdat.models.gp import ALGPR
 
 from nose import SkipTest
 from nose.tools import nottest

@@ -4,15 +4,15 @@ import os, time
 import nympy as np
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
-from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2,\
-                             edmgga, LDA_FACTOR
+from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR
 import logging
+import yaml
 
 from argparse import ArgumentParser
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
                     Analyzer, spherical_atom=False, locx=False, lam=0.5,
-                    version='a'):
+                    version='a', **gg_kwargs):
 
     all_descriptor_data = None
     all_rho_data = None
@@ -39,10 +39,16 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             logging.info('Index scanning time', end - start)
         start = time.monotonic()
         if restricted:
-            descriptor_data = get_exchange_descriptors2(analyzer, restricted = True, version=version)
+            descriptor_data = get_exchange_descriptors2(
+                analyzer, restricted=True, version=version,
+                **gg_kwargs
+            )
         else:
             descriptor_data_u, descriptor_data_d = \
-                              get_exchange_descriptors2(analyzer, restricted = False, version=version)
+                              get_exchange_descriptors2(
+                                analyzer, restricted=False, version=version,
+                                **gg_kwargs
+                              )
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
         end = time.monotonic()
@@ -95,6 +101,23 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     np.save(val_file, all_values)
     np.save(wt_file, all_weights)
     np.save(cut_file, np.array(cutoffs))
+    settings = {
+        'DATASET_NAME': DATASET_NAME,
+        MOL_IDS: MOL_IDS,
+        'SAVE_ROOT': SAVE_ROOT,
+        'CALC_TYPE': CALC_TYPE,
+        'FUNCTIONAL': FUNCTIONAL,
+        'BASIS': BASIS,
+        'spherical_atom': spherical_atom,
+        'locx': locx,
+        'lam': lam,
+        'version': version
+    }
+    if version == 'c':
+        settings.update(gg_kwargs)
+    with open(os.path.join(save_dir, 'settings.yaml', 'w')) as f:
+        yaml.dump(f, settings)
+
 
 if __name__ == '__main__':
     m_desc = 'Compile datset of exchange descriptors'
@@ -112,8 +135,11 @@ if __name__ == '__main__':
                         default=False, help='whether to use transformed exchange hole')
     parser.add_argument('--lam', default=0.5, type=float,
                         help='lambda factor for exchange hole, only used if locx=True')
-    parser.add_argument('--version', default='a', type=str,
-                        help='version of descriptor set. Default a')
+    parser.add_argument('--version', default='c', type=str,
+                        help='version of descriptor set. Default c')
+    parser.add_argument('--gg-a0', default=8.0, type=float)
+    parser.add_argument('--gg-facmul', default=1.0, type=float)
+    parser.add_argument('--gg-amin', default=GG_AMIN, type=float)
     args = parser.parse_args()
 
     version = args.version.lower()
@@ -133,9 +159,16 @@ if __name__ == '__main__':
     if args.locx:
         dataname += 'LOCX_'
 
-    compile_dataset2(
-        dataname, mol_ids, root, calc_type, args.functional, args.basis, 
-        spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
-        version=args.version.lower()
-    )
-
+    if version == 'c':
+        compile_dataset2(
+            dataname, mol_ids, root, calc_type, args.functional, args.basis, 
+            spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
+            version=version, a0=args.gg_a0, fac_mul=args.gg_facmul,
+            amin=args.gg_amin
+        )
+    else:
+        compile_dataset2(
+            dataname, mol_ids, root, calc_type, args.functional, args.basis, 
+            spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
+            version=version
+        )
