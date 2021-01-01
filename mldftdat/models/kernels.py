@@ -10,7 +10,7 @@
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
     NormalizedKernelMixin, Kernel, Hyperparameter, RBF,\
-    GenericKernelMixin, _num_samples, DotProduct
+    GenericKernelMixin, _num_samples, DotProduct, ConstantKernel
 
 from scipy.special import kv, gamma
 from scipy.spatial.distance import pdist, cdist, squareform
@@ -390,6 +390,8 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin, Kernel):
             if eval_gradient:
                 grad = np.empty((_num_samples(X), _num_samples(X), 0))
                 return K, grad
+            else:
+                return K
         else:
             return np.zeros((_num_samples(X), _num_samples(Y)))
 
@@ -405,8 +407,8 @@ class ExponentialDensityNoise(StationaryKernelMixin, GenericKernelMixin,
         self.exponent_bounds = exponent_bounds
 
     @property
-    def hyperparamter_decay_rate(self):
-        return Hyperparameter("exponent", self.exponent_bounds)
+    def hyperparameter_exponent(self):
+        return Hyperparameter("exponent", "numeric", self.exponent_bounds)
 
     def __call__(self, X, Y=None, eval_gradient=False):
         if Y is not None and eval_gradient:
@@ -414,7 +416,7 @@ class ExponentialDensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
         if Y is None:
             K = np.diag(self.diag(X))
-            if eval_gradient and not self.hyperparameter_decay_rate.fixed:
+            if eval_gradient and not self.hyperparameter_exponent.fixed:
                 rho = X[:,0]
                 grad = np.empty((_num_samples(X), _num_samples(X), 1))
                 grad[:,:,0] = np.diag(-self.exponent * np.log(rho) \
@@ -430,6 +432,10 @@ class ExponentialDensityNoise(StationaryKernelMixin, GenericKernelMixin,
 
     def diag(self, X):
         return 1 / X[:,0]**self.exponent
+
+    def __repr__(self):
+        return "{0}(exponent={1:.3g})".format(self.__class__.__name__,
+                                              self.exponent)
 
 
 class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,

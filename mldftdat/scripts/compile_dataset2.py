@@ -1,17 +1,18 @@
 import time
 from pyscf import scf
 import os, time
-import nympy as np
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+import numpy as np
+from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
-from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR
+from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR, GG_AMIN
+from mldftdat.data import get_unique_coord_indexes_spherical
 import logging
 import yaml
 
 from argparse import ArgumentParser
 
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
-                    Analyzer, spherical_atom=False, locx=False, lam=0.5,
+                    spherical_atom=False, locx=False, lam=0.5,
                     version='a', **gg_kwargs):
 
     all_descriptor_data = None
@@ -19,6 +20,8 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     all_values = []
     all_weights = []
     cutoffs = []
+
+    Analyzer = UHFAnalyzer if 'U' in CALC_TYPE else RHFAnalyzer
 
     for MOL_ID in MOL_IDS:
         logging.info('Computing descriptors for {}'.format(MOL_ID))
@@ -31,12 +34,12 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         else:
             restricted = False
         end = time.monotonic()
-        logging.info('Analyzer load time', end - start)
+        logging.info('Analyzer load time {}'.format(end - start))
         if spherical_atom:
             start = time.monotonic()
             indexes = get_unique_coord_indexes_spherical(analyzer.grid.coords)
             end = time.monotonic()
-            logging.info('Index scanning time', end - start)
+            logging.info('Index scanning time {}'.format(end - start))
         start = time.monotonic()
         if restricted:
             descriptor_data = get_exchange_descriptors2(
@@ -52,7 +55,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             descriptor_data = np.append(descriptor_data_u, descriptor_data_d,
                                         axis = 1)
         end = time.monotonic()
-        logging.info('Get descriptor time', end - start)
+        logging.info('Get descriptor time {}'.format(end - start))
         if locx:
             logging.info('Getting loc fx with lambda={}'.format(lam))
             values = analyzer.get_loc_fx_energy_density(lam = lam, overwrite=True)
@@ -88,9 +91,11 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             all_weights = np.append(all_weights, analyzer.grid.weights)
         cutoffs.append(all_values.shape[0])
 
-    save_dir = os.path.join(SAVE_ROOT, 'DATASETS', DATASET_NAME)
+    DATASET_NAME = os.path.basename(DATASET_NAME)
+    save_dir = os.path.join(SAVE_ROOT, 'DATASETS',
+                            FUNCTIONAL, BASIS, version, DATASET_NAME)
     if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
     rho_file = os.path.join(save_dir, 'rho.npy')
     desc_file = os.path.join(save_dir, 'desc.npy')
     val_file = os.path.join(save_dir, 'val.npy')
@@ -103,7 +108,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     np.save(cut_file, np.array(cutoffs))
     settings = {
         'DATASET_NAME': DATASET_NAME,
-        MOL_IDS: MOL_IDS,
+        'MOL_IDS': MOL_IDS,
         'SAVE_ROOT': SAVE_ROOT,
         'CALC_TYPE': CALC_TYPE,
         'FUNCTIONAL': FUNCTIONAL,
@@ -115,21 +120,23 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     }
     if version == 'c':
         settings.update(gg_kwargs)
-    with open(os.path.join(save_dir, 'settings.yaml', 'w')) as f:
-        yaml.dump(f, settings)
+    with open(os.path.join(save_dir, 'settings.yaml'), 'w') as f:
+        yaml.dump(settings, f)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+
     m_desc = 'Compile datset of exchange descriptors'
 
     parser = ArgumentParser(description=m_desc)
-    parser.add_argument('file', metavar='mol_id_file', type=str,
-                        nargs=1, help='yaml file from which to read mol_ids to parse')
+    parser.add_argument('mol_id_file', type=str,
+                        help='yaml file from which to read mol_ids to parse')
     parser.add_argument('basis', metavar='basis', type=str,
-                        nargs=1, help='basis set code')
+                        help='basis set code')
     parser.add_argument('--functional', metavar='functional', type=str, default=None,
-                        nargs=1, help='exchange-correlation functional, HF for Hartree-Fock')
-    parser.add_argument('--spherical_atom', action='store_true',
+                        help='exchange-correlation functional, HF for Hartree-Fock')
+    parser.add_argument('--spherical-atom', action='store_true',
                         default=False, help='whether dataset contains spherical atoms')
     parser.add_argument('--locx', action='store_true',
                         default=False, help='whether to use transformed exchange hole')
@@ -143,7 +150,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     version = args.version.lower()
-    assert verion in ['a', 'b', 'c']
+    assert version in ['a', 'b', 'c']
 
     calc_type, mol_ids = load_mol_ids(args.mol_id_file)
     assert ('HF' in calc_type) or (args.functional is not None),\
@@ -155,20 +162,20 @@ if __name__ == '__main__':
 
     dataname = 'XTR{}_{}'.format(version.upper(), mol_id_code.upper())
     if args.spherical_atom:
-        dataname += 'SPH_'
+        pass#dataname = 'SPH_' + dataname
     if args.locx:
-        dataname += 'LOCX_'
+        dataname = 'LOCX_' + dataname
 
     if version == 'c':
         compile_dataset2(
-            dataname, mol_ids, root, calc_type, args.functional, args.basis, 
+            dataname, mol_ids, SAVE_ROOT, calc_type, args.functional, args.basis,
             spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
             version=version, a0=args.gg_a0, fac_mul=args.gg_facmul,
             amin=args.gg_amin
         )
     else:
         compile_dataset2(
-            dataname, mol_ids, root, calc_type, args.functional, args.basis, 
+            dataname, mol_ids, SAVE_ROOT, calc_type, args.functional, args.basis, 
             spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
             version=version
         )

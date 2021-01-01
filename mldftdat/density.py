@@ -7,6 +7,10 @@ from mldftdat.pyscf_utils import *
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
+GG_SMUL = 1.0
+GG_AMUL = 1.0
+GG_AMIN = 1.0 / 18
+
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
 
@@ -70,7 +74,7 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
     return atm, bas, env
 
 def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
-                        a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+                        a0=8.0, fac_mul=0.25, amin=GG_AMIN):
     N = coords.shape[0]
     auxmol = gto.fakemol_for_charges(coords)
     atm = auxmol._atm.copy()
@@ -84,14 +88,14 @@ def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
 
     fac = fac_mul * 1.2 * (6 * np.pi**2)**(2.0/3) / np.pi
     a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
-    scale = a0 + ratio * fac
+    scale = a0 + (ratio-1) * fac
     bas[:,1] = l
     ascale = a * scale
     cond = ascale < amin
     ascale[cond] = amin * np.exp(ascale[cond] / amin - 1)
     env[bas[:,5]] = ascale
     logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
-    env[bas[:,6]] = (a0 + fac)**1.5 * np.sqrt(4 * np.pi**(1-l)) \
+    env[bas[:,6]] = a0**1.5 * np.sqrt(4 * np.pi**(1-l)) \
                     * (8 * np.pi / 3)**(l/3.0) * ascale**(l/2.0)
 
     return atm, bas, env
@@ -448,7 +452,7 @@ def contract_exchange_descriptors(desc):
     nabla = rho_data[4] / (tau_unif + 1e-7)
 
     res[0] = rho
-    res[1] = s
+    res[1] = s**2
     res[2] = alpha
     res[3] = nabla
 
@@ -476,7 +480,7 @@ def contract_exchange_descriptors(desc):
     g2_mat[2,1,:] = g2[1]
 
     # g1_norm and 1d dot product
-    g1_norm = np.linalg.norm(g1, axis=0)
+    g1_norm = np.linalg.norm(g1, axis=0)**2
     dot1 = np.einsum('an,an->n', svec, g1)
 
     # nabla and g2 norms
@@ -639,7 +643,7 @@ def contract_exchange_descriptors_b(desc):
 
 
 def contract_exchange_descriptors_c(desc):
-    # desc[0:6]   = rho_data
+    # desc[0:6] = rho_data
     # desc[6:7] = g0
     # desc[7:10] = g1
     # desc[10:15] = g2
@@ -666,17 +670,6 @@ def contract_exchange_descriptors_c(desc):
     g0 = desc[6]
     g1 = desc[7:10]
     g2 = desc[10:15]
-    g2_mat = np.zeros((3, 3, N))
-    # y^2 = -(1/2) (z^2 + (x^2-y^2))
-    g2_mat[1,1,:] = -0.5 * (g2[2] + g2[4])
-    g2_mat[2,2,:] = g2[4]
-    g2_mat[0,0,:] = - (g2_mat[1,1,:] + g2_mat[2,2,:])
-    g2_mat[1,0,:] = g2[0]
-    g2_mat[0,1,:] = g2[0]
-    g2_mat[2,0,:] = g2[3]
-    g2_mat[0,2,:] = g2[3]
-    g2_mat[1,2,:] = g2[1]
-    g2_mat[2,1,:] = g2[1]
 
     # g1_norm and 1d dot product
     g1_norm = np.linalg.norm(g1, axis=0)**2
@@ -701,7 +694,7 @@ def contract_exchange_descriptors_c(desc):
     res[8] = np.einsum('pn,pn->n', sgc, g1)
     res[9] = np.einsum('pn,pn->n', sgg, g1)
 
-    res[10] = desc[16]
+    res[10] = desc[15]
 
     # res
     # 0:  rho
