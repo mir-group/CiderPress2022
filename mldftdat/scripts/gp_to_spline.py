@@ -24,7 +24,8 @@ def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = 
     return (mini, maxi, ngrid)
 
 
-def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None):
+def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
+                            srbf_density=4, arbf_density=4, max_ngrid=50):
     """
     version a is for RBF(s) * ARBF(other desc) with X[:,0]=rho (used for exchange)
     version b is for Linear(SCAN) * ARBF(other desc) with X[:,0]=rho
@@ -47,21 +48,23 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None):
         srbf = gpr.gp.kernel_.k1.k1
         ndim, length_scale, scale, order = arbf_args(arbf)
         length_scale = np.append(srbf.length_scale, length_scale)
-        dims = [get_dim(D[:,0], length_scale[0], density=4,
-                        bound=gpr.feature_list[0].bounds)]
+        dims = [get_dim(D[:,0], length_scale[0], density=srbf_density,
+                        bound=gpr.feature_list[0].bounds,
+                        max_ngrid=max_ngrid)]
     elif n > 1:
         arbf = gpr.gp.kernel_.k1.k2
         srbf = gpr.gp.kernel_.k1.k1
         ndim, length_scale, scale, order = arbf_args(arbf)
         length_scale = np.append(srbf.length_scale, length_scale)
         for i in range(n):
-            dims.append(get_dim(D[:,i], length_scale[i], density=4,
-                                bound=gpr.feature_list[i].bounds))
+            dims.append(get_dim(D[:,i], length_scale[i], density=srbf_density,
+                                bound=gpr.feature_list[i].bounds,
+                                max_ngrid=max_ngrid))
     scale = np.array(scale)
     for i in range(n,N):
         dims.append(get_dim(D[:,i], length_scale[i],
-                    density=4, bound=gpr.feature_list[i].bounds,
-                    max_ngrid=50))
+                    density=arbf_density, bound=gpr.feature_list[i].bounds,
+                    max_ngrid=max_ngrid))
     grid = [np.linspace(dims[i][0], dims[i][1], dims[i][2])\
             for i in range(N)]
 
