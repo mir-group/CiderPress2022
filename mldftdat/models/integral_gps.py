@@ -1,4 +1,4 @@
-from mldftdat.gp import DFTGPR
+from mldftdat.models.gp import DFTGPR
 from mldftdat.density import *
 from mldftdat.data import *
 from mldftdat.models.kernels import *
