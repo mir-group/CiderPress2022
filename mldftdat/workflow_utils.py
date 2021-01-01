@@ -35,7 +35,7 @@ def load_mol_ids(mol_id_file):
         mol_id_file += '.yaml'
     with open(mol_id_file, 'r') as f:
         contents = yaml.load(f, Loader=yaml.Loader)
-    return contents['calc_type'], contents['mol_ids']
+    return contents['calc_type'], contents['mols']
 
 def read_accdb_structure(struct_id):
     fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
