@@ -1,7 +1,7 @@
 import time
 from pyscf import scf
 import os, time
-import nympy as np
+import numpy as np
 from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.workflow_utils import get_save_dir
 from mldftdat.density import get_exchange_descriptors, get_exchange_descriptors2,\

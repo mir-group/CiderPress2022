@@ -77,8 +77,8 @@ def get_zr_diatomic(mol, coords):
     rs = np.linalg.norm(coords - zvecs, axis=1)
     return zs, rs
 
-def load_descriptors(dirname, count=None, val_dirname = None, load_wt = False,
-                     binary = False):
+def load_descriptors(dirname, count=None, val_dirname=None, load_wt=False,
+                     binary=True):
     if binary:
         X = np.load(os.path.join(dirname, 'desc.npy')).transpose()
     else:
