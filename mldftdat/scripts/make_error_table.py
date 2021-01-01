@@ -10,8 +10,24 @@ from ase.data import chemical_symbols, atomic_numbers,\
 from argparse import ArgumentParser
 import pandas as pd
 from joblib import dump, load
+import yaml
 import os
 import sys
+
+def load_models(model_file):
+    with open(model_file, 'r') as f:
+        d = yaml.load(f, Loader=yaml.Loader)
+        names = []
+        models = []
+        for name in d:
+            names.append(name)
+            if d[name] is None:
+                models.append(name)
+            elif os.path.isfile(d[name]):
+                models.append(load(d[name]))
+            else:
+                models.append(d[name])
+        return names, models
 
 def error_table(dirs, Analyzer, models, rows):
     errlst = [[] for _ in models]
@@ -65,8 +81,7 @@ def error_table(dirs, Analyzer, models, rows):
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl)
 
-def error_table_unrestricted(dirs, Analyzer, mlmodel):
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+def error_table_unrestricted(dirs, Analyzer, models, rows):
     errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
     fxlst_true = []
@@ -107,14 +122,12 @@ def error_table_unrestricted(dirs, Analyzer, mlmodel):
     rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
     errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl)
 
-def error_table2(dirs, Analyzer, mlmodel):
-    models = ['LDA', 'PBE', 'SCAN', 'EDM', mlmodel]
+def error_table2(dirs, Analyzer, models, rows):
     errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
     fxlst_true = []
@@ -196,15 +209,13 @@ def error_table2(dirs, Analyzer, mlmodel):
     rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
     errtbl = np.array([fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
     return (fxlst_true, fxlst_pred, errlst),\
            (columns, rows, errtbl),\
            data_dict
 
-def error_table3(dirs, Analyzer, mlmodel, dbpath):
-    models = ['GGA_X_CHACHIYO', 'PBE', 'SCAN', 'MGGA_X_TM', mlmodel]
+def error_table3(dirs, Analyzer, models, rows):
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -228,7 +239,7 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath):
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
             path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        dbpath, letter, Z, symbol, spin)
+                        SAVE_ROOT, letter, Z, symbol, spin)
             if letter == 'R':
                 element_analyzers[Z] = RHFAnalyzer.load(path)
             else:
@@ -291,16 +302,14 @@ def error_table3(dirs, Analyzer, mlmodel, dbpath):
     rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
     errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
            (columns, rows, errtbl)
 
-def error_table_corr(dirs, Analyzer, mlmodel, dbpath):
+def error_table_corr(dirs, Analyzer, models, rows):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
-    models = ['LDA_C_PW_MOD', 'GGA_C_PBE', 'MGGA_C_SCAN', mlmodel]
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -325,7 +334,7 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath):
             spin = int(ground_state_magnetic_moments[Z])
             letter = '' if spin == 0 else 'U'
             path = '{}/{}CCSD/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        dbpath, letter, Z, symbol, spin)
+                        SAVE_ROOT, letter, Z, symbol, spin)
             if letter == '':
                 element_analyzers[Z] = CCSDAnalyzer.load(path)
             else:
@@ -386,7 +395,6 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath):
     rrmse = np.sqrt(rtse / count)
 
     columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
-    rows = models[:NMODEL-1] + ['ML']
     errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
 
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
@@ -394,7 +402,6 @@ def error_table_corr(dirs, Analyzer, mlmodel, dbpath):
 
 
 if __name__ == '__main__':
-    rows = models[:NMODEL-1] + ['ML']
     m_desc = 'Compute, print, and return errors of different methods for prediction of exchange and correlation energies.'
 
     parser = ArgumentParser(description=m_desc)
@@ -438,6 +445,8 @@ if __name__ == '__main__':
     for mol_id in mol_ids:
         dirs.append(get_save_dir(SAVE_ROOT, calc_type, args.basis,
                                  mol_id, args.functional))
+
+    rows, models = load_models(args.model_file)
 
     if args.version == '1':
         res1, res2 = error_table(dirs, Analyzer, models, rows)
