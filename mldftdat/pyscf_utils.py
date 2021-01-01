@@ -24,10 +24,6 @@ SCF_TYPES = {
     'UKS'  : dft.UKS
 }
 
-GG_SMUL = 1.0
-GG_AMUL = 1.0
-GG_AMIN = 1.0 / 18
-
 def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     """
     Get a pyscf gto.Mole object from an ase Atoms object (atoms).

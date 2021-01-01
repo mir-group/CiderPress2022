@@ -1,26 +1,33 @@
 from argparse import ArgumentParser
+import os
 import numpy as np
 from joblib import dump
+from mldftdat.workflow_utils import SAVE_ROOT
+from mldftdat.models.gp import *
+from mldftdat.data import load_descriptors, filter_descriptors
 
 def parse_dataset(args, i, val=False):
     if val:
         fname = args.validation_set[2*i]
-        n = args.validation_set[2*i+1]
+        n = int(args.validation_set[2*i+1])
     else:
         fname = args.datasets_list[2*i]
         n = int(args.datasets_list[2*i+1])
+    fname = os.path.join(SAVE_ROOT, 'DATASETS', args.functional,
+                         args.basis, args.version, fname)
     X, y, rho_data = load_descriptors(fname)
     if val:
         # offset in case repeat datasets are used
-        X, y, rho_data = X[n//2+1:], y[n//2+1:], rho_data[:,n//2+1:]
+        X, y, rho_data = X[n//2+1:,:], y[n//2+1:], rho_data[:,n//2+1:]
     X, y, rho, rho_data = filter_descriptors(X, y, rho_data,
                                              tol=args.density_cutoff)
+    print(X.shape, n)
     if args.randomize:
         np.random.shuffle(X)
         np.random.shuffle(y)
         np.random.shuffle(rho)
         np.random.shuffle(rho_data.T)
-    return X, y, rho, rho_data
+    return X[::n,:], y[::n], rho[::n], rho_data[:,::n]
 
 def parse_list(lststr, T=int):
     return [T(substr) for substr in lststr.split(',')]
@@ -28,17 +35,22 @@ def parse_list(lststr, T=int):
 def main():
     parser = ArgumentParser(description='Trains a GP exchange model')
 
-    parser.add_argument('save_file', nargs=1, type=str)
-    parser.add_argument('feature_file', nargs=1, type=str,
+    parser.add_argument('save_file', type=str)
+    parser.add_argument('feature_file', type=str,
                         help='serialized FeatureList object in yaml format')
     parser.add_argument('datasets_list', nargs='+',
         help='pairs of dataset names and inverse sampling densities')
+    parser.add_argument('basis', metavar='basis', type=str,
+                        help='basis set code')
+    parser.add_argument('--functional', metavar='functional', type=str, default=None,
+                        help='exchange-correlation functional, HF for Hartree-Fock')
     parser.add_argument('-r', '--randomize', action='store_true')
-    parser.add_argument('-c', '--density-cutoff', type=float)
-    parser.add_argument('-m', '--model-class', type=str, default=None)
-    parser.add_argument('-k', '--kernel', help='kernel initialization strategy', type=str, default=None)
+    parser.add_argument('-c', '--density-cutoff', type=float, default=1e-4)
+    #parser.add_argument('-m', '--model-class', type=str, default=None)
+    #parser.add_argument('-k', '--kernel', help='kernel initialization strategy', type=str, default=None)
     parser.add_argument('-s', '--seed', help='random seed', default=0, type=int)
-    parser.add_argument('-v', '--validation-set', nargs='+')
+    parser.add_argument('-v', '--version', default='c', type=str)
+    parser.add_argument('-vs', '--validation-set', nargs='+')
     parser.add_argument('-d', '--delete-k', action='store_true',
                         help='Delete L (LL^T=K the kernel matrix) to save disk space. Need to refit when reloading to calculate covariance.')
     parser.add_argument('--heg', action='store_true', help='HEG exact constraint')
@@ -58,14 +70,16 @@ def main():
                         help='Whether to optimzie exponent of density noise.')
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
+
     feature_list = FeatureList.load(args.feature_file)
 
     if args.length_scale is not None:
-        args.length_scale = parse_list(args.length_scale)
+        args.length_scale = parse_list(args.length_scale, T=float)
     if args.agpr_scale is not None:
         args.agpr_scale = parse_list(args.agpr_scale, T=float)
-
-    numpy.random_seed(args.seed)
+    if args.desc_order is not None:
+        args.desc_order = parse_list(args.desc_order)
 
     assert len(args.datasets_list) % 2 == 0, 'Need pairs of entries for datasets list.'
     assert len(args.datasets_list) != 0, 'Need training data'
@@ -90,14 +104,14 @@ def main():
         rhov = np.append(rhov, rhon, axis=0)
         rho_datav = np.append(rho_datav, rho_datan, axis=1)
 
-    gpcls = load_gp_class(args.model_class)
+    gpcls = DFTGPR
     gpr = gpcls.from_settings(X, feature_list, args)
-    gpr.fit(X, y, rho_data)
+    gpr.fit(X, y)
     if args.heg:
         gpr.add_heg_limit()
 
-    pred = gpr.xed_to_y(gpr.predict(Xv, rho_datav), rho_datav)
-    abserr = np.abs(pred - gpr.xed_to_y(yv, rho_datav))
+    pred = gpr.xed_to_y(gpr.predict(Xv), Xv)
+    abserr = np.abs(pred - gpr.xed_to_y(yv, Xv))
     print('FINAL KERNEL', gpr.gp.kernel_)
     print('MAE VAL SET', np.mean(abserr))
 
