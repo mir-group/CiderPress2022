@@ -172,7 +172,7 @@ class SCANFunctional(MLFunctional):
         return np.array([dFdp, dFda]).T
 
 
-class RBFFunctional(MLFunctional):
+class GPFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
 
