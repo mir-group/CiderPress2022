@@ -5,7 +5,7 @@ from mldftdat.models.kernels import *
 import numpy as np
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process.kernels import *
-from mldftdat.pyscf_utils import GG_SMUL, GG_AMUL, GG_AMIN
+from mldftdat.density import GG_SMUL, GG_AMUL, GG_AMIN
 
 SCALE_FAC = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
 

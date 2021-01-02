@@ -2,7 +2,7 @@ from mldftdat.data import predict_exchange, predict_correlation,\
                           predict_total_exchange_unrestricted
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer,\
                                       CCSDAnalyzer, UCCSDAnalyzer
-from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
+from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
 import numpy as np 
 from collections import Counter
 from ase.data import chemical_symbols, atomic_numbers,\
@@ -25,6 +25,9 @@ def load_models(model_file):
                 models.append(name)
             elif os.path.isfile(d[name]):
                 models.append(load(d[name]))
+                models[-1].desc_version = models[-1].args.version
+                models[-1].a0 = 8.0
+                models[-1].fac_mul = 0.25
             else:
                 models.append(d[name])
         return names, models
@@ -251,10 +254,9 @@ def error_table3(dirs, Analyzer, models, rows):
         for Z in list(formula.keys()):
             fx_total_ref_true += formula[Z] \
                                  * predict_total_exchange_unrestricted(
-                                        element_analyzers[Z], version=version)
+                                        element_analyzers[Z])
         xef_true, eps_true, neps_true, fx_total_true = \
             predict_exchange(analyzer)
-        print(np.std(xef_true[condition]), np.std(eps_true[condition]))
         fxlst_true.append(fx_total_true)
         ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
         count += eps_true.shape[0]
@@ -285,7 +287,6 @@ def error_table3(dirs, Analyzer, models, rows):
             errlst[i].append(fx_total_pred - fx_total_true)
             ae_errlst[i].append(fx_total_pred - fx_total_true \
                                 - (fx_total_ref - fx_total_ref_true))
-        print(errlst[-1][-1], ae_errlst[-1][-1])
         print()
     fxlst_true = np.array(fxlst_true)
     fxlst_pred = np.array(fxlst_pred)
@@ -405,22 +406,22 @@ if __name__ == '__main__':
     m_desc = 'Compute, print, and return errors of different methods for prediction of exchange and correlation energies.'
 
     parser = ArgumentParser(description=m_desc)
-    parser.add_argument('version', type='str',
+    parser.add_argument('version', type=str,
                         help=('1, 2, 3, u, or c.\n'
                         '1: Total exchange error for spin-restricted systems\n'
                         '2: Same as above but also returns data for ML descriptors\n'
                         '3: Total and atomization exchange error for spin-restricted systems\n'
                         'u: Total exchange error for spin-unrestricted systems\n'
                         'c: Total correlation exchange error.'))
-    parser.add_argument('model_file', type='str',
+    parser.add_argument('model_file', type=str,
                         help='yaml file containing list of models and how to load them.')
-    parser.add_argument('mol_file', type='str',
+    parser.add_argument('mol_file', type=str,
                         help='yaml file containing list of directories and calc type')
     parser.add_argument('basis', metavar='basis', type=str,
-                        nargs=1, help='basis set code')
+                        help='basis set code')
     parser.add_argument('--functional', metavar='functional', type=str, default=None,
-                        nargs=1, help='exchange-correlation functional, HF for Hartree-Fock')
-    args = parser.parse_arguments()
+                        help='exchange-correlation functional, HF for Hartree-Fock')
+    args = parser.parse_args()
 
     calc_type, mol_ids = load_mol_ids(args.mol_file)
     if args.version.lower() == 'c' and ('CCSD' not in calc_type):
@@ -436,10 +437,10 @@ if __name__ == '__main__':
         Analyzer = UHFAnalyzer
     elif calc_type == 'CCSD':
         Analyzer = CCSDAnalyzer
-    elif calc_type = 'UCCSD':
+    elif calc_type == 'UCCSD':
         Analyzer = UCCSDAnalyzer
     else:
-        raise ValueError('Wrong calc_type')
+        raise ValueError('Wrong calc_type {}'.format(calc_type))
 
     dirs = []
     for mol_id in mol_ids:
