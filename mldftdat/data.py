@@ -1,11 +1,12 @@
 import numpy as np 
 from mldftdat.workflow_utils import get_save_dir
-from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR
+from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR,\
+                             get_ldax, get_ldax_dens
 import os, json
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
-from mldftdat.analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e
 from pyscf.dft.numint import eval_ao, eval_rho
@@ -163,7 +164,6 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
             If str, evaluate the exchange energy of that functional.
             Otherwise, assume sklearn model and run predict function.
     """
-    from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
     from mldftdat.models.integral_gps import AddEDMGPR, AddEDMGPR2
     if not restricted:
@@ -183,17 +183,10 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data)[0]
         neps = eps * rho
-    elif isinstance(model, Predictor):
-        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
-                                          version=model.desc_version)
-        neps = model.predict(xdesc.transpose(), rho_data)
-        eps = neps / rho
-        if return_desc:
-            X = model.get_descriptors(xdesc.transpose(), rho_data, num=model.num)
     elif hasattr(model, 'coeff_sets'):
         xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
                                           version=model.desc_version)
-        neps = model.predict(xdesc.transpose(), rho_data, vec_eval = True)
+        neps = model.predict(xdesc.transpose(), vec_eval=True)
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
@@ -208,28 +201,32 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         xef = model.get_F(desc)
         eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
         neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
-    elif isinstance(model, AddEDMGPR) or isinstance(model, AddEDMGPR2):
+    else:#elif isinstance(model, AddEDMGPR) or isinstance(model, AddEDMGPR2):
         from pyscf import lib
         xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
-                                          version=model.desc_version)
+                                          version=model.desc_version,
+                                          a0=model.a0,
+                                          fac_mul=model.fac_mul)
         gridsize = xdesc.shape[1]
         neps, std = np.zeros(gridsize), np.zeros(gridsize)
         blksize = 20000
         for p0, p1 in lib.prange(0, gridsize, blksize):
-            neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1],
-                                                    rho_data[:,p0:p1], return_std=True)
-        print('integrated uncertainty', np.dot(np.abs(std), np.abs(weights)))
+            #neps[p0:p1], std[p0:p1] = model.predict(xdesc.T[p0:p1], return_std=True)
+            neps[p0:p1] = model.predict(xdesc.T[p0:p1], return_std=False)
+        #print('integrated uncertainty', np.dot(np.abs(std), np.abs(weights)))
         eps = neps / rho
         if return_desc:
-            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
-    else:# type(model) == integral_gps.NoisyEDMGPR:
-        xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
-                                          version=model.desc_version)
-        neps, std = model.predict(xdesc.transpose(), rho_data, return_std = True)
-        print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
-        eps = neps / rho
-        if return_desc:
-            X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
+            X = model.get_descriptors(xdesc.transpose())
+    #else:# type(model) == integral_gps.NoisyEDMGPR:
+    #    xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
+    #                                      version=model.desc_version,
+    #                                      a0=model.a0,
+    #                                      fac_mul=model.fac_mul)
+    #    neps, std = model.predict(xdesc.transpose(), return_std=True)
+    #    print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
+    #    eps = neps / rho
+    #    if return_desc:
+    #        X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     xef = neps / (get_ldax_dens(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
@@ -240,7 +237,6 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
 def predict_total_exchange_unrestricted(analyzer, model=None):
     if isinstance(analyzer, RHFAnalyzer):
         return predict_exchange(analyzer, model)[3]
-    from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
     rho_data = analyzer.rho_data
     tau_data = analyzer.tau_data
@@ -274,9 +270,11 @@ def predict_total_exchange_unrestricted(analyzer, model=None):
             neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
-                                                   version=model.desc_version)
-        neps = 0.5 * model.predict(xdescu.transpose(), 2 * rho_data[0])
-        neps += 0.5 * model.predict(xdescd.transpose(), 2 * rho_data[1])
+                                                   version=model.desc_version,
+                                                   a0=model.a0,
+                                                   fac_mul=model.fac_mul)
+        neps = 0.5 * model.predict(xdescu.transpose())
+        neps += 0.5 * model.predict(xdescd.transpose())
     fx_total = np.dot(neps, weights)
     return fx_total
 
@@ -287,7 +285,6 @@ def predict_correlation(analyzer, model=None, num=1,
             If str, evaluate the correlation energy of that functional.
             Otherwise, assume sklearn model and run predict function.
     """
-    from mldftdat.models.nn import Predictor
     from mldftdat.dft.xc_models import MLFunctional
     from mldftdat.models.correlation_gps import CorrGPR
     rho_data = analyzer.rho_data
