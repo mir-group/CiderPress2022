@@ -288,7 +288,7 @@ def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux, **kwargs):
     return contract_exchange_descriptors_b(desc)
 
 def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
-                    a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+                    a0=8.0, fac_mul=1.0, amin=GG_AMIN, **kwargs):
     # desc[0:6]   = rho_data
     # desc[6] = g0
     # desc[7:10] = g1
@@ -353,7 +353,6 @@ def get_exchange_descriptors2(analyzer, restricted=True, version='a',
     #auxbasis = df.aug_etb(analyzer.mol, beta=1.6)
     nao = analyzer.mol.nao_nr()
     auxmol = df.make_auxmol(analyzer.mol, auxbasis='weigend+etb')
-    #auxmol = df.make_auxmol(analyzer.mol, auxbasis)
     naux = auxmol.nao_nr()
     # shape (naux, naux), symmetric
     aug_J = auxmol.intor('int2c2e')
@@ -361,11 +360,9 @@ def get_exchange_descriptors2(analyzer, restricted=True, version='a',
     aux_e2 = df.incore.aux_e2(analyzer.mol, auxmol)
     #print(aux_e2.shape)
     # shape (naux, nao * nao)
-    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).transpose()
-    aux_e2 = np.ascontiguousarray(aux_e2)
-    lu, piv, info = dgetrf(aug_J, overwrite_a=True)
-    inv_aug_J, info = dgetri(lu, piv, overwrite_lu=True)
-    ao_to_aux = dgemm(1, inv_aug_J, aux_e2)
+    aux_e2 = aux_e2.reshape((-1, aux_e2.shape[-1])).T
+    c_and_lower = cho_factor(aug_J)
+    ao_to_aux = cho_solve(c_and_lower, aux_e2)
     ao_to_aux = ao_to_aux.reshape(naux, nao, nao)
 
     # rho_dat aand rrdho are polarized if calc is unrestricted
