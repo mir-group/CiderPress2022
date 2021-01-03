@@ -147,6 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('--gg-a0', default=8.0, type=float)
     parser.add_argument('--gg-facmul', default=1.0, type=float)
     parser.add_argument('--gg-amin', default=GG_AMIN, type=float)
+    parser.add_argument('--suffix', default=None, type=str,
+                        help='customize data directories with this suffix')
     args = parser.parse_args()
 
     version = args.version.lower()
@@ -165,6 +167,8 @@ if __name__ == '__main__':
         pass#dataname = 'SPH_' + dataname
     if args.locx:
         dataname = 'LOCX_' + dataname
+    if args.suffix is not None:
+        dataname = dataname + '_' + args.suffix
 
     if version == 'c':
         compile_dataset2(
