@@ -1,8 +1,7 @@
 import numpy as np
 from pyscf import gto, df
 import scipy.linalg
-from scipy.linalg.lapack import dgetrf, dgetri
-from scipy.linalg.blas import dgemm, dgemv
+from scipy.linalg import cho_factor, cho_solve
 from mldftdat.pyscf_utils import *
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
