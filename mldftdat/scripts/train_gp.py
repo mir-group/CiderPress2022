@@ -5,6 +5,20 @@ from joblib import dump
 from mldftdat.workflow_utils import SAVE_ROOT
 from mldftdat.models.gp import *
 from mldftdat.data import load_descriptors, filter_descriptors
+import yaml
+
+def parse_settings(args):
+    fname = args.datasets_list[0]
+    if args.suffix is not None:
+        fname = fname + '_' + args.suffix
+    fname = os.path.join(SAVE_ROOT, 'DATASETS', args.functional,
+                         args.basis, args.version, fname)
+    print(fname)
+    with open(os.path.join(fname, 'settings.yaml'), 'r') as f:
+        d = yaml.load(f, Loader=yaml.Loader)
+    args.gg_a0 = d.get('a0')
+    args.gg_amin = d.get('amin')
+    args.gg_facmul = d.get('fac_mul')
 
 def parse_dataset(args, i, val=False):
     if val:
@@ -13,8 +27,11 @@ def parse_dataset(args, i, val=False):
     else:
         fname = args.datasets_list[2*i]
         n = int(args.datasets_list[2*i+1])
+    if args.suffix is not None:
+        fname = fname + '_' + args.suffix
     fname = os.path.join(SAVE_ROOT, 'DATASETS', args.functional,
                          args.basis, args.version, fname)
+    print(fname)
     X, y, rho_data = load_descriptors(fname)
     if val:
         # offset in case repeat datasets are used
@@ -49,7 +66,6 @@ def main():
     #parser.add_argument('-m', '--model-class', type=str, default=None)
     #parser.add_argument('-k', '--kernel', help='kernel initialization strategy', type=str, default=None)
     parser.add_argument('-s', '--seed', help='random seed', default=0, type=int)
-    parser.add_argument('-v', '--version', default='c', type=str)
     parser.add_argument('-vs', '--validation-set', nargs='+')
     parser.add_argument('-d', '--delete-k', action='store_true',
                         help='Delete L (LL^T=K the kernel matrix) to save disk space. Need to refit when reloading to calculate covariance.')
@@ -68,7 +84,13 @@ def main():
     parser.add_argument('-x', '--xed-y-code', default='CHACHIYO', type=str)
     parser.add_argument('-on', '--optimize-noise', action='store_true',
                         help='Whether to optimzie exponent of density noise.')
+    parser.add_argument('-v', '--version', default='c', type=str,
+                        help='version of descriptor set. Default c')
+    parser.add_argument('--suffix', default=None, type=str,
+                        help='customize data directories with this suffix')
     args = parser.parse_args()
+
+    parse_settings(args)
 
     np.random.seed(args.seed)
 
