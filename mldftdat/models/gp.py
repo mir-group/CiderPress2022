@@ -356,4 +356,11 @@ class DFTGPR():
         init_kernel = cov_kernel + noise_kernel
         xed_y_converter = XED_Y_CONVERTERS[args.xed_y_code]
 
-        return cls(feature_list, desc_order, xed_y_converter, init_kernel)
+        gpr = cls(feature_list, desc_order, xed_y_converter, init_kernel)
+        gpr.a0 = args.gg_a0
+        gpr.fac_mul = args.gg_facmul
+        gpr.amin = args.gg_amin
+        gpr.desc_version = args.version
+
+        return gpr
+
