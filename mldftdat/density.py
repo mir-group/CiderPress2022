@@ -289,6 +289,7 @@ def _get_x_helper_b(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux, **kwargs):
 
 def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                     a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+    print(a0, fac_mul, amin)
     # desc[0:6]   = rho_data
     # desc[6] = g0
     # desc[7:10] = g1
@@ -652,7 +653,7 @@ def contract_exchange_descriptors_c(desc):
     # g2 order: xy, yz, z^2, xz, x^2-y^2
 
     N = desc.shape[1]
-    res = np.zeros((17,N))
+    res = np.zeros((11,N))
     rho_data = desc[:6]
 
     # rho, g0, s, alpha, nabla

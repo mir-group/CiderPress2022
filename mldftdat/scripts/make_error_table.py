@@ -25,9 +25,7 @@ def load_models(model_file):
                 models.append(name)
             elif os.path.isfile(d[name]):
                 models.append(load(d[name]))
-                models[-1].desc_version = models[-1].args.version
-                models[-1].a0 = 8.0
-                models[-1].fac_mul = 0.25
+                print(models[-1].desc_version, models[-1].amin, models[-1].a0, models[-1].fac_mul)
             else:
                 models.append(d[name])
         return names, models
