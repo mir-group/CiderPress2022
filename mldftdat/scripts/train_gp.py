@@ -40,10 +40,12 @@ def parse_dataset(args, i, val=False):
                                              tol=args.density_cutoff)
     print(X.shape, n)
     if args.randomize:
-        np.random.shuffle(X)
-        np.random.shuffle(y)
-        np.random.shuffle(rho)
-        np.random.shuffle(rho_data.T)
+        inds = np.arange(X.shape[0])
+        np.random.shuffle(inds)
+        X = X[inds,:]
+        y = y[inds]
+        rho = rho[inds]
+        rho_data = rho_data[:,inds]
     return X[::n,:], y[::n], rho[::n], rho_data[:,::n]
 
 def parse_list(lststr, T=int):
