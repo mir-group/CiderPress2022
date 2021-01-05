@@ -4,7 +4,7 @@ from mldftdat.workflow_utils import safe_mem_cap_mb
 from pyscf.dft.numint import eval_ao, make_mask
 from mldftdat.density import get_x_helper_full, get_x_helper_full, LDA_FACTOR,\
                              contract_exchange_descriptors,\
-                             contract21_deriv, contract21
+                             contract21_deriv, contract21, GG_AMIN
 
 def dtauw(rho_data):
     return - get_gradient_magnitude(rho_data)**2 / (8 * rho_data[0,:]**2 + 1e-16),\
@@ -365,7 +365,7 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
 
     gg_kwargs = {
         'a0': mlfunc.a0,
-        'amin': mlfunc.amin
+        'amin': mlfunc.amin,
         'fac_mul': mlfunc.fac_mul
     }
     N = grid.weights.shape[0]
