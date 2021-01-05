@@ -26,6 +26,34 @@ fu or Fu : spin-alpha XEF e_{x,u} nu^{-4/3} / (2^{1/3} C_{LDA})
 fd or Fd : spin-beta XEF e_{x,d} nd^{-4/3} / (2^{1/3} C_{LDA})
 """
 
+import numpy as np
+
+LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
+alphax = 0.001867
+alphass, alphaos = 0.00515088, 0.00304966
+CF = 0.3 * (6 * np.pi**2)**(2.0/3)
+CFC = 0.3 * (3 * np.pi**2)**(2.0/3)
+
+A = 2.74
+B = 132
+sprefac = 2 * (3 * np.pi**2)**(1.0/3)
+chiinf = 0.128026
+chi = 0.72161
+b1c = 0.0285764
+b2c = 0.0889
+b3c = 0.125541
+gamma = 0.031091
+
+# from libxc https://gitlab.com/libxc/libxc/-/blob/master/maple/lda_exc/lda_c_pw.mpl
+params_a_a      = [0.0310907, 0.01554535, 0.0168869]
+params_a_alpha1 = [0.21370,  0.20548,  0.11125]
+params_a_beta1  = [7.5957, 14.1189, 10.357]
+params_a_beta2  = [3.5876, 6.1977, 3.6231]
+params_a_beta3  = [1.6382, 3.3662,  0.88026]
+params_a_beta4  = [0.49294, 0.62517, 0.49671]
+FZ20            = np.array([1.709920934161365617563962776245])
+
+
 #######################
 # SEMILOCAL BASELINES #
 #######################
@@ -91,7 +119,7 @@ def get_pw92(rs, zeta):
 
     return e, dedrs, dedzeta
 
-def get_phi0(self, zeta):
+def get_phi0(zeta):
     """
     Spin polarization function for alpha=0 limit of SCAN
     """
@@ -99,7 +127,7 @@ def get_phi0(self, zeta):
     dG = -1.1815*(1 - zeta**12)*((-4*(1 - zeta)**0.3333333333333333)/3. + (4*(1 + zeta)**0.3333333333333333)/3.) - 12*zeta**11*(1 - 2.363*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
     return G, dG
 
-def get_phi1(self, zeta):
+def get_phi1(zeta):
     """
     Spin polarization function for alpha=1 limt of SCAN
     """
@@ -114,7 +142,7 @@ def get_baseline0inf(zeta, s2):
     Define n_{gamma} = gamma^3 n(gamma r)
     Returns lim_{gamma -> infty} epsilon_{SCAN}(alpha=0)
     """
-    G, dG = self.get_phi0(zeta)
+    G, dG = get_phi0(zeta)
     elim = b1c*G*np.log(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))
     dedG = b1c*np.log(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))
     deds2 = -((b1c*chiinf*(1 - np.e)*G)/(np.e*(1 + 4*chiinf*s2)**1.25*(1 + (1 - np.e)/(np.e*(1 + 4*chiinf*s2)**0.25))))
@@ -128,7 +156,7 @@ def get_baseline1inf(zeta, s2, ss=False):
     if ss:
         phi, dphi = 2**(-1.0/3), 0
     else:
-        phi, dphi = self.get_phi1(zeta)
+        phi, dphi = get_phi1(zeta)
     elim = gamma*phi**3*np.log(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))
     dedphi = (-2*chi*gamma*s2)/((1 + (4*chi*s2)/phi**2)**1.25*(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))) + 3*gamma*phi**2*np.log(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))
     deds2 = (chi*gamma*phi)/((1 + (4*chi*s2)/phi**2)**1.25*(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25)))
@@ -157,10 +185,10 @@ def get_baseline_inf_z(nu, nd, g2, D):
     in a smooth way
     """
     N = nu.shape[0]
-    s2, ds2n, ds2g2 = self.get_s2(nu+nd, g2 + 1e-30)
-    zeta, dzetau, dzetad = self.get_zeta(nu, nd)
-    e0lim, de0dzeta, de0ds2 = self.baseline0inf(zeta, s2)
-    e1lim, de1dzeta, de1ds2 = self.baseline1inf(zeta, s2)
+    s2, ds2n, ds2g2 = get_s2(nu+nd, g2 + 1e-30)
+    zeta, dzetau, dzetad = get_zeta(nu, nd)
+    e0lim, de0dzeta, de0ds2 = baseline0inf(zeta, s2)
+    e1lim, de1dzeta, de1ds2 = baseline1inf(zeta, s2)
     elim = e1lim * D[0] + e0lim * (1 - D[0])
     dedzeta = de1dzeta * D[0] + de0dzeta * (1 - D[0])
     deds2 = de1ds2 * D[0] + de0ds2 * (1 - D[0])
@@ -277,7 +305,7 @@ def get_os_baseline(nu, nd, g2, type = 0):
 # SCALE-INVARIANT SEMI-LOCAL DESCRIPTORS #
 ##########################################
 
-def get_x2(self, n, g2):
+def get_x2(n, g2):
     """
     Takes n and g2 and returns the squared normalized gradient
     without the constant included in s^2
@@ -287,16 +315,16 @@ def get_x2(self, n, g2):
            (-8*g2)/(3.*n**3.6666666666666665+1e-16),\
            1/(n**(2.6666666666666665)+1e-16)
 
-def get_s2(self, n, g2):
+def get_s2(n, g2):
     """
     Returns the normalized gradient (see get_x2) with the usual
     normalization constant
     s^2 = g2 / (sprefac^2 * n^{8/3})
     """
-    a, b, c = self.get_x2(n, g2)
+    a, b, c = get_x2(n, g2)
     return a / sprefac**2 + 1e-10, b / sprefac**2, c / sprefac**2
 
-def get_alpha(self, n, zeta, g2, t):
+def get_alpha(n, zeta, g2, t):
     """
     The iso-orbital indicator alpha used by SCAN
     """
@@ -312,7 +340,7 @@ def get_alpha(self, n, zeta, g2, t):
 #-(5.0/3) * alpha / n + (g2 / (8*n**2)) / (CFC * n**(5./3) * d),\
 #(-5 * t + g2 / n) / (3 * CFC * d * n**(8./3)),\
 
-def get_chi(self, alpha):
+def get_chi(alpha):
     """
     Transformation of alpha to [-1,1], similar but not identical
     to the electron localization factor (ELF).
@@ -324,7 +352,7 @@ def get_chi(self, alpha):
     chi = (1 - alpha) / (1 + alpha)
     return chi, -2 / (1 + alpha)**2
 
-def get_chi_full_deriv(self, n, zeta, g2, t):
+def get_chi_full_deriv(n, zeta, g2, t):
     """
     Returns chi directly without first calculating alpha,
     for numerical stability.
@@ -357,7 +385,7 @@ def get_chi_full_deriv(self, n, zeta, g2, t):
 # Descriptor Arrays #
 #####################
 
-def get_chi_desc(self, chi):
+def get_chi_desc(chi):
     """
     Polynomial arrays and derivatives for chi
     TODO needs cleanup and return format more consistent with
@@ -365,17 +393,17 @@ def get_chi_desc(self, chi):
     """
     return chi, chi**2, chi**3, chi**4, np.ones_like(chi), 2*chi, 3*chi**2, 4*chi**3
 
-def get_separate_xef_terms(f, return_deriv=True):
+def get_separate_xef_terms(f, return_deriv=True, cf=2.0):
     """
     Returns (f-1)^n exp(-c * (f-1)^2),
     where f is the XEF and n is [0,1,2,3,4]
     """
     f = f - 1
-    fterm0 = np.exp(-self.cf * f**2)
+    fterm0 = np.exp(-cf * f**2)
     res = np.array([fterm0 * f**i for i in range(5)])
     res[0,:] -= 1
     if return_deriv:
-        dres = np.array([i * f**(i-1) - 2 * self.cf * f**(i+1) for i in range(5)])
+        dres = np.array([i * f**(i-1) - 2 * cf * f**(i+1) for i in range(5)])
         dres *= fterm0
         return res, dres
     return res
@@ -454,6 +482,18 @@ def get_t2_desc(n, zeta, x2):
     ddesc = -0.5 / (1 + 0.5 * t2)**2
     return desc, ddesc * dt2dn, ddesc * dt2dz, ddesc * dt2dx2
 
+def get_t2_nsp(n, x2):
+    t2 = (np.pi / 3)**(1./3) / 16 * x2 * n**(1./3)
+    dt2dn = t2 / (3 * n)
+    dt2dx2 = (np.pi / 3)**(1./3) / 16 * n**(1./3)
+    return t2, dt2dn, dt2dx2
+
+def get_t2_desc_nsp(n, x2):
+    t2, dt2dn, dt2dx2 = get_t2(n, x2)
+    desc = 1 / (1 + 0.5 * t2)
+    ddesc = -0.5 / (1 + 0.5 * t2)**2
+    return desc, ddesc * dt2dn, ddesc * dt2dx2
+
 def get_combined_amix_desc(n, zeta, x2):
     a0, da0dn, da0dz, da0dx2 = get_t2_desc(n, zeta, x2)
     a1, da1dn = get_mn15_rho_desc(n)
@@ -516,6 +556,27 @@ def get_rmn15_desc(n, zeta, x2, chi, F):
             ddescdchi[k] = a0[i] * da1dchi[j] * (F - 1)
             ddescdf[k] = a0[i] * a1[j]
     return desc, ddescdn, ddescdz, ddescdx2, ddescdchi
+
+def get_rmn15_desc2(n, zeta, x2, chi, version):
+    v = get_mn15_rho_desc(n)[0]
+    u = 1 / (1 + 0.004 * x2)
+    w = chi
+    m1 = v * u
+    m2 = v * (u**2 - u)
+    m3 = (v**2 - v) * u
+    if version == 'a': # For F-1
+        wterms = np.array([w/2+0.5, w**2-1, w**3-w])
+        wterms2 = wterms[1:]
+    elif version == 'b': # For 1
+        wterms = np.array([(w+w**2)/2, w**3-w])
+        wterms2 = wterms.copy()
+    else: # For (f-1)^2 * exp(-(f-1)^2)
+        wterms = np.array([w, w**2-1, w**3-w])
+        wterms2 = wterms[1:]
+    wterms *= 1 - ((1+zeta)**(4./3) + (1-zeta)**(4./3) - 2) / (2**(4./3) - 2)
+    wterms = np.append(wterms, wterms2, axis=0)
+    return np.concatenate([m1 * wterms, m2 * wterms,
+                           m3 * wterms], axis=0)
 
 def get_amix_schmidt(n, zeta, x2, chi):
     """
