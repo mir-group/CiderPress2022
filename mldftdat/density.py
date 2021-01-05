@@ -321,6 +321,15 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
     ovlp = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).T
     proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     desc = np.append(desc, proj, axis=0)
+    atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                        l=0, s=lc[1], alpha=lc[2],
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]**2
+    gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
+    ovlp = gto.mole.intor_cross('int1e_r4_origj', auxmol, gridmol).T
+    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+    desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors_c(desc)
 
 def get_exchange_descriptors2(analyzer, restricted=True, version='a',
@@ -649,7 +658,7 @@ def contract_exchange_descriptors_c(desc):
     # g2 order: xy, yz, z^2, xz, x^2-y^2
 
     N = desc.shape[1]
-    res = np.zeros((11,N))
+    res = np.zeros((12,N))
     rho_data = desc[:6]
 
     # rho, g0, s, alpha, nabla
@@ -692,6 +701,7 @@ def contract_exchange_descriptors_c(desc):
     res[9] = np.einsum('pn,pn->n', sgg, g1)
 
     res[10] = desc[15]
+    res[11] = desc[16]
 
     # res
     # 0:  rho
@@ -705,6 +715,7 @@ def contract_exchange_descriptors_c(desc):
     # 8:  g1 dot g2 dot svec
     # 9:  g1 dot g2 dot g1
     # 10: g0-r^2
+    # 11: g0-r^4
     return res
 
 
