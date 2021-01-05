@@ -165,7 +165,6 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
             Otherwise, assume sklearn model and run predict function.
     """
     from mldftdat.dft.xc_models import MLFunctional
-    from mldftdat.models.integral_gps import AddEDMGPR, AddEDMGPR2
     if not restricted:
         raise NotImplementedError('unrestricted case not available for this function yet')
     rho_data = analyzer.rho_data
@@ -201,7 +200,7 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         xef = model.get_F(desc)
         eps = LDA_FACTOR * xef * analyzer.rho_data[0]**(1.0/3)
         neps = LDA_FACTOR * xef * analyzer.rho_data[0]**(4.0/3)
-    else:#elif isinstance(model, AddEDMGPR) or isinstance(model, AddEDMGPR2):
+    else:
         from pyscf import lib
         xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
                                           version=model.desc_version,
@@ -218,16 +217,6 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose())
-    #else:# type(model) == integral_gps.NoisyEDMGPR:
-    #    xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
-    #                                      version=model.desc_version,
-    #                                      a0=model.a0,
-    #                                      fac_mul=model.fac_mul)
-    #    neps, std = model.predict(xdesc.transpose(), return_std=True)
-    #    print('integrated uncertainty', np.sqrt(np.dot(std**2, weights)))
-    #    eps = neps / rho
-    #    if return_desc:
-    #        X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
     xef = neps / (get_ldax_dens(rho) - 1e-7)
     fx_total = np.dot(neps, weights)
     if return_desc:
