@@ -1,8 +1,6 @@
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer
-from mldftdat.dft.numint5 import _eval_x_0, setup_aux
-from mldftdat.dft.numint6 import _eval_xc_0
 from pyscf.dft.libxc import eval_xc
-from mldftdat.dft.correlation import *
+from mldftdat.xcutil.cdesc import *
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
 from sklearn.linear_model import LinearRegression
 from pyscf.dft.numint import NumInt
@@ -19,10 +17,23 @@ DEFAULT_BASIS = 'def2-qzvppd'
 
 CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
-def default_desc_getter(rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
+def default_desc_getter(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     rhot = rhou + rhod
     g2 = g2u + 2* g2o + g2d
     exo = exu + exd
+
+    co0, vo0 = get_os_baseline(rhou, rhod, g2, type=0)[:2]
+    co1, vo1 = get_os_baseline(rhou, rhod, g2, type=1)[:2]
+    co0 *= rhot
+    co1 *= rhot
+    cx = co0
+    co = co1
+
+    nu, nd = rhou, rhod
+
+    zeta = (rhou - rhod) / (rhot)
+    ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
+    CU = 0.3 * (3 * np.pi**2)**(2.0/3)
 
     ldaxu = 2**(1.0/3) * LDA_FACTOR * rhou**(4.0/3) - 1e-20
     ldaxd = 2**(1.0/3) * LDA_FACTOR * rhod**(4.0/3) - 1e-20
@@ -30,25 +41,25 @@ def default_desc_getter(rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
 
     gamma = 2**(2./3) * 0.004
     gammass = 0.004
-    chi = corr_model.get_chi_full_deriv(rhot + 1e-16, zeta, g2, tu + td)[0]
-    chiu = corr_model.get_chi_full_deriv(rhou + 1e-16, 1, g2u, tu)[0]
-    chid = corr_model.get_chi_full_deriv(rhod + 1e-16, 1, g2d, td)[0]
-    x2 = corr_model.get_x2(nu+nd, g2)[0]
-    x2u = corr_model.get_x2(nu, g2u)[0]
-    x2d = corr_model.get_x2(nd, g2d)[0]
-    amix = corr_model.get_amix(rhot, zeta, x2, chi)[0]
-    chidesc = np.array(corr_model.get_chi_desc(chi)[:4])
-    chidescu = np.array(corr_model.get_chi_desc(chiu)[:4])
-    chidescd = np.array(corr_model.get_chi_desc(chid)[:4])
+    chi = get_chi_full_deriv(rhot + 1e-16, zeta, g2, tu + td)[0]
+    chiu = get_chi_full_deriv(rhou + 1e-16, 1, g2u, tu)[0]
+    chid = get_chi_full_deriv(rhod + 1e-16, 1, g2d, td)[0]
+    x2 = get_x2(nu+nd, g2)[0]
+    x2u = get_x2(nu, g2u)[0]
+    x2d = get_x2(nd, g2d)[0]
+    amix = get_amix_schmidt(rhot, zeta, x2, chi)[0]
+    chidesc = np.array(get_chi_desc(chi)[:4])
+    chidescu = np.array(get_chi_desc(chiu)[:4])
+    chidescd = np.array(get_chi_desc(chid)[:4])
     Fx = exo / ldaxt
     Fxu = exu / ldaxu
     Fxd = exd / ldaxd
-    corrterms = np.append(corr_model.get_separate_xef_terms(Fx),
+    corrterms = np.append(get_separate_xef_terms(Fx, return_deriv=False),
                           chidesc, axis=0)
-    extermsu = np.append(corr_model.get_separate_sl_terms(x2u, chiu, gammass)[0],
-                         corr_model.get_separate_xefa_terms(Fxu, chiu)[0], axis=0)
-    extermsd = np.append(corr_model.get_separate_sl_terms(x2d, chid, gammass)[0],
-                         corr_model.get_separate_xefa_terms(Fxd, chid)[0], axis=0)
+    extermsu = np.append(get_separate_sl_terms(x2u, chiu, gammass)[0],
+                         get_separate_xefa_terms(Fxu, chiu)[0], axis=0)
+    extermsd = np.append(get_separate_sl_terms(x2d, chid, gammass)[0],
+                         get_separate_xefa_terms(Fxd, chid)[0], axis=0)
 
     cmscale = 17.0 / 3
     cmix = cmscale * (1 - chi) / (cmscale - chi)
@@ -78,17 +89,14 @@ def default_desc_getter(rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     Fterms3 = np.dot(cmix_termsu * (Fx-1) * ldaxu * amix, weights)
     Fterms3 += np.dot(cmix_termsd * (Fx-1) * ldaxd * amix, weights)
 
-    return np.concatenate([Eterms, Eterms2, Eterms3, Fterms, Fterms2, Fterms3],
-                          axis=0)
+    return Ecscan, np.concatenate([Eterms, Eterms2, Eterms3, Fterms, Fterms2, Fterms3],
+                                   axis=0)
 
 
 def get_corr_contribs(dft_dir, restricted, mlfunc,
-                      desc_getter, exact=True):
+                      desc_getter=default_desc_getter):
 
-    from mldftdat.models import map_c10
-
-    corr_model = map_c10.VSXCContribs(None, None, None, None,
-                                      fterm_scale=2.0)
+    exact = (mlfunc is None)
 
     if restricted:
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
@@ -104,10 +112,6 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
     mol = dft_analyzer.mol
     rdm1 = dft_analyzer.rdm1
     E_pbe = dft_analyzer.e_tot
-
-    auxmol, ao_to_aux = setup_aux(mol, 0)
-    mol.ao_to_aux = ao_to_aux
-    mol.auxmol = auxmol
 
     if restricted:
         rho_data_u, rho_data_d = rho_data / 2, rho_data / 2
@@ -126,19 +130,6 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
     rhot = rhou + rhod
     g2o = np.einsum('ir,ir->r', rho_data_u[1:4], rho_data_d[1:4])
     g2 = g2u + 2 * g2o + g2d
-
-    zeta = (rhou - rhod) / (rhot)
-    ds = ((1-zeta)**(5.0/3) + (1+zeta)**(5.0/3))/2
-    CU = 0.3 * (3 * np.pi**2)**(2.0/3)
-
-    co0, vo0 = corr_model.os_baseline(rhou, rhod, g2, type=0)[:2]
-    co1, vo1 = corr_model.os_baseline(rhou, rhod, g2, type=1)[:2]
-    co0 *= rhot
-    co1 *= rhot
-    cx = co0
-    co = co1
-
-    nu, nd = rhou, rhod
 
     N = dft_analyzer.grid.weights.shape[0]
     if restricted:
@@ -186,42 +177,43 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
     exd = exd * rhod
     exo = exo * rhot
 
-    Excbas = dft_analyzer.e_tot - dft_analyzer.energy_tot() - dft_analyzer.fx_total
+    Excbas = dft_analyzer.e_tot - dft_analyzer.calc.energy_tot() - dft_analyzer.fx_total
 
-    logging.info('EX ERROR', Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total)
+    logging.info('EX ERROR {} {} {}'.format(Ex - dft_analyzer.fx_total, Ex, dft_analyzer.fx_total))
     if (np.abs(Ex - dft_analyzer.fx_total) > 1e-7):
         logging.warn('LARGE ERROR')
 
-    desc = desc_getter(rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd)
+    Ecbas, desc = desc_getter(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd)
 
     return np.concatenate([[Ex, Excbas], desc,
-                          [Ecscan, dft_analyzer.fx_total]], axis=0)
+                          [Ecbas, dft_analyzer.fx_total]], axis=0)
 
 
-def store_corr_contribs_dataset(FNAME, ROOT, MOL_FNAME, MLFUNC,
-                                ndesc, desc_getter,
-                                exact=True,
-                                mol_id_full=False,
+def store_corr_contribs_dataset(FNAME, MOL_FNAME, MLFUNC=None,
+                                desc_getter=default_desc_getter,
                                 functional=DEFAULT_FUNCTIONAL,
                                 basis=DEFAULT_BASIS):
 
-    with open(os.path.join(ROOT, MOL_FNAME), 'r') as f:
+    with open(os.path.join(MOL_FNAME), 'r') as f:
         data = yaml.load(f, Loader = yaml.Loader)
         dft_dirs = data['dft_dirs']
         is_restricted_list = data['is_restricted_list']
 
-    SIZE = ndesc + 4
-    X = np.zeros([0,SIZE])
+    #SIZE = ndesc + 4
+    #X = np.zeros([0,SIZE])
+    X = None
 
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
 
-        logging.info('Corr contribs in', dft_dir)
+        logging.info('Corr contribs in {}'.format(dft_dir))
 
         sl_contribs = get_corr_contribs(dft_dir, is_restricted,
-                                        MLFUNC, desc_getter,
-                                        exact=exact)
+                                        MLFUNC, desc_getter)
         assert (not np.isnan(sl_contribs).any())
-        X = np.vstack([X, sl_contribs])
+        if X is None:
+            X = sl_contribs.copy().reshape(1,-1)
+        else:
+            X = np.vstack([X, sl_contribs])
 
     np.save(FNAME, X)
 
@@ -243,14 +235,14 @@ def get_etot_contribs(dft_dir, ccsd_dir, restricted):
 
     return np.array([E_pbe, E_ccsd])
 
-def store_total_energies_dataset(FNAME, ROOT, MOL_FNAME,
+def store_total_energies_dataset(FNAME, MOL_FNAME,
                                  functional=DEFAULT_FUNCTIONAL,
                                  basis=DEFAULT_BASIS):
 
     # DFT, CCSD
     y = np.zeros([0, 2])
 
-    with open(os.path.join(ROOT, MOL_FNAME), 'r') as f:
+    with open(os.path.join(MOL_FNAME), 'r') as f:
         data = yaml.load(f, Loader = yaml.Loader)
         dft_dirs = data['dft_dirs']
         ccsd_dirs = data['ccsd_dirs']
@@ -258,7 +250,7 @@ def store_total_energies_dataset(FNAME, ROOT, MOL_FNAME,
 
     for dft_dir, ccsd_dir, is_restricted in zip(dft_dirs, ccsd_dirs,
                                                 is_restricted_list):
-        logging.info('Storing total energies from', dft_dir, ccsd_dir)
+        logging.info('Storing total energies from {} {}'.format(dft_dir, ccsd_dir))
 
         dft_ccsd = get_etot_contribs(dft_dir, ccsd_dir, is_restricted)
 
@@ -303,11 +295,11 @@ def get_vv10_contribs(dft_dir, restricted, NLC_COEFS):
 DEFAULT_NLC_COEFS = [[5.9, 0.0093], [6.0, 0.01], [6.3, 0.0089],\
                      [9.8, 0.0093], [14.0, 0.0093], [15.7, 0.0093]]
 
-def store_vv10_contribs_dataset(FNAME, ROOT, MOL_FNAME,
+def store_vv10_contribs_dataset(FNAME, MOL_FNAME,
                                 NLC_COEFS=DEFAULT_NLC_COEFS,
                                 functional=DEFAULT_FUNCTIONAL,
                                 basis=DEFAULT_BASIS):
-    with open(os.path.join(ROOT, MOL_FNAME), 'r') as f:
+    with open(os.path.join(MOL_FNAME), 'r') as f:
         data = yaml.load(f, Loader = yaml.Loader)
         dft_dirs = data['dft_dirs']
         is_restricted_list = data['is_restricted_list']
@@ -316,7 +308,7 @@ def store_vv10_contribs_dataset(FNAME, ROOT, MOL_FNAME,
 
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
 
-        logging.info('Calculate VV10 contribs for', mol_id)
+        logging.info('Calculate VV10 contribs for {}'.format(mol_id))
 
         vv10_contribs = get_vv10_contribs(dft_dir, is_restricted, NLC_COEFS)
 
@@ -357,7 +349,7 @@ def solve_from_stored_ae(DATA_ROOT, DESC_NAME,
     with open(os.path.join(DATA_ROOT, 'atom_ref.yaml'), 'r') as f:
         amols = yaml.load(f, Loader = yaml.Loader)['mols']
 
-    logging.info("SHAPES", mlx.shape, etot.shape, amlx.shape, aetot.shape)
+    logging.debug("SHAPES {} {} {} {}".format(mlx.shape, etot.shape, amlx.shape, aetot.shape))
 
     valset_bools_init = np.array([mol['valset'] for mol in mols])
     valset_bools_init = np.append(valset_bools_init,
@@ -546,7 +538,8 @@ def solve_from_stored_ae(DATA_ROOT, DESC_NAME,
 
 def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                         VAL_SET=None, mol_id_full=False,
-                        functional=DEFAULT_FUNCTIONAL):
+                        functional=DEFAULT_FUNCTIONAL,
+                        basis=DEFAULT_BASIS):
     from pyscf import gto
     import yaml
 
@@ -555,25 +548,25 @@ def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
     mol_dicts = []
 
     for mol_id, is_restricted in zip(MOL_IDS, IS_RESTRICTED_LIST):
-
+        print(mol_id)
         if mol_id_full:
             dft_dir = mol_id[0]
             ccsd_dir = mol_id[1]
         else:
             if is_restricted:
-                dft_dir = get_save_dir(ROOT, 'RKS', DEFAULT_BASIS, mol_id,
+                dft_dir = get_save_dir(ROOT, 'RKS', basis, mol_id,
                                        functional=functional)
-                ccsd_dir = get_save_dir(ROOT, 'CCSD', DEFAULT_BASIS, mol_id)
+                ccsd_dir = get_save_dir(ROOT, 'CCSD', basis, mol_id)
             else:
-                dft_dir = get_save_dir(ROOT, 'UKS', DEFAULT_BASIS, mol_id,
+                dft_dir = get_save_dir(ROOT, 'UKS', basis, mol_id,
                                        functional=functional)
-                ccsd_dir = get_save_dir(ROOT, 'UCCSD', DEFAULT_BASIS, mol_id)
+                ccsd_dir = get_save_dir(ROOT, 'UCCSD', basis, mol_id)
         if is_restricted:
             dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
         else:
             dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
 
-        mol_dicts.append(gto.mole.pack(pbe_analyzer.mol))
+        mol_dicts.append(gto.mole.pack(dft_analyzer.mol))
         dft_dirs.append(dft_dir)
         ccsd_dirs.append(ccsd_dir)
         if VAL_SET is not None:

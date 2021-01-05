@@ -206,7 +206,8 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
                                           version=model.desc_version,
                                           a0=model.a0,
-                                          fac_mul=model.fac_mul)
+                                          fac_mul=model.fac_mul,
+                                          amin=model.amin)
         gridsize = xdesc.shape[1]
         neps, std = np.zeros(gridsize), np.zeros(gridsize)
         blksize = 20000
@@ -272,7 +273,8 @@ def predict_total_exchange_unrestricted(analyzer, model=None):
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
                                                    version=model.desc_version,
                                                    a0=model.a0,
-                                                   fac_mul=model.fac_mul)
+                                                   fac_mul=model.fac_mul,
+                                                   amin=model.amin)
         neps = 0.5 * model.predict(xdescu.transpose())
         neps += 0.5 * model.predict(xdescd.transpose())
     fx_total = np.dot(neps, weights)

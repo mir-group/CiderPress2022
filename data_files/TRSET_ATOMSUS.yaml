@@ -1,0 +1,15 @@
+calc_type: UKS
+mols:
+- atoms/7-N-3
+- atoms/6-C-2
+- atoms/16-S-2
+- atoms/1-H-1
+- atoms/14-Si-2
+- atoms/13-Al-1
+- atoms/15-P-3
+- atoms/3-Li-1
+- atoms/17-Cl-1
+- atoms/5-B-1
+- atoms/11-Na-1
+- atoms/8-O-2
+- atoms/9-F-1
