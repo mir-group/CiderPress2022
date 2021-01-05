@@ -1,0 +1,72 @@
+IS_RESTRICTED_LIST:
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- false
+- true
+- true
+- false
+- true
+MOL_IDS:
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/7-N-3
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/7-N-3
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/6-C-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/6-C-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/16-S-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/16-S-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/10-Ne-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/10-Ne-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/14-Si-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/14-Si-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/13-Al-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/13-Al-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/15-P-3
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/15-P-3
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/9-F-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/9-F-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/7-N-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/7-N-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/17-Cl-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/17-Cl-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/5-B-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/5-B-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/8-O-2
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/8-O-2
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pwcv5z/atoms/9-F-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pwcv5z/atoms/9-F-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/RKS/SCAN/aug-cc-pwcv5z/atoms/18-Ar-0
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/CCSD/aug-cc-pwcv5z/atoms/18-Ar-0
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/RKS/SCAN/aug-cc-pwcv5z/atoms/10-Ne-0
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/CCSD/aug-cc-pwcv5z/atoms/10-Ne-0
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UKS/SCAN/aug-cc-pv5z/atoms/1-H-1
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/UCCSD/aug-cc-pv5z/atoms/1-H-1
+- !!python/tuple
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/RKS/SCAN/aug-cc-pv5z/atoms/2-He-0
+  - /n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/CCSD/aug-cc-pv5z/atoms/2-He-0
+VAL_SET: null
+mol_id_full: true
