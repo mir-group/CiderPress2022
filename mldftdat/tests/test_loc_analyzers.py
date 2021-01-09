@@ -19,7 +19,7 @@ class TestRHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis = 'def2-svp')
+        cls.mol = gto.Mole(atom='H 0 0 0; F 0 0 1.1', basis='def2-svp')
         cls.mol.build()
         cls.rhf = run_scf(cls.mol, 'RHF')
         cls.analyzer = RHFAnalyzer(cls.rhf)
@@ -36,7 +36,7 @@ class TestUHFAnalyzer():
 
     @classmethod
     def setup_class(cls):
-        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis = 'def2-svp', spin = 1)
+        cls.mol = gto.Mole(atom='N 0 0 0; O 0 0 1.15', basis='def2-svp', spin=1)
         cls.mol.build()
         cls.uhf = run_scf(cls.mol, 'UHF')
         cls.analyzer = UHFAnalyzer(cls.uhf)
