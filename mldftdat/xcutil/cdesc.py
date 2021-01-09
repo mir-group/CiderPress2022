@@ -465,6 +465,60 @@ def get_separate_xefa_terms(F, chi):
     df[ind] = 1
     return desc, df, dchi
 
+def get_sl_small(x2, chi, gamma):
+    """
+    Takes x2, chi, and a constant gamma and constructs
+    semi-local descriptors
+    """
+    desc = np.zeros((8, x2.shape[0]))
+    dx2 = np.zeros((8, x2.shape[0]))
+    dchi = np.zeros((8, x2.shape[0]))
+    u = gamma * x2 / (1 + gamma * x2)
+    du = gamma / (1 + gamma * x2)**2
+    a0, a1, a2, a3, da0, da1, da2, da3 = get_chi_desc(chi)
+    ind = 0
+    for a, da in zip([a1, a2], [da1, da2]):
+        desc[ind] = a
+        dchi[ind] = da
+        ind += 1
+    for i in range(2):
+        diff = u**(i+1)
+        ddiff = (i+1) * u**(i)
+        ddiff *= du
+        desc[ind] = diff
+        dx2[ind] = ddiff
+        ind += 1
+        for a, da in zip([a1, a2], [da1, da2]):
+            desc[ind] = diff * a
+            dx2[ind] = ddiff * a
+            dchi[ind] = diff * da
+            ind += 1
+    return desc, dx2, dchi
+
+def get_xefa_small(F, chi):
+    """
+    Takes F and chi and constructs nonlocal descriptors.
+    """
+    x, dx = get_separate_xef_terms(F, return_deriv=True)
+    x = x[1:4]
+    dx = dx[1:4]
+    desc = np.zeros((7, F.shape[0]))
+    df = np.zeros((7, F.shape[0]))
+    dchi = np.zeros((7, F.shape[0]))
+    a0, a1, a2, a3, da0, da1, da2, da3 = get_chi_desc(chi)
+    ind = 0
+    for i in range(3):
+        diff = x[i]
+        ddiff = dx[i]
+        for a, da in zip([a0, a2], [da0, da2]):
+            desc[ind] = diff * a
+            df[ind] = ddiff * a
+            dchi[ind] = diff * da
+            ind += 1
+    desc[ind] = F-1
+    df[ind] = 1
+    return desc, df, dchi
+
 def get_mn15_rho_desc(n):
     den = (1 + 2.5 * n**(1./3))
     return 1 / den, -(5./6) / den**2 * n**(-2./3)
@@ -568,7 +622,7 @@ def get_rmn15_desc2(n, zeta, x2, chi, version):
         wterms = np.array([w/2+0.5, w**2-1, w**3-w])
         wterms2 = wterms[1:]
     elif version == 'b': # For 1
-        wterms = np.array([(w+w**2)/2, w**3-w])
+        wterms = np.array([(w-w**2)/2, w**3-w])
         wterms2 = wterms.copy()
     else: # For (f-1)^2 * exp(-(f-1)^2)
         wterms = np.array([w, w**2-1, w**3-w])
@@ -595,6 +649,42 @@ def get_amix_schmidt(n, zeta, x2, chi):
     dt2dz = -2 * t2 / phi * (1./3) * ((1+zeta)**(-1./3) - (1-zeta)**(-1./3))
     dfdz += dfdt2 * dt2dz
     dfdx2 = dfdt2 * (np.pi / 3)**(1./3) / (16 * phi**2) * n**(1./3)
+    # TODO used to be -1/3 below, but I think this was a typo
+    dfdn = dfdt2 * (1./3) * t2 / n
+    return f, dfdn, dfdz, dfdx2, dfdchi
+
+def get_amix_schmidt2(n, zeta, x2, chi, order=1, mixer='c', zorder=1):
+    """
+    Mixing parameter defined by Schmidt and Kummel 2014
+    """
+    if mixer == 'c':
+        chip = chi**2
+        dchip = 2*chi
+    elif mixer == 'l':
+        chip = chi**4+chi-chi**5
+        dchip = 4*chi**3+1-5*chi**4
+    elif mixer == 'r':
+        chip = chi**4-chi+chi**5
+        dchip = 4*chi**3-1+5*chi**4
+    else:
+        chip = 1
+        dchip = 0
+    phi = ((1+zeta)**(4./3) + (1-zeta)**(4./3) - 2) / (2**(4./3) - 2)
+    dphi = 4./3 * ((1+zeta)**(1./3) - (1-zeta)**(1./3)) / (2**(4./3) - 2)
+    if zorder > 1:
+        phi = phi**zorder
+        dphi = zorder * phi**(zorder-1)
+    elif zorder < 1:
+        phi = 1
+        dphi = 0
+    num = 1 - chip * phi
+    t2 = (np.pi / 3)**(1./3) / 16 * x2 * n**(1./3)
+    den = 1 + 0.5 * t2
+    f = num / den**order
+    dfdchi = -phi / den * dchip
+    dfdz = -dphi * chip / den
+    dfdt2 = -0.5 * order * num / den**(order+1)
+    dfdx2 = dfdt2 * (np.pi / 3)**(1./3) / 16 * n**(1./3)
     # TODO used to be -1/3 below, but I think this was a typo
     dfdn = dfdt2 * (1./3) * t2 / n
     return f, dfdn, dfdz, dfdx2, dfdchi
