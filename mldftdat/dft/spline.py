@@ -118,5 +118,5 @@ class Evaluator():
                    state_dict['coeff_sets'],
                    state_dict['xed_y_converter'],
                    state_dict['feature_list'],
-                   state_dict['desc_order']
+                   state_dict['desc_order'],
                    const=state_dict['const'])
