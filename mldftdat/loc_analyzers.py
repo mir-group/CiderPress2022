@@ -21,12 +21,6 @@ def get_aux_mat_chunks(mol, points, num_chunks, lam=DEFAULT_LAMBDA):
     if lam < 0.5 or lam >= 1.00:
         raise ValueError('lambda must be in [0.5, 1.0). For lambda=1.0, calculate conventional exchange energy density.')
 
-    phases = []
-    for j in range(mol.nbas):
-        l = mol._bas[j][1]
-        phases += [(-1)**l] * (2*l+1)
-
-    phase = np.array(phases)
     num_pts = points.shape[0]
     for i in range(num_chunks):
         start = (i * num_pts) // num_chunks
@@ -37,11 +31,6 @@ def get_aux_mat_chunks(mol, points, num_chunks, lam=DEFAULT_LAMBDA):
         vele_mat_chunk = df.incore.aux_e2(mol, auxmol, intor='int3c2e_xed_sph')
         vele_mat_chunk = np.ascontiguousarray(np.transpose(
                                 vele_mat_chunk, axes=(2,0,1)))
-        #for i in range(mol.nao_nr()):
-        #    vele_mat_chunk[:,:,i] *= phases[i]
-        #vele_mat_chunk[:,:,:] *= phases
-        vele_mat_chunk *= phases
-        #vele_mat_chunk *= mulphases
         yield vele_mat_chunk
 
 def get_aux_mat_generator(mol, coords, num_chunks, lam=DEFAULT_LAMBDA):
