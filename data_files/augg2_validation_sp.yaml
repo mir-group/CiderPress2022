@@ -1,0 +1,15 @@
+calc_type: UKS
+mols:
+- augG2/H2COH_d
+- augG2/CN_d
+- augG2/BeF_d
+- augG2/BS_d
+- augG2/BN_t
+- augG2/LiO_d
+- augG2/PO2_d
+- augG2/PH2_d
+- augG2/PS_d
+- augG2/Si2_t
+- augG2/S2_t
+- augG2/SH_d
+- augG2/ClO_d
