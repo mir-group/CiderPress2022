@@ -2,6 +2,7 @@ from mldftdat.models.glh_correlation import *
 from mldftdat.workflow_utils import SAVE_ROOT
 from argparse import ArgumentParser
 import yaml
+import sys
 import logging
 
 import numpy as np
@@ -58,12 +59,23 @@ def store_desc(args):
         mpath, mname = os.path.dirname(args.desc_module),\
                        os.path.basename(args.desc_module)
         sys.path.append(mpath)
-        desc_getter = __import__(mname).globals()[args.desc_getter]
+        desc_getter = getattr(__import__(mname), args.desc_getter)
         print(desc_getter)
     store_corr_contribs_dataset(save_file, mol_file, mlfunc,
                                 desc_getter=desc_getter,
                                 functional=args.functional,
                                 basis=args.basis)
+
+def train_coefs(args):
+    if os.path.exists(args.noise):
+        noise = np.load(args.noise)
+    else:
+        noise = float(args.noise)
+    ae_dir = get_data_dir(args)
+    atom_dir = os.path.join(SAVE_ROOT, 'DATASETS/GLH', args.functional,
+                            args.basis, args.atom_dir)
+    solve_from_stored_ae(ae_dir, atom_dir, args.desc_name, noise=noise,
+                         use_vv10=args.use_vv10, regression_method=args.regression_method)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
@@ -100,6 +112,15 @@ if __name__ == '__main__':
     vv10_parser.add_argument('vv10_coeff', type=float, nargs='+',
                              help='Pairs of VV10 coeffs, e.g. 5.9 0.0093 6.0 0.01')
     vv10_parser.set_defaults(func=store_vv10)
+
+    train_parser = subparsers.add_parser('train_coefs')
+    train_parser.add_argument('atom_dir', type=str)
+    train_parser.add_argument('--desc-name', default='desc',
+                              help='Name for descriptor file.')
+    train_parser.add_argument('--use-vv10', action='store_true')
+    train_parser.add_argument('--noise', default=1e-3)
+    train_parser.add_argument('--regression-method', default='weighted_lrr')
+    train_parser.set_defaults(func=train_coefs)
 
     args = parser.parse_args()
 
