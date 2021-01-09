@@ -9,7 +9,7 @@ from itertools import combinations
 from argparse import ArgumentParser
 from joblib import load, dump
 from mldftdat.scripts.train_gp import parse_dataset
-
+from mldftdat.models.kernels import *
 
 def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = None):
     print(length_scale, bound)
@@ -178,8 +178,15 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
 def main():
     parser = ArgumentParser()
     parser.add_argument('fname', type=str, help='GP filename (model to map)')
+    parser.add_argument('-vs', '--validation-set', nargs='+')
+    parser.add_argument('--basis', default='def2-qzvppd', type=str,
+                        help='basis set code')
+    parser.add_argument('--functional', metavar='functional', type=str, default=None,
+                        help='exchange-correlation functional, HF for Hartree-Fock')
+    parser.add_argument('-v', '--version', default='c', type=str,
+                        help='version of descriptor set. Default c')
     args = parser.parse_args()
-    gpr = load(fname)
+    gpr = load(args.fname)
     assert len(gpr.args.validation_set) % 2 == 0,\
         'Need pairs of entries for datasets list.'
     nv = len(gpr.args.validation_set) // 2
