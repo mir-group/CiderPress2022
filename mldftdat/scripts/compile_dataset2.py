@@ -3,6 +3,7 @@ from pyscf import scf
 import os, time
 import numpy as np
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
+from mldftdat import loc_analyzers
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
 from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR, GG_AMIN
 from mldftdat.data import get_unique_coord_indexes_spherical
@@ -21,7 +22,11 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     all_weights = []
     cutoffs = []
 
-    Analyzer = UHFAnalyzer if 'U' in CALC_TYPE else RHFAnalyzer
+    if locx:
+        Analyzer = loc_analyzers.UHFAnalyzer if 'U' in CALC_TYPE \
+                   else loc_analyzers.RHFAnalyzer
+    else:
+        Analyzer = UHFAnalyzer if 'U' in CALC_TYPE else RHFAnalyzer
 
     for MOL_ID in MOL_IDS:
         logging.info('Computing descriptors for {}'.format(MOL_ID))
