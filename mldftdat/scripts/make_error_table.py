@@ -306,6 +306,89 @@ def error_table3(dirs, Analyzer, models, rows):
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
            (columns, rows, errtbl)
 
+def error_table3u(dirs, Analyzer, models, rows):
+    errlst = [[] for _ in models]
+    ae_errlst = [[] for _ in models]
+    fxlst_pred = [[] for _ in models]
+    ae_fxlst_pred = [[] for _ in models]
+    fxlst_true = []
+    ae_fxlst_true = []
+    count = 0
+    NMODEL = len(models)
+    ise = np.zeros(NMODEL)
+    tse = np.zeros(NMODEL)
+    rise = np.zeros(NMODEL)
+    rtse = np.zeros(NMODEL)
+    for d in dirs:
+        print(d.split('/')[-1])
+        analyzer = Analyzer.load(os.path.join(d, 'data.hdf5'))
+        atoms = [atomic_numbers[a[0]] for a in analyzer.mol._atom]
+        formula = Counter(atoms)
+        element_analyzers = {}
+        for Z in list(formula.keys()):
+            symbol = chemical_symbols[Z]
+            spin = int(ground_state_magnetic_moments[Z])
+            letter = 'R' if spin == 0 else 'U'
+            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
+                        SAVE_ROOT, letter, Z, symbol, spin)
+            if letter == 'R':
+                element_analyzers[Z] = RHFAnalyzer.load(path)
+            else:
+                element_analyzers[Z] = UHFAnalyzer.load(path)
+        weights = analyzer.grid.weights
+        rho = analyzer.rho_data[0,:]
+        condition = rho > 3e-5
+        fx_total_ref_true = 0
+        for Z in list(formula.keys()):
+            fx_total_ref_true += formula[Z] \
+                                 * predict_total_exchange_unrestricted(
+                                        element_analyzers[Z])
+        fx_total_true = \
+            predict_total_exchange_unrestricted(analyzer)
+        fxlst_true.append(fx_total_true)
+        ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
+        count += eps_true.shape[0]
+        for i, model in enumerate(models):
+            fx_total_ref = 0
+            for Z in list(formula.keys()):
+                fx_total_ref += formula[Z] \
+                                * predict_total_exchange_unrestricted(
+                                    element_analyzers[Z],
+                                    model=model)
+            fx_total_pred = \
+                predict_total_exchange_unrestricted(analyzer, model=model)
+            print(fx_total_pred, fx_total_true,
+                fx_total_ref, fx_total_ref_true)
+            print(fx_total_pred - fx_total_true,
+                  fx_total_pred - fx_total_true \
+                  - (fx_total_ref - fx_total_ref_true))
+
+            fxlst_pred[i].append(fx_total_pred)
+            ae_fxlst_pred[i].append(fx_total_pred - fx_total_ref)
+            errlst[i].append(fx_total_pred - fx_total_true)
+            ae_errlst[i].append(fx_total_pred - fx_total_true \
+                                - (fx_total_ref - fx_total_ref_true))
+        print()
+    fxlst_true = np.array(fxlst_true)
+    fxlst_pred = np.array(fxlst_pred)
+    errlst = np.array(errlst)
+    ae_errlst = np.array(ae_errlst)
+
+    print(count, len(dirs))
+
+    fx_total_rmse = np.sqrt(np.mean(errlst**2, axis=1))
+    ae_fx_total_rmse = np.sqrt(np.mean(ae_errlst**2, axis=1))
+    rmise = np.sqrt(ise / len(dirs))
+    rmse = np.sqrt(tse / count)
+    rrmise = np.sqrt(rise / len(dirs))
+    rrmse = np.sqrt(rtse / count)
+
+    columns = ['RMSE AEX', 'RMSE EX', 'RMISE', 'RMSE', 'Rel. RMISE', 'Rel. RMSE']
+    errtbl = np.array([ae_fx_total_rmse, fx_total_rmse, rmise, rmse, rrmise, rrmse]).transpose()
+
+    return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
+           (columns, rows, errtbl)
+
 def error_table_corr(dirs, Analyzer, models, rows):
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
@@ -482,8 +565,8 @@ if __name__ == '__main__':
         df = pd.DataFrame(errtbl, index=rows, columns=columns)
         print(df.to_latex())
     elif args.version == 'u':
-        res1, res2 = error_table_unrestricted(dirs, Analyzer, models, rows)
-        fxlst_true, fxlst_pred, errlst = res1
+        res1, res2 = error_table3u(dirs, Analyzer, models, rows)
+        fxlst_true, fxlst_pred, errlst, ae_errlst = res1
         columns, rows, errtbl = res2
         print(res1)
         for sublst in res1[2]:
