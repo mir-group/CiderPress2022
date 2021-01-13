@@ -1,5 +1,7 @@
 import yaml
 import numpy as np
+from interpolation.splines import UCGrid, CGrid, nodes
+from interpolation.splines import filter_cubic, eval_cubic
 from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
                                                    vec_eval_cubic_splines_G_2,\
                                                    vec_eval_cubic_splines_G_3,\
@@ -62,7 +64,7 @@ class Evaluator():
 
     def predict_from_desc(self, X, vec_eval=False,
                           max_order=3, min_order=0):
-        res = np.zeros(X.shape[0]) + const
+        res = np.zeros(X.shape[0]) + self.const
         if vec_eval:
             dres = np.zeros(X.shape)
         for t in range(self.nterms):
@@ -87,7 +89,7 @@ class Evaluator():
         else:
             return res
 
-    def predict(self, X, rho_data, vec_eval=False):
+    def predict(self, X, vec_eval=False):
         desc = self.get_descriptors(X)
         F = self.predict_from_desc(desc, vec_eval=vec_eval)
         if vec_eval:

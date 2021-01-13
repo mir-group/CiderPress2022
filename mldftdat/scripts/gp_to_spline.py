@@ -25,7 +25,7 @@ def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = 
 
 
 def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
-                            srbf_density=4, arbf_density=4, max_ngrid=50):
+                            srbf_density=8, arbf_density=8, max_ngrid=120):
     """
     version a is for RBF(s) * ARBF(other desc) with X[:,0]=rho (used for exchange)
     version b is for Linear(SCAN) * ARBF(other desc) with X[:,0]=rho
@@ -72,7 +72,7 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
     print(length_scale)
     for i in range(D.shape[1]):
         print(length_scale[i], np.min(D[:,i]), np.max(D[:,i]))
-        diff = (D[:,i:i+1] - grid[i+1][np.newaxis,:]) / length_scale[i]
+        diff = (D[:,i:i+1] - grid[i][np.newaxis,:]) / length_scale[i]
         k0s.append(np.exp(-0.5 * diff**2))
     funcps = []
     spline_grids = []
@@ -82,7 +82,7 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
     arbf_inds = np.arange(n, N).tolist()
     assert order + n <= 4, 'Max order too high, must be at most 4'
     const = 0
-    for o in range(order):
+    for o in range(order+1):
         for inds in combinations(arbf_inds, o):
             if srbf is None:
                 inds = list(inds)
@@ -91,25 +91,27 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
             if len(inds) == 0:
                 const += np.sum(alpha)
             elif len(inds) == 1:
-                funcps.append(np.dot(alpha, ks[inds[0]]))
+                funcps.append(np.dot(alpha, k0s[inds[0]]))
                 spline_grids.append(UCGrid(dims[inds[0]]))
                 ind_sets.append(tuple(inds))
             elif len(inds) == 2:
                 k = np.einsum('ni,nj->nij', k0s[inds[0]], k0s[inds[1]])
-                spline_grids.append(UCGrid(**dims[inds]))
+                spline_grids.append(UCGrid(dims[inds[0]], dims[inds[1]]))
                 funcps.append(np.einsum('n,nij->ij', alpha, k))
                 ind_sets.append(tuple(inds))
             elif len(inds) == 3:
                 k = np.einsum('ni,nj,nk->nijk', k0s[inds[0]], k0s[inds[1]],
                               k0s[inds[2]])
                 funcps.append(np.einsum('n,nijk->ijk', alpha, k))
-                spline_grids.append(UCGrid(**dims[inds]))
+                spline_grids.append(UCGrid(dims[inds[0]], dims[inds[1]],
+                                           dims[inds[2]]))
                 ind_sets.append(tuple(inds))
             elif len(inds) == 4:
                 k = np.einsum('ni,nj,nk,nl->nijkl', k0s[inds[0]], k0s[inds[1]],
                               k0s[inds[2]], k0s[inds[3]])
                 funcps.append(np.einsum('n,nijkl->ijkl', alpha, k))
-                spline_grids.append(UCGrid(**dims[inds]))
+                spline_grids.append(UCGrid(dims[inds[0]], dims[inds[1]],
+                                           dims[inds[2]], dims[inds[3]]))
                 ind_sets.append(tuple(inds))
             else:
                 raise ValueError('Order too high!')
@@ -128,27 +130,27 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
 
         print("Comparing K and Kspline!!!")
         print(en[0])
+        print(spline_grids[0][0], coeff_sets[0], ind_sets)
         tsp = eval_cubic(spline_grids[0],
                          coeff_sets[0],
                          X[:,1:2])
-        diff = (d0[:,np.newaxis] - d0[np.newaxis,:]) / length_scale[0]
+        diff = (D[:,:1] - D[:,:1].T) / length_scale[0]
         tk = np.exp(-0.5 * diff**2)
         print(np.mean(np.abs(srbf(X) - tk)))
-        print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 1))))
+        print(np.mean(np.abs(res - evaluator.predict_from_desc(D, max_order = 1))))
         print(np.mean(np.abs(res - arbf.scale[0] * tsp)))
         print(evaluator.scale[0], scale[0], arbf.scale[0])
         print(res[::1000])
         print(tsp[::1000])
         print("checked 1d")
-        print(np.mean(res - evaluator.predict_from_desc(X, max_order = 1)))
+        print(np.mean(res - evaluator.predict_from_desc(D, max_order = 1)))
         res += np.dot(alpha, arbf.scale[1] * en[1] * resg)
-        print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 2))))
+        print(np.mean(np.abs(res - evaluator.predict_from_desc(D, max_order = 2))))
         res += np.dot(alpha, arbf.scale[2] * en[2] * resg)
-        print(np.mean(np.abs(res - evaluator.predict_from_desc(X, max_order = 3))))
+        print(np.mean(np.abs(res - evaluator.predict_from_desc(D, max_order = 3))))
 
     ytest = gpr.gp.predict(X)
-    ypred = evaluator.predict_from_desc(X)
-    test_y = gpr.xed_to_y(test_y, test_rho_data)
+    ypred = evaluator.predict_from_desc(D)
     print(np.mean(np.abs(ytest - ypred)))
     print(np.mean(np.abs(ytest - y)))
     print(np.mean(np.abs(y - ypred)))
@@ -177,6 +179,7 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
 
 def main():
     parser = ArgumentParser()
+    parser.add_argument('outname', type=str, help='Spline output filename')
     parser.add_argument('fname', type=str, help='GP filename (model to map)')
     parser.add_argument('-vs', '--validation-set', nargs='+')
     parser.add_argument('--basis', default='def2-qzvppd', type=str,
@@ -189,24 +192,28 @@ def main():
     gpr = load(args.fname)
     assert len(gpr.args.validation_set) % 2 == 0,\
         'Need pairs of entries for datasets list.'
-    nv = len(gpr.args.validation_set) // 2
+    nv = 0#len(gpr.args.validation_set) // 2
     if nv != 0:
         Xv, yv, rhov, rho_datav = parse_dataset(gpr.args, 0, val=True)
     for i in range(1, nv):
         Xn, yn, rhon, rho_datan, = parse_dataset(gpr.args, i, val=True)
         Xv = np.append(Xv, Xn, axis=0)
         yv = np.append(yv, yn, axis=0)
-    rhov = np.append(rhov, rhon, axis=0)
-    rho_datav = np.append(rho_datav, rho_datan, axis=1)
+        rhov = np.append(rhov, rhon, axis=0)
+        rho_datav = np.append(rho_datav, rho_datan, axis=1)
     if nv == 0:
         evaluator = get_mapped_gp_evaluator(gpr)
     else:
         evaluator = get_mapped_gp_evaluator(gpr, test_x=Xv, test_y=yv,
                                             test_rho_data=rho_datav)
     evaluator.args = gpr.args
-    evaluator.fx_baseline = gpr.args.xed_y_converter[2]
-    evaluator.fxb_num = gpr.ags.xed_y_converter[3]
-    dump(evaluator, "spline_" + fname)
+    evaluator.fx_baseline = gpr.xed_y_converter[2]
+    evaluator.fxb_num = gpr.xed_y_converter[3]
+    evaluator.desc_version = gpr.args.version
+    evaluator.amin = gpr.amin
+    evaluator.a0 = gpr.a0
+    evaluator.fac_mul = gpr.fac_mul
+    dump(evaluator, args.outname)
 
 if __name__ == '__main__':
     main()
