@@ -424,6 +424,8 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             get_terms(etot, mlx)
         E_c2, diff2, E_ccsd2, E_dft2, E_xscan2, E_x2, E_cscan2 = \
             get_terms(aetot, amlx)
+        if type(noise) is not float:
+            noise = noise[:E_c.shape[1]]
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
         E_ccsd = np.append(E_ccsd, E_ccsd2)

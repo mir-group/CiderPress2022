@@ -124,7 +124,7 @@ class VMap(FeatureNormalizer):
 
     @property
     def bounds(self):
-        return (-self.center, 1-self.center)
+        return (-self.center, self.scale-self.center)
 
     @property
     def num_arg(self):
