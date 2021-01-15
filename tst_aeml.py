@@ -47,7 +47,7 @@ mol, ae, en, atoms, _, _ = calculate_atomization_energy(os.environ['MLDFTDB'],
 print('CCSD_T Q-zeta:', ae, en, atoms)
 
 mol, ae, en, atoms, calc_ml, acalcs_ml = calculate_atomization_energy(os.environ['MLDFTDB'],
-        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='ARBF_GPHF', mol=mol)
+        'RKS', 'aug-cc-pvtz', 'qm9/3-H2O', FUNCTIONAL='ARBF_B3LYP', mol=mol)
 print('ML:', ae, en, atoms)
 
 mol, ae, en, atoms, calc_pbex, acalcs_pbex = calculate_atomization_energy(os.environ['MLDFTDB'],
