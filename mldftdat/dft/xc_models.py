@@ -376,11 +376,14 @@ class GPFunctional(MLFunctional):
 class NormGPFunctional(MLFunctional,Evaluator):
 
     def get_F_and_derivative(self, X):
+        rho = X[0]
+        print(X.shape)
         mat = np.zeros((self.nfeat, X.shape[1]))
         self.feature_list.fill_vals_(mat, X)
-        F, dF = self.predict_from_desc(mat, vec_eval=True)
-        dFddesc = np.zeros(X.shape)
-        self.feature_list.fill_derivs_(dFddesc, dF, X)
+        F, dF = self.predict_from_desc(mat.T, vec_eval=True)
+        dFddesc = np.zeros(X.shape).T
+        print(dF.shape)
+        self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
 
         if rho is not None:
             highcut = 1e-3
@@ -395,7 +398,7 @@ class NormGPFunctional(MLFunctional,Evaluator):
         if self.fxb_num == 1:
             chfx = 1
         elif self.fxb_num == 2:
-            chfx, dchfx = self.fx_baseline(X[:,1])
+            chfx, dchfx = self.fx_baseline(X[1])
             dFddesc[:,1] += dchfx
         else:
             raise ValueError('Unsupported basline fx order.')

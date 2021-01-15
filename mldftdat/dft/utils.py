@@ -2,7 +2,7 @@ import numpy as np
 from mldftdat.pyscf_utils import *
 from mldftdat.workflow_utils import safe_mem_cap_mb
 from pyscf.dft.numint import eval_ao, make_mask
-from mldftdat.density import get_x_helper_full, get_x_helper_full, LDA_FACTOR,\
+from mldftdat.density import LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21, GG_AMIN
 
@@ -199,7 +199,7 @@ def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
     return v_npa, dedaux
 
 def v_nonlocal(rho_data, grid, dedg, density, auxmol,
-               g, gr2, ovlp, l=0, a0=8.0, fac_mul=1.0,
+               g, gr2, ovlp, l=0, a0=8.0, fac_mul=0.25,
                amin=GG_AMIN, l_add=0, **kwargs):
     # g should have shape (2l+1, N)
     N = grid.weights.shape[0]
@@ -219,6 +219,7 @@ def v_nonlocal(rho_data, grid, dedg, density, auxmol,
     else:
         raise ValueError('angular momentum code l=%d unknown' % l)
 
+    rho, s, alpha = lc
     ratio = alpha + 5./3 * s**2
     fac = fac_mul * 1.2 * (6 * np.pi**2)**(2.0/3) / np.pi
     a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
@@ -249,9 +250,9 @@ def v_nonlocal(rho_data, grid, dedg, density, auxmol,
     v_npa[3] = deda * dadalpha
     return v_npa, dedaux
 
-def functional_derivative_loop(mol, mlfunc, dEddesc, contracted_desc,
-                               raw_desc, raw_desc_r2,
-                               rho_data, density, ovlps, grid):
+def functional_derivative_loop_a(mol, mlfunc, dEddesc, contracted_desc,
+                                 raw_desc, raw_desc_r2,
+                                 rho_data, density, ovlps, grid):
 
     N = grid.weights.shape[0]
     naux = mol.auxmol.nao_nr()
@@ -359,7 +360,7 @@ def functional_derivative_loop(mol, mlfunc, dEddesc, contracted_desc,
 
     return v_nst, v_grad, vmol
 
-def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
+def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                                  raw_desc, raw_desc_r2,
                                  rho_data, density, ovlps, grid):
 
@@ -386,15 +387,21 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
             v_npa[3] += dEddesc[:,i]
         else:
             l_add = 0
-            if d in [3, 10]:
-                g = contracted_desc[d]
+            if d in [3, 10, 11]:
                 if d == 3:
+                    g = raw_desc[6]
                     ovlp = ovlps[0]
                     gr2 = raw_desc_r2[6:7]
-                else:
+                elif d == 10:
+                    g = raw_desc[15]
                     ovlp = ovlps[3]
                     gr2 = raw_desc_r2[15:16]
                     l_add = 2
+                else:
+                    g = raw_desc[16]
+                    ovlp = ovlps[4]
+                    gr2 = raw_desc_r2[16:17]
+                    l_add = 4
                 l = 0
             elif d == 4:
                 g = raw_desc[7:10]
@@ -432,11 +439,11 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
                 ddesc_dsvec = contract21(g2, g1)
                 ddesc_dg1 = contract21(g2, svec)
                 v_aniso += dEddesc[:,i] * ddesc_dsvec
-                vtmp1, dedaux1 = v_nonlocal_general(rho_data, grid,
+                vtmp1, dedaux1 = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i] * ddesc_dg1,
                                          density, mol.auxmol, g1,
                                          g1r2, ovlp1, l=-1, **gg_kwargs)
-                vtmp2, dedaux2 = v_nonlocal_general(rho_data, grid,
+                vtmp2, dedaux2 = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i] * dfmul,
                                          density, mol.auxmol, g2,
                                          g2r2, ovlp2, l=-2, **gg_kwargs)
@@ -451,11 +458,11 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
                 ovlp1 = ovlps[1]
                 dfmul = contract21_deriv(g1)
                 ddesc_dg1 = 2 * contract21(g2, g1)
-                vtmp1, dedaux1 = v_nonlocal_general(rho_data, grid,
+                vtmp1, dedaux1 = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i] * ddesc_dg1,
                                          density, mol.auxmol, g1,
                                          g1r2, ovlp1, l=-1, **gg_kwargs)
-                vtmp2, dedaux2 = v_nonlocal_general(rho_data, grid,
+                vtmp2, dedaux2 = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i] * dfmul,
                                          density, mol.auxmol, g2,
                                          g2r2, ovlp2, l=-2, **gg_kwargs)
@@ -465,14 +472,14 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc, contracted_desc,
                 raise NotImplementedError('Cannot take derivative for code %d' % d)
 
             if d in [5, 7]:
-                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
+                vtmp, dedaux = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i] * dfmul,
                                          density, mol.auxmol, g,
                                          gr2, ovlp, l=l, **gg_kwargs)
             elif d in [8, 9]:
                 pass
             else:
-                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
+                vtmp, dedaux = v_nonlocal(rho_data, grid,
                                          dEddesc[:,i],
                                          density, mol.auxmol, g,
                                          gr2, ovlp, l=l, l_add=l_add,

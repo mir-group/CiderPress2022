@@ -250,18 +250,18 @@ def predict_total_exchange_unrestricted(analyzer, model=None):
         #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
         #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
-    elif isinstance(model, MLFunctional):
-        N = analyzer.grid.weights.shape[0]
-        neps = 0
-        xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
-                                                   version=model.desc_version)
-        for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
-            desc  = np.zeros((N, len(model.desc_list)))
-            ddesc = np.zeros((N, len(model.desc_list)))
-            for i, d in enumerate(model.desc_list):
-                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
-            xef = model.get_F(desc)
-            neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
+    #elif isinstance(model, MLFunctional):
+    #    N = analyzer.grid.weights.shape[0]
+    #    neps = 0
+    #    xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
+    #                                               version=model.desc_version)
+    #    for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
+    #        desc  = np.zeros((N, len(model.desc_list)))
+    #        ddesc = np.zeros((N, len(model.desc_list)))
+    #        for i, d in enumerate(model.desc_list):
+    #            desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
+    #        xef = model.get_F(desc)
+    #        neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
                                                    version=model.desc_version,
