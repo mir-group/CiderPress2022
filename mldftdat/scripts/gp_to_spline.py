@@ -3,7 +3,7 @@ import numpy as np
 from interpolation.splines import UCGrid, CGrid, nodes
 from interpolation.splines import filter_cubic, eval_cubic
 from mldftdat.models.kernels import PartialQARBF, qarbf_args
-from mldftdat.dft.spline import Evaluator
+from mldftdat.dft.xc_models import NormGPFunctional
 from sklearn.gaussian_process.kernels import RBF
 from itertools import combinations
 from argparse import ArgumentParser
@@ -119,9 +119,12 @@ def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
     coeff_sets = []
     for i in range(len(funcps)):
         coeff_sets.append(filter_cubic(spline_grids[i], funcps[i]))
-    evaluator = Evaluator(scale, ind_sets, spline_grids, coeff_sets,
-                          gpr.xed_y_converter, gpr.feature_list,
-                          gpr.desc_order, const=const)
+    evaluator = NormGPFunctional(scale, ind_sets, spline_grids, coeff_sets,
+                                 gpr.xed_y_converter, gpr.feature_list,
+                                 gpr.desc_order, const=const,
+                                 desc_version=gpr.desc_version,
+                                 a0=gpr.a0, fac_mul=gpr.fac_mul,
+                                 amin=gpr.amin)
 
     if n == 1 and order == 2:
         res, en = arbf(X, get_sub_kernels=True)
