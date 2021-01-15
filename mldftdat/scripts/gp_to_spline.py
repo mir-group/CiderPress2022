@@ -191,6 +191,10 @@ def main():
                         help='exchange-correlation functional, HF for Hartree-Fock')
     parser.add_argument('-v', '--version', default='c', type=str,
                         help='version of descriptor set. Default c')
+    parser.add_argument('--srbfd', default=8, type=int)
+    parser.add_argument('--arbfd', default=8, type=int)
+    parser.add_argument('--maxng', default=120, type=int)
+    #srbf_density=8, arbf_density=8, max_ngrid=120
     args = parser.parse_args()
     gpr = load(args.fname)
     assert len(gpr.args.validation_set) % 2 == 0,\
@@ -205,10 +209,15 @@ def main():
         rhov = np.append(rhov, rhon, axis=0)
         rho_datav = np.append(rho_datav, rho_datan, axis=1)
     if nv == 0:
-        evaluator = get_mapped_gp_evaluator(gpr)
+        evaluator = get_mapped_gp_evaluator(gpr, srbf_density=args.srbfd,
+                                            arbf_density=args.arbfd,
+                                            max_ngrid=args.maxng)
     else:
         evaluator = get_mapped_gp_evaluator(gpr, test_x=Xv, test_y=yv,
-                                            test_rho_data=rho_datav)
+                                            test_rho_data=rho_datav,
+                                            srbf_density=args.srbfd,
+                                            arbf_density=args.arbfd,
+                                            max_ngrid=args.maxng)
     evaluator.args = gpr.args
     evaluator.fx_baseline = gpr.xed_y_converter[2]
     evaluator.fxb_num = gpr.xed_y_converter[3]

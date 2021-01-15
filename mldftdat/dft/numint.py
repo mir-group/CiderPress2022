@@ -2,7 +2,7 @@ import pyscf.dft.numint as pyscf_numint
 from pyscf.dft.numint import _rks_gga_wv0, _scale_ao, _dot_ao_ao, _format_uks_dm
 from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
-from pyscf import df, dft
+from pyscf import df, scf, dft
 
 from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTOR,\
                              contract_exchange_descriptors,\
@@ -441,7 +441,8 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
     uks.grids.build()
     return uks
 
-def run_mlscf(mol, calc_type, functional_path, remove_ld=False):
+def run_mlscf(mol, calc_type, functional_path, remove_ld=False,
+              conv_tol=1e-9, DIIS=scf.diis.ADIIS):
     import os, yaml, joblib
     settings_fname = os.path.join(functional_path, 'settings.yaml')
     with open(settings_fname, 'r') as f:
@@ -456,6 +457,8 @@ def run_mlscf(mol, calc_type, functional_path, remove_ld=False):
         mf = setup_uks_calc(mol, mlfunc, **settings)
     else:
         raise ValueError('Invalid calc type, must be RKS or UKS')
+    mf.conv_tol = conv_tol
+    mf.DIIS = DIIS
     mf.kernel()
     return mf
 
