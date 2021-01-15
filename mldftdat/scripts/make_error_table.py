@@ -347,7 +347,7 @@ def error_table3u(dirs, Analyzer, models, rows):
             predict_total_exchange_unrestricted(analyzer)
         fxlst_true.append(fx_total_true)
         ae_fxlst_true.append(fx_total_true - fx_total_ref_true)
-        count += eps_true.shape[0]
+        count += 1
         for i, model in enumerate(models):
             fx_total_ref = 0
             for Z in list(formula.keys()):

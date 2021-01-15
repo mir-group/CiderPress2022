@@ -224,7 +224,8 @@ class DFTGPR():
     def y_to_xed(self, y, x):
         return self._xedy(y, x, 1)
 
-    def fit(self, xdesc, xed, optimize_theta=True):
+    def fit(self, xdesc, xed, optimize_theta=True,
+            add_heg=False, add_tail=False):
         if optimize_theta:
             optimizer = 'fmin_l_bfgs_b'
         else:
@@ -234,6 +235,25 @@ class DFTGPR():
         self.y = self.xed_to_y(xed, xdesc)
         print(np.isnan(self.X).sum(), np.isnan(self.y).sum())
         print(self.X.shape, self.y.shape)
+        if add_heg:
+            hegx = (0 * self.X[0])
+            # set the density to be large -> low uncertainty.
+            hegx[0] = 1e8
+            # Assume heg y-value is zero.
+            hegy = 0
+            self.y = np.append([hegy], self.y)
+            self.X = np.append([hegx], self.X, axis=0)
+        if add_tail:
+            tailx = (0 * self.X[0])
+            tailx[0] = 1e8
+            tailx[1] = 1.0
+            tailx[2] = 1.0
+            tailx[3:] = [b[0] for b in self.feature_list.bounds_list[2:]]
+            tailx2 = tailx.copy()
+            tailx2[2] = -1.0
+            taily = 0
+            self.y = np.append([taily, taily], self.y)
+            self.X = np.append([tailx, tailx2], self.X, axis=0)
         self.gp.fit(self.X, self.y)
         self.gp.set_params(kernel=self.gp.kernel_)
 

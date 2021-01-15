@@ -72,6 +72,7 @@ def main():
     parser.add_argument('-d', '--delete-k', action='store_true',
                         help='Delete L (LL^T=K the kernel matrix) to save disk space. Need to refit when reloading to calculate covariance.')
     parser.add_argument('--heg', action='store_true', help='HEG exact constraint')
+    parser.add_argument('--tail', action='store_true', help='atomic tail exact constraint')
     parser.add_argument('-o', '--desc-order', default=None,
                         help='comma-separated list of descriptor order with no spaces. must start with 0,1.')
     parser.add_argument('-l', '--length-scale', default=None,
@@ -130,9 +131,9 @@ def main():
 
     gpcls = DFTGPR
     gpr = gpcls.from_settings(X, feature_list, args)
-    gpr.fit(X, y)
-    if args.heg:
-        gpr.add_heg_limit()
+    gpr.fit(X, y, add_heg=args.heg, add_tail=args.tail)
+    #if args.heg:
+    #    gpr.add_heg_limit()
 
     pred = gpr.xed_to_y(gpr.predict(Xv), Xv)
     abserr = np.abs(pred - gpr.xed_to_y(yv, Xv))

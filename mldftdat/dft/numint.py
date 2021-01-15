@@ -4,7 +4,7 @@ from pyscf.dft.libxc import eval_xc
 from pyscf.dft.gen_grid import Grids
 from pyscf import df, dft
 
-from mldftdat.density import get_x_helper_full, get_x_helper_full, LDA_FACTOR,\
+from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTOR,\
                              contract_exchange_descriptors,\
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
@@ -209,6 +209,12 @@ class NLNumInt(pyscf_numint.NumInt):
         self.mlfunc_x = mlfunc_x
         self.mlfunc_x.corr_model = corr_model
         self.xmix = xmix
+        if mlfunc.desc_version == 'c':
+            mlfunc.get_x_helper_full = get_x_helper_full_c
+            mlfunc.functional_derivative_loop = functional_derivative_loop_c
+        elif mlfunc.desc_version == 'a':
+            mlfunc.get_x_helper_full = get_x_helper_full_a
+            mlfunc.functional_derivative_loop = functional_derivative_loop_a
 
         if vv10_coeff is None:
             self.vv10 = False
@@ -314,14 +320,18 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
         logging.debug('r2', spin, np.dot(pr2, grid.weights))
         rho43 = ntup[spin]**(4.0/3)
         rho13 = ntup[spin]**(1.0/3)
-        desc[spin] = np.zeros((N, len(mlfunc.desc_list)))
-        raw_desc[spin], ovlps[spin] = get_x_helper_full(
+        desc[spin] = np.zeros((N, mlfunc.nfeat))
+        raw_desc[spin], ovlps[spin] = mlfunc.get_x_helper_full(
                                                 auxmol, 2 * rho_data[spin], grid,
                                                 density[spin], ao_to_aux,
-                                                return_ovlp = True)
-        raw_desc_r2[spin] = get_x_helper_full(auxmol, 2 * rho_data[spin], grid,
+                                                return_ovlp=True, a0=mlfunc.a0,
+                                                fac_mul=mlfunc.fac_mul,
+                                                amin=mlfunc.amin)
+        raw_desc_r2[spin] = mlfunc.get_x_helper_full(auxmol, 2 * rho_data[spin], grid,
                                                density[spin], ao_to_aux,
-                                               integral_name = 'int1e_r2_origj')
+                                               deriv=True, a0=mlfunc.a0,
+                                               fac_mul=mlfunc.fac_mul,
+                                               amin=mlfunc.amin)
         contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
         contracted_desc[spin] = contracted_desc[spin][mlfunc.desc_order]
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(contracted_desc[spin])
@@ -366,7 +376,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
 
     for spin in range(2):
         v_nst[spin], v_grad[spin], vmol[spin] = \
-            functional_derivative_loop_c(
+            mlfunc.functional_derivative_loop(
                 mol, mlfunc, dEddesc[spin],
                 contracted_desc[spin],
                 raw_desc[spin], raw_desc_r2[spin],
@@ -427,6 +437,24 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
     uks.grids.level = grid_level
     uks.grids.build()
     return uks
+
+def run_mlscf(mol, calc_type, functional_path, remove_ld=False):
+    import os, yaml, joblib
+    settings_fname = os.path.join(functional_path, 'settings.yaml')
+    with open(settings_fname, 'r') as f:
+        settings = yaml.load(f, Loader = yaml.Loader)
+        if settings is None:
+            settings = {}
+    mlfunc_fname = os.path.join(functional_path, 'mlfunc.joblib')
+    mlfunc = joblib.load(mlfunc_fname)
+    if calc_type == 'RKS':
+        mf = setup_rks_calc(mol, mlfunc, **settings)
+    elif calc_type == 'UKS':
+        mf = setup_uks_calc(mol, mlfunc, **settings)
+    else:
+        raise ValueError('Invalid calc type, must be RKS or UKS')
+    mf.kernel()
+    return mf
 
 # xc example:
 # set corr_model=None, xc='0.75*GGA_X_PBE + GGA_C_PBE',
