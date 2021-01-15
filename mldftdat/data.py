@@ -8,7 +8,7 @@ from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
-from mldftdat.pyscf_utils import transform_basis_1e
+from mldftdat.pyscf_utils import transform_basis_1e, run_scf
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.scf.stability import uhf_internal
 
@@ -184,8 +184,11 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         neps = eps * rho
     elif hasattr(model, 'coeff_sets'):
         xdesc = get_exchange_descriptors2(analyzer, restricted=restricted,
-                                          version=model.desc_version)
-        neps = model.predict(xdesc.transpose(), vec_eval=True)
+                                          version=model.desc_version,
+                                          a0=model.a0,
+                                          fac_mul=model.fac_mul,
+                                          amin=model.amin)
+        neps = model.predict(xdesc.transpose(), vec_eval=False)
         eps = neps / rho
         if return_desc:
             X = model.get_descriptors(xdesc.transpose(), rho_data, num = model.num)
@@ -218,7 +221,8 @@ def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
         if return_desc:
             X = model.get_descriptors(xdesc.transpose())
     xef = neps / (get_ldax_dens(rho) - 1e-7)
-    fx_total = np.dot(neps, weights)
+    #fx_total = np.dot(neps, weights)
+    fx_total = np.dot(neps[rho>1e-6], weights[rho>1e-6])
     if return_desc:
         return xef, eps, neps, fx_total, X
     else:
@@ -265,7 +269,10 @@ def predict_total_exchange_unrestricted(analyzer, model=None):
                                                    fac_mul=model.fac_mul,
                                                    amin=model.amin)
         neps = 0.5 * model.predict(xdescu.transpose())
-        neps += 0.5 * model.predict(xdescd.transpose())
+        neps[rho[0]<=1e-6] = 0
+        nepsd = 0.5 * model.predict(xdescd.transpose())
+        nepsd[rho[1]<=1e-6] = 0
+        neps = neps + nepsd
     fx_total = np.dot(neps, weights)
     return fx_total
 
@@ -320,11 +327,10 @@ def predict_correlation(analyzer, model=None, num=1,
     return eps, neps, fx_total
 
 def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
-                                 FUNCTIONAL = None, mol = None,
-                                 use_db = True,
-                                 save_atom_analyzer = False,
-                                 save_mol_analyzer = False,
-                                 full_analysis = False):
+                                 FUNCTIONAL=None, mol=None,
+                                 use_db=True, save_atom_analyzer=False,
+                                 save_mol_analyzer=False,
+                                 full_analysis=False):
     from mldftdat import lowmem_analyzers
     from collections import Counter
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
@@ -414,13 +420,19 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 e_tot = mf.e_tot
                 calc = mf
             elif type(FUNCTIONAL) == str:
-                mf = run_scf(mol, calc_type, functional = FUNCTIONAL)
+                func_path = os.path.join(DBPATH, 'MLFUNCTIONALS', FUNCTIONAL)
+                if os.path.exists(os.path.join(func_path)):
+                    from mldftdat.dft.numint import run_mlscf
+                    calc_type = 'RKS' if 'RKS' in path else 'UKS'
+                    mf = run_mlscf(mol, calc_type, func_path)
+                else:
+                    mf = run_scf(mol, calc_type, functional=FUNCTIONAL)
                 e_tot = mf.e_tot
                 calc = mf
             elif isinstance(FUNCTIONAL, MLFunctional):
                 if 'RKS' in path:
                     from mldftdat.dft.numint6 import setup_rks_calc3 as setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional = 'SCAN')
+                    mf = run_scf(mol, 'RKS', functional='SCAN')
                     dm0 = mf.make_rdm1()
                     #dm0 = None
                     #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))

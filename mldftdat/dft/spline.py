@@ -33,7 +33,8 @@ def get_vec_eval(grid, coeffs, X, N):
 class Evaluator():
 
     def __init__(self, scale, ind_sets, spline_grids, coeff_sets,
-                 xed_y_converter, feature_list, desc_order, const=0):
+                 xed_y_converter, feature_list, desc_order, const=0,
+                 desc_version='c', a0=8.0, fac_mul=0.25, amin=0.05):
         self.scale = scale
         self.nterms = len(self.scale)
         self.ind_sets = ind_sets
@@ -44,6 +45,10 @@ class Evaluator():
         self.nfeat = feature_list.nfeat
         self.desc_order = desc_order
         self.const = const
+        self.desc_version = desc_version
+        self.a0 = a0
+        self.fac_mul = fac_mul
+        self.amin = amin
 
     def _xedy(self, y, x, code):
         if self.xed_y_converter[-1] == 1:

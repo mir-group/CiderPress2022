@@ -127,9 +127,9 @@ def get_gaussian_grid_b(coords, rho, l=0, s=None, alpha=None):
     return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
 
 
-def get_x_helper_full(auxmol, rho_data, grid, density,
-                      ao_to_aux, integral_name='int1e_ovlp',
-                      return_ovlp=False):
+def get_x_helper_full_a(auxmol, rho_data, grid, density,
+                        ao_to_aux, deriv=False,
+                        return_ovlp=False, **kwargs):
     # desc[0:6]   = rho_data
     # desc[6:12]  = 0
     # desc[12:13] = g0
@@ -141,14 +141,15 @@ def get_x_helper_full(auxmol, rho_data, grid, density,
     # g2 order: xy, yz, z^2, xz, x^2-y^2
     lc = get_dft_input2(rho_data)[:3]
     # size naux
+    integral_name = 'int1e_r2_origj' if deriv else 'int1e_ovlp'
     desc = np.append(rho_data, 0 * rho_data, axis=0)
     N = grid.weights.shape[0]
     if return_ovlp:
         ovlps = []
     for l in range(3):
         atm, bas, env = get_gaussian_grid(grid.coords, rho_data[0],
-                                          l = l, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+                                          l=l, s=lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
         # (ngrid * (2l+1), naux)
         ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
@@ -158,8 +159,8 @@ def get_x_helper_full(auxmol, rho_data, grid, density,
     l = 0
     for mul in [0.25, 4.00]:
         atm, bas, env = get_gaussian_grid(grid.coords, mul *rho_data[0],
-                                          l = 0, s = lc[1], alpha=lc[2])
-        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+                                          l=0, s=lc[1], alpha=lc[2])
+        gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
         # (ngrid * (2l+1), naux)
         ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
@@ -174,7 +175,7 @@ def get_x_helper_full(auxmol, rho_data, grid, density,
 def get_x_helper_full_c(auxmol, rho_data, grid, density,
                         ao_to_aux, deriv=False,
                         return_ovlp=False,
-                        a0=8.0, fac_mul=1.0, amin=GG_AMIN):
+                        a0=8.0, fac_mul=0.25, amin=GG_AMIN):
     # Contains convolutions up to second-order
     # desc[0:6]   = rho_data
     # desc[6:7] = g0
@@ -210,6 +211,20 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
                                         a0=a0, fac_mul=fac_mul,
                                         amin=amin)
     env[bas[:,6]] *= env[bas[:,5]]
+    gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
+    # (ngrid * (2l+1), naux)
+    ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
+    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+    desc = np.append(desc, proj, axis=0)
+    if return_ovlp:
+        ovlps.append(ovlp)
+    
+    integral_name = 'int1e_r6_origj' if deriv else 'int1e_r4_origj'
+    atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                        l=0, s=lc[1], alpha=lc[2],
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]**2
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
     # (ngrid * (2l+1), naux)
     ovlp = gto.mole.intor_cross(integral_name, auxmol, gridmol).T
@@ -331,7 +346,53 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
     proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     desc = np.append(desc, proj, axis=0)
     return contract_exchange_descriptors_c(desc)
-
+"""
+def get_x_helper_c_full(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
+                        a0=8.0, fac_mul=1.0, amin=GG_AMIN, **kwargs):
+    print(a0, fac_mul, amin)
+    # desc[0:6]   = rho_data
+    # desc[6] = g0
+    # desc[7:10] = g1
+    # desc[10:15] = g2
+    # desc[15] = g0-r^2
+    # g1 order: x, y, z
+    # g2 order: xy, yz, z^2, xz, x^2-y^2
+    lc = get_dft_input2(rho_data)[:3]
+    # size naux
+    density = np.einsum('npq,pq->n', ao_to_aux, rdm1)
+    desc = rho_data.copy()
+    N = grid.weights.shape[0]
+    for l in range(3):
+        atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                            l=l, s=lc[1], alpha=lc[2],
+                                            a0=a0, fac_mul=fac_mul,
+                                            amin=amin)
+        gridmol = gto.Mole(_atm = atm, _bas = bas, _env = env)
+        # (ngrid * (2l+1), naux)
+        ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
+        proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+        desc = np.append(desc, proj, axis=0)
+    l = 0
+    atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                        l=0, s=lc[1], alpha=lc[2],
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]
+    gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
+    ovlp = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).T
+    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+    desc = np.append(desc, proj, axis=0)
+    atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
+                                        l=0, s=lc[1], alpha=lc[2],
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
+    env[bas[:,6]] *= env[bas[:,5]]**2
+    gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
+    ovlp = gto.mole.intor_cross('int1e_r4_origj', auxmol, gridmol).T
+    proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
+    desc = np.append(desc, proj, axis=0)
+    return contract_exchange_descriptors_c(desc)
+"""
 def get_exchange_descriptors2(analyzer, restricted=True, version='a',
                               **kwargs):
     """

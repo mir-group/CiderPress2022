@@ -74,6 +74,10 @@ class MLFunctional(ABC):
     def get_derivative(self, X):
         pass
 
+    @abstractmethod
+    def get_F_and_derivative(self, X):
+        pass
+
 kappa = 0.804
 mu = 0.2195149727645171
 
@@ -237,7 +241,7 @@ class GPFunctional(MLFunctional):
         return self.get_F_and_derivative(X)[1]
 
 
-class NormGPFunctional(GPFunctional):
+class NormGPFunctional(MLFunctional,Evaluator):
 
     def __init__(self, evaluator):
         # For use with evaluators generated using gp_to_spline.py
@@ -251,7 +255,7 @@ class NormGPFunctional(GPFunctional):
     def get_F_and_derivative(self, X):
         mat = np.zeros((self.nfeat, X.shape[1]))
         self.feature_list.fill_vals_(mat, X)
-        F, dF = self.evaluator.predict_from_desc(mat.T, vec_eval=True)
+        F, dF = self.evaluator.predict_from_desc(mat, vec_eval=True)
         dFddesc = np.zeros(X.shape)
         self.feature_list.fill_derivs_(dFddesc, dF, X)
 

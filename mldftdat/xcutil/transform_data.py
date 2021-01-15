@@ -317,6 +317,10 @@ class FeatureList():
             self.feat_list[i].fill_feat_(tdesc, xdesc)
         return tdesc.T
 
+    @property
+    def bounds_list(self):
+        return [f.bounds for f in self.feat_list]
+
     def fill_vals_(self, tdesc, xdesc):
         for i in range(self.nfeat):
             self.feat_list[i].fill_feat_(tdesc, xdesc)
