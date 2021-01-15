@@ -380,7 +380,8 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
 
     for i, d in enumerate(mlfunc.desc_order):
         if d == 0:
-            v_npa[0] += dEddesc[:,i]
+            pass
+            #v_npa[0] += dEddesc[:,i]
         elif d == 1:
             v_npa[1] += dEddesc[:,i]
         elif d == 2:

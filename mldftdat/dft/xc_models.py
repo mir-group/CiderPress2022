@@ -340,7 +340,8 @@ class GPFunctional(MLFunctional):
 
         dFddesc = np.zeros(X.shape)
         self.feature_list.fill_derivs_(dFddesc, dF, X)
-
+        
+        """
         if rho is not None:
             highcut = 1e-3
             ecut = 1.0/2
@@ -350,6 +351,7 @@ class GPFunctional(MLFunctional):
             dFddesc[rho<highcut,:] *= 0.5 * \
                 (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
             dFddesc[rho<lowcut,:] = 0
+        """
 
         if self.fxb_num == 1:
             chfx = 1
@@ -384,7 +386,7 @@ class NormGPFunctional(MLFunctional,Evaluator):
         dFddesc = np.zeros(X.shape).T
         print(dF.shape)
         self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
-
+        
         if rho is not None:
             highcut = 1e-3
             ecut = 1.0/2
@@ -394,7 +396,7 @@ class NormGPFunctional(MLFunctional,Evaluator):
             dFddesc[rho<highcut,:] *= 0.5 * \
                 (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
             dFddesc[rho<lowcut,:] = 0
-
+        
         if self.fxb_num == 1:
             chfx = 1
         elif self.fxb_num == 2:
