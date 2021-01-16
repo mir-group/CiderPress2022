@@ -215,7 +215,7 @@ class NLNumInt(pyscf_numint.NumInt):
             mlfunc_x.functional_derivative_loop = functional_derivative_loop_c
         elif mlfunc_x.desc_version == 'a':
             mlfunc_x.get_x_helper_full = get_x_helper_full_a
-            mlfunc_x.functional_derivative_loop = functional_derivative_loop_a
+            mlfunc_x.functional_derivative_loop = functional_derivative_loop_c
         else:
             raise ValueError('Invalid version for descriptors')
 
@@ -225,9 +225,9 @@ class NLNumInt(pyscf_numint.NumInt):
             self.vv10 = True
             self.vv10_b, self.vv10_c = vv10_coeff
 
-    def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin = 0,
-                relativity = 0, deriv = 1, omega = None,
-                verbose = None):
+    def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin=0,
+                relativity=0, deriv=1, omega=None,
+                verbose=None):
         """
         Args:
             mol (gto.Mole) should be assigned a few additional attributes:

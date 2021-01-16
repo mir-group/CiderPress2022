@@ -24,7 +24,7 @@ SCF_TYPES = {
     'UKS'  : dft.UKS
 }
 
-def mol_from_ase(atoms, basis, spin = 0, charge = 0):
+def mol_from_ase(atoms, basis, spin=0, charge=0):
     """
     Get a pyscf gto.Mole object from an ase Atoms object (atoms).
     Assign it the atomic basis set (basis).
@@ -38,7 +38,7 @@ def mol_from_ase(atoms, basis, spin = 0, charge = 0):
     mol.build()
     return mol
 
-def run_scf(mol, calc_type, functional = None, remove_ld = False, dm0 = None):
+def run_scf(mol, calc_type, functional=None, remove_ld=False, dm0=None):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
     of a given calc_type in SCF_TYPES. Return the calc object.

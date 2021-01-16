@@ -364,7 +364,7 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                                  raw_desc, raw_desc_r2,
                                  rho_data, density, ovlps, grid):
 
-    gg_kwargs = {
+    gg_dict = {
         'a0': mlfunc.a0,
         'amin': mlfunc.amin,
         'fac_mul': mlfunc.fac_mul
@@ -380,13 +380,13 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
 
     for i, d in enumerate(mlfunc.desc_order):
         if d == 0:
-            pass
-            #v_npa[0] += dEddesc[:,i]
+            v_npa[0] += dEddesc[:,i]
         elif d == 1:
             v_npa[1] += dEddesc[:,i]
         elif d == 2:
             v_npa[3] += dEddesc[:,i]
         else:
+            gg_kwargs = gg_dict
             l_add = 0
             if d in [3, 10, 11]:
                 if d == 3:
@@ -397,12 +397,28 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                     g = raw_desc[15]
                     ovlp = ovlps[3]
                     gr2 = raw_desc_r2[15:16]
-                    l_add = 2
+                    if mlfunc.desc_version == 'c':
+                        l_add = 2
+                    else:
+                        mul = 0.25**(2./3)
+                        gg_kwargs = {
+                            'a0': mlfunc.a0 * mul,
+                            'fac_mul': fac_mul * mul,
+                            'amin': mlfunc.amin * mul
+                        }
                 else:
                     g = raw_desc[16]
                     ovlp = ovlps[4]
                     gr2 = raw_desc_r2[16:17]
-                    l_add = 4
+                    if mlfunc.desc_version == 'c':
+                        l_add = 4
+                    else:
+                        mul = 4**(2./3)
+                        gg_kwargs = {
+                            'a0': mlfunc.a0 * mul,
+                            'fac_mul': fac_mul * mul,
+                            'amin': mlfunc.amin * mul
+                        }
                 l = 0
             elif d == 4:
                 g = raw_desc[7:10]
