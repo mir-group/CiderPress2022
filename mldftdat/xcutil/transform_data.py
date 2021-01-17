@@ -299,6 +299,47 @@ class YMap(FeatureNormalizer):
                     d['gammai'], d['gammaj'], d['gammak'])
 
 
+class ZMap(FeatureNormalizer):
+
+    def __init__(self, n, i, gamma, scale=1.0, center=0.0):
+        self.n = n
+        self.i = i
+        self.gamma = gamma
+        self.scale = scale
+        self.center = center
+
+    @property
+    def bounds(self):
+        return (-self.center, self.scale-self.center)
+
+    @property
+    def num_arg(self):
+        return 1
+
+    def fill_feat_(self, y, x):
+        n, i = self.n, self.i
+        y[n] = -self.center + self.scale / (1 + self.gamma * x[i]**2)
+
+    def fill_deriv_(self, dfdx, dfdy, x):
+        n, i = self.n, self.i
+        dfdx[i] -= 2 * dfdy[n] * self.scale * self.gamma * x[i] / (1 + self.gamma * x[i]**2)**2
+
+    def as_dict(self):
+        return {
+            'code': 'V',
+            'n': self.n,
+            'i': self.i,
+            'gamma': self.gamma,
+            'scale': self.scale,
+            'center': self.center
+        }
+
+    @classmethod
+    def from_dict(cls, d):
+        return VMap(d['n'], d['i'], d['gamma'], d['scale'], d['center'])
+
+
+
 class FeatureList():
 
     def __init__(self, feat_list):
