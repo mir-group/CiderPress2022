@@ -5,7 +5,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf import df, scf, dft
 
 from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTOR,\
-                             contract_exchange_descriptors,\
+                             contract_exchange_descriptors_a,\
                              contract_exchange_descriptors_c,\
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
@@ -14,6 +14,8 @@ from mldftdat.dft.correlation import nr_rks_vv10
 
 import numpy as np
 import logging
+import time
+
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -275,12 +277,6 @@ class NLNumInt(pyscf_numint.NumInt):
 
 
 def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
-    import time
-
-    #if spin == 0:
-    #    spin = 1
-    #else:
-    #    spin = 2
 
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
