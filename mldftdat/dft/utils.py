@@ -3,7 +3,6 @@ from mldftdat.pyscf_utils import *
 from mldftdat.workflow_utils import safe_mem_cap_mb
 from pyscf.dft.numint import eval_ao, make_mask
 from mldftdat.density import LDA_FACTOR,\
-                             contract_exchange_descriptors,\
                              contract21_deriv, contract21, GG_AMIN
 
 def dtauw(rho_data):
@@ -201,6 +200,7 @@ def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
 def v_nonlocal(rho_data, grid, dedg, density, auxmol,
                g, gr2, ovlp, l=0, a0=8.0, fac_mul=0.25,
                amin=GG_AMIN, l_add=0, **kwargs):
+    #print(l, l_add, a0, fac_mul, amin)
     # g should have shape (2l+1, N)
     N = grid.weights.shape[0]
     lc = get_dft_input2(rho_data)[:3]
@@ -223,7 +223,7 @@ def v_nonlocal(rho_data, grid, dedg, density, auxmol,
     ratio = alpha + 5./3 * s**2
     fac = fac_mul * 1.2 * (6 * np.pi**2)**(2.0/3) / np.pi
     a = np.pi * (rho / 2 + 1e-16)**(2.0 / 3)
-    scale = a0 + ratio * fac
+    scale = a0 + (ratio-1) * fac
     a = a * scale
     cond = a < amin
     da = np.exp(a[cond] / amin - 1)
@@ -369,6 +369,7 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
         'amin': mlfunc.amin,
         'fac_mul': mlfunc.fac_mul
     }
+    print(gg_dict, mlfunc.desc_version)
     N = grid.weights.shape[0]
     naux = mol.auxmol.nao_nr()
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
@@ -379,6 +380,7 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
     v_aux = np.zeros(naux)
 
     for i, d in enumerate(mlfunc.desc_order):
+        #print(i,d)
         if d == 0:
             v_npa[0] += dEddesc[:,i]
         elif d == 1:
@@ -389,6 +391,7 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
             gg_kwargs = gg_dict
             l_add = 0
             if d in [3, 10, 11]:
+                print(raw_desc.shape)
                 if d == 3:
                     g = raw_desc[6]
                     ovlp = ovlps[0]
@@ -399,26 +402,27 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                     gr2 = raw_desc_r2[15:16]
                     if mlfunc.desc_version == 'c':
                         l_add = 2
+                        mul = 1.0
                     else:
                         mul = 0.25**(2./3)
-                        gg_kwargs = {
-                            'a0': mlfunc.a0 * mul,
-                            'fac_mul': fac_mul * mul,
-                            'amin': mlfunc.amin * mul
-                        }
+                    gg_kwargs = {
+                        'a0': mlfunc.a0 * mul,
+                        'fac_mul': mlfunc.fac_mul * mul,
+                        'amin': mlfunc.amin * mul
+                    }
                 else:
                     g = raw_desc[16]
                     ovlp = ovlps[4]
                     gr2 = raw_desc_r2[16:17]
                     if mlfunc.desc_version == 'c':
-                        l_add = 4
+                        mul = 2.0
                     else:
                         mul = 4**(2./3)
-                        gg_kwargs = {
-                            'a0': mlfunc.a0 * mul,
-                            'fac_mul': fac_mul * mul,
-                            'amin': mlfunc.amin * mul
-                        }
+                    gg_kwargs = {
+                        'a0': mlfunc.a0 * mul,
+                        'fac_mul': mlfunc.fac_mul * mul,
+                        'amin': mlfunc.amin * mul
+                    }
                 l = 0
             elif d == 4:
                 g = raw_desc[7:10]

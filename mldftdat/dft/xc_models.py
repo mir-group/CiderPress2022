@@ -389,14 +389,13 @@ class NormGPFunctional(MLFunctional,Evaluator):
         
         if rho is not None:
             highcut = 1e-3
-            #ecut = 1.0/2
             lowcut = 1e-6
-            #xcut = (rho[rho<highcut] / highcut)**ecut
             rhocut = np.maximum(rho[rho<highcut], lowcut)
             xcut = np.log(rhocut / lowcut) / np.log(highcut / lowcut)
-            print(np.max(xcut), np.min(xcut))
+            ##dFddesc[rho<highcut,0] = F[rho<highcut] * np.pi * np.sin(np.pi * xcut)\
+            ##                         / (2 * rhocut * np.log(highcut / lowcut))
             F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * xcut))
-            dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
+            dFddesc[rho<highcut,1:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
             dFddesc[rho<lowcut,:] = 0
         
         if self.fxb_num == 1:
@@ -409,7 +408,7 @@ class NormGPFunctional(MLFunctional,Evaluator):
         F += chfx
     
         if rho is not None:
-            F[rho<1e-10] = 0
-            dFddesc[rho<1e-10,:] = 0
+            F[rho<1e-9] = 0
+            dFddesc[rho<1e-9,:] = 0
 
         return F, dFddesc

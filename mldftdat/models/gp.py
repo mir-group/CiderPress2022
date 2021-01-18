@@ -108,14 +108,14 @@ def get_exp_density_noise_kernel(noise0=1e-5, noise1=1e-5):
     wk1 = WhiteKernel(noise_level=noise1, noise_level_bounds=(1e-7,1e-3))
     return wk0 + wk1 * ExponentialDensityNoise()
 
-def get_fitted_density_noise_kernel(decay1=2.0, decay2=600.0, noise0=3e-5,
-                                    noise1=0.002, noise2=0.02):
-    rhok1 = FittedDensityNoise(decay_rate=decay1)
-    rhok2 = FittedDensityNoise(decay_rate=decay2)
+def get_fitted_density_noise_kernel(decay1=50.0, decay2=1e6, noise0=1e-6,
+                                    noise1=0.0004, noise2=0.2):
+    rhok1 = FittedDensityNoise(decay_rate=decay1, decay_rate_bounds='fixed')
+    rhok2 = FittedDensityNoise(decay_rate=decay2, decay_rate_bounds='fixed')
     wk = WhiteKernel(noise_level=noise0, noise_level_bounds=(1e-6,1e-3))
     wk1 = WhiteKernel(noise_level=noise1)
     wk2 = WhiteKernel(noise_level=noise2)
-    noise_kernel = wk + wk1 * rhok1 + wk2 * Exponentiation(rhok2, 2)
+    noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2
     return noise_kernel
 
 
@@ -370,7 +370,7 @@ class DFTGPR():
         else:
             cov_kernel = get_rbf_kernel(length_scale)
         if args.optimize_noise:
-            noise_kernel = get_exp_density_noise_kernel()
+            noise_kernel = get_fitted_density_noise_kernel()
         else:
             noise_kernel = get_density_noise_kernel()
         init_kernel = cov_kernel + noise_kernel
