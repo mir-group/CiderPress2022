@@ -216,8 +216,8 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
     integral_name = 'int1e_r4_origj' if deriv else 'int1e_r2_origj'
     atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
                                         l=0, s=lc[1], alpha=lc[2],
-                                        a0=a0*2, fac_mul=fac_mul*2,
-                                        amin=amin*2)
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
     env[bas[:,6]] *= env[bas[:,5]]
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
     # (ngrid * (2l+1), naux)
@@ -317,8 +317,8 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
     l = 0
     atm, bas, env = get_gaussian_grid_c(grid.coords, rho_data[0],
                                         l=0, s=lc[1], alpha=lc[2],
-                                        a0=a0*2, fac_mul=fac_mul*2,
-                                        amin=amin*2)
+                                        a0=a0, fac_mul=fac_mul,
+                                        amin=amin)
     env[bas[:,6]] *= env[bas[:,5]]
     gridmol = gto.Mole(_atm=atm, _bas=bas, _env=env)
     ovlp = gto.mole.intor_cross('int1e_r2_origj', auxmol, gridmol).T
@@ -429,6 +429,9 @@ def contract21(t2, t1):
     xterm = (res[0] - res[2]) / np.sqrt(2)
     yterm = 1j * (res[0] + res[2]) / np.sqrt(2)
     zterm = res[1]
+
+    #print ( np.linalg.norm(np.imag(np.array([xterm, yterm, zterm]))) )
+    #assert np.linalg.norm(np.imag(np.array([xterm, yterm, zterm]))) < 1e-7
 
     return np.real(np.array([xterm, yterm, zterm]))
 

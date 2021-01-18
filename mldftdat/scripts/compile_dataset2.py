@@ -123,8 +123,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         'lam': lam,
         'version': version
     }
-    if version == 'c':
-        settings.update(gg_kwargs)
+    settings.update(gg_kwargs)
     with open(os.path.join(save_dir, 'settings.yaml'), 'w') as f:
         yaml.dump(settings, f)
 
@@ -186,5 +185,7 @@ if __name__ == '__main__':
         compile_dataset2(
             dataname, mol_ids, SAVE_ROOT, calc_type, args.functional, args.basis, 
             spherical_atom=args.spherical_atom, locx=args.locx, lam=args.lam,
-            version=version
+            version=version, a0=args.gg_a0, fac_mul=args.gg_facmul,
+            amin=args.gg_amin
+
         )
