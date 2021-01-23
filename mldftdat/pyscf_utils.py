@@ -53,6 +53,9 @@ def run_scf(mol, calc_type, functional=None, remove_ld=False, dm0=None):
         calc = scf.addons.remove_linear_dep_(calc)
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
+        if 'MN' in functional:
+            print('MN grid level 4')
+            calc.grids.level = 4
         if functional == 'wB97M_V':
             logging.info('Using Specialized wB97M-V params')
             calc.nlc = 'VV10'

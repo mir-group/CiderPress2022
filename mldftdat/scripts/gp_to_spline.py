@@ -196,6 +196,9 @@ def main():
     parser.add_argument('--maxng', default=120, type=int)
     #srbf_density=8, arbf_density=8, max_ngrid=120
     args = parser.parse_args()
+    
+    print('OUTNAME', args.outname)
+    
     gpr = load(args.fname)
     assert len(gpr.args.validation_set) % 2 == 0,\
         'Need pairs of entries for datasets list.'

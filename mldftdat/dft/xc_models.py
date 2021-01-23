@@ -379,12 +379,10 @@ class NormGPFunctional(MLFunctional,Evaluator):
 
     def get_F_and_derivative(self, X):
         rho = X[0]
-        print(X.shape)
         mat = np.zeros((self.nfeat, X.shape[1]))
         self.feature_list.fill_vals_(mat, X)
         F, dF = self.predict_from_desc(mat.T, vec_eval=True)
         dFddesc = np.zeros(X.shape).T
-        print(dF.shape)
         self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
         
         if rho is not None:
@@ -395,7 +393,7 @@ class NormGPFunctional(MLFunctional,Evaluator):
             ##dFddesc[rho<highcut,0] = F[rho<highcut] * np.pi * np.sin(np.pi * xcut)\
             ##                         / (2 * rhocut * np.log(highcut / lowcut))
             F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * xcut))
-            dFddesc[rho<highcut,1:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
+            dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
             dFddesc[rho<lowcut,:] = 0
         
         if self.fxb_num == 1:

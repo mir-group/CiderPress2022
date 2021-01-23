@@ -585,5 +585,5 @@ if __name__ == '__main__':
         print(df.to_latex())
     
     if args.save_file is not None:
-        df.to_csv(args.save_file, index=False)
+        df.to_csv(args.save_file)
 

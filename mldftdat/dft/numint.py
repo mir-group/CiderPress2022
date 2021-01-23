@@ -227,6 +227,9 @@ class NLNumInt(pyscf_numint.NumInt):
             self.vv10 = True
             self.vv10_b, self.vv10_c = vv10_coeff
 
+    def rsh_and_hybrid_coeff(self, xc_code, spin=0):
+        return 0, 0, 0
+
     def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin=0,
                 relativity=0, deriv=1, omega=None,
                 verbose=None):
@@ -331,7 +334,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
                                                deriv=True, a0=mlfunc.a0,
                                                fac_mul=mlfunc.fac_mul,
                                                amin=mlfunc.amin)
-        print(raw_desc[spin].shape)
         contracted_desc[spin] = contract_exchange_descriptors_c(raw_desc[spin])
         contracted_desc[spin] = contracted_desc[spin][mlfunc.desc_order]
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(contracted_desc[spin])
@@ -349,7 +351,6 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
                                           tu, td, F[0], F[1],
                                           include_aug_sl=True,
                                           include_aug_nl=True)
-
         
         logging.debug('Adding correlation contribution')
         weights = grid.weights
@@ -417,7 +418,7 @@ def setup_aux(mol):
 
 def setup_rks_calc(mol, mlfunc_x, corr_model=None,
                    vv10_coeff=None, grid_level=3,
-                   xc=None, xmix=1.0):
+                   xc=None, xmix=1.0, **kwargs):
     rks = dft.RKS(mol)
     rks.xc = xc
     rks._numint = NLNumInt(mlfunc_x, corr_model,
@@ -428,7 +429,7 @@ def setup_rks_calc(mol, mlfunc_x, corr_model=None,
 
 def setup_uks_calc(mol, mlfunc_x, corr_model=None,
                    vv10_coeff=None, grid_level=3,
-                   xc=None, xmix=1.0):
+                   xc=None, xmix=1.0, **kwargs):
     uks = dft.UKS(mol)
     uks.xc = xc
     uks._numint = NLNumInt(mlfunc_x, corr_model,
@@ -438,7 +439,7 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
     return uks
 
 def run_mlscf(mol, calc_type, functional_path, remove_ld=False,
-              conv_tol=1e-9, DIIS=scf.diis.ADIIS):
+              conv_tol=1e-9, DIIS=scf.diis.CDIIS):
     import os, yaml, joblib
     settings_fname = os.path.join(functional_path, 'settings.yaml')
     with open(settings_fname, 'r') as f:
@@ -446,6 +447,28 @@ def run_mlscf(mol, calc_type, functional_path, remove_ld=False,
         if settings is None:
             settings = {}
     mlfunc_fname = os.path.join(functional_path, 'mlfunc.joblib')
+    mlfunc = joblib.load(mlfunc_fname)
+    if calc_type == 'RKS':
+        mf = setup_rks_calc(mol, mlfunc, **settings)
+    elif calc_type == 'UKS':
+        mf = setup_uks_calc(mol, mlfunc, **settings)
+    else:
+        raise ValueError('Invalid calc type, must be RKS or UKS')
+    mf.conv_tol = conv_tol
+    mf.DIIS = DIIS
+    mf.kernel()
+    return mf
+
+def run_mlscf(mol, calc_type, SAVE_ROOT, mlfunc_name, remove_ld=False,
+              conv_tol=1e-9, DIIS=scf.diis.CDIIS):
+    import os, yaml, joblib
+    settings_fname = mlfunc_name + '.yaml'
+    settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                  settings_fname)
+    with open(settings_fname, 'r') as f:
+        settings = yaml.load(f, Loader = yaml.Loader)
+    mlfunc_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                'CIDER', settings['mlfunc_file'])
     mlfunc = joblib.load(mlfunc_fname)
     if calc_type == 'RKS':
         mf = setup_rks_calc(mol, mlfunc, **settings)

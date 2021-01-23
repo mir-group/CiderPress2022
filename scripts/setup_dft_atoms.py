@@ -21,8 +21,8 @@ spins2 = [3, 4, 5, 6, 0]
 numbers = numbers_r2 + numbers_r3 + numbers_r4 + numbers1 + numbers2
 spins = spins_r2 + spins_r3 + spins_r4 + spins1 + spins2
 
-functional_list = ['pbe', 'scan', 'm06-l', 'pbe0', 'b3lyp', 'm06']
-functional_list = ['wB97M_V']
+#functional_list = ['pbe', 'scan', 'm06-l', 'pbe0', 'b3lyp', 'm06']
+functional_list = ['MN15L']
 
 for Z, spin in zip(numbers, spins):
     for basis in ['def2-qzvppd']:

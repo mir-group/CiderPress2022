@@ -369,7 +369,6 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
         'amin': mlfunc.amin,
         'fac_mul': mlfunc.fac_mul
     }
-    print(gg_dict, mlfunc.desc_version)
     N = grid.weights.shape[0]
     naux = mol.auxmol.nao_nr()
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
@@ -380,7 +379,6 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
     v_aux = np.zeros(naux)
 
     for i, d in enumerate(mlfunc.desc_order):
-        #print(i,d)
         if d == 0:
             v_npa[0] += dEddesc[:,i]
         elif d == 1:
@@ -391,7 +389,6 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
             gg_kwargs = gg_dict
             l_add = 0
             if d in [3, 10, 11]:
-                print(raw_desc.shape)
                 if d == 3:
                     g = raw_desc[6]
                     ovlp = ovlps[0]
@@ -505,14 +502,17 @@ def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                                          density, mol.auxmol, g,
                                          gr2, ovlp, l=l, l_add=l_add,
                                          **gg_kwargs)
+            
             v_npa += vtmp
             v_aux += dedaux
+            vtmp = None
+            dedaux = None
 
     vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
     v_nst = v_basis_transform(rho_data, v_npa)
     v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
     v_grad = v_aniso / (sprefac * n43 + 1e-20)
-
+    
     return v_nst, v_grad, vmol
 
 

@@ -72,8 +72,8 @@ def make_dft_firework(struct, mol_id, basis, spin, functional=None, charge=0,
                     functional=functional, charge=charge,
                     skip_analysis=skip_analysis), name=name)
 
-def make_ml_firework(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file,
-                     mlfunc_settings_file, mlfunc_c_file = None,
+def make_ml_firework(struct, mol_id, basis, spin, mlfunc_name, mlfunc_file=None,
+                     mlfunc_settings_file=None, mlfunc_c_file=None,
                      charge=0, name=None):
     return Firework(get_ml_tasks(struct, mol_id, basis, spin,
                     mlfunc_name, mlfunc_file, mlfunc_settings_file,

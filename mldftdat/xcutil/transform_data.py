@@ -35,6 +35,8 @@ class FeatureNormalizer(ABC):
             return XMap.from_dict(d)
         elif d['code'] == 'Y':
             return YMap.from_dict(d)
+        elif d['code'] == 'Z':
+            return ZMap.from_dict(d)
         else:
             raise ValueError('Unrecognized code')
 
@@ -326,7 +328,7 @@ class ZMap(FeatureNormalizer):
 
     def as_dict(self):
         return {
-            'code': 'V',
+            'code': 'Z',
             'n': self.n,
             'i': self.i,
             'gamma': self.gamma,
@@ -336,7 +338,7 @@ class ZMap(FeatureNormalizer):
 
     @classmethod
     def from_dict(cls, d):
-        return VMap(d['n'], d['i'], d['gamma'], d['scale'], d['center'])
+        return ZMap(d['n'], d['i'], d['gamma'], d['scale'], d['center'])
 
 
 
