@@ -502,6 +502,8 @@ if __name__ == '__main__':
                         help='basis set code')
     parser.add_argument('--functional', metavar='functional', type=str, default=None,
                         help='exchange-correlation functional, HF for Hartree-Fock')
+    parser.add_argument('--save-file', type=str, default=None,
+                        help='If not None, save error table to this file.')
     args = parser.parse_args()
 
     calc_type, mol_ids = load_mol_ids(args.mol_file)
@@ -554,7 +556,6 @@ if __name__ == '__main__':
         from pyscf import lib
         lib.chkfile.dump('errtbl_out_%d.hdf5' % NUM, 'data', res3)
         print(df.to_latex())
-        error_table2(dirs, Analyzer, models, rows)
     elif args.version == '3':
         res1, res2 = error_table3(dirs, Analyzer, models, rows)
         fxlst_true, fxlst_pred, errlst, ae_errlst = res1
@@ -582,4 +583,7 @@ if __name__ == '__main__':
             print(np.mean(sublst), np.std(sublst))
         df = pd.DataFrame(errtbl, index=rows, columns=columns)
         print(df.to_latex())
+    
+    if args.save_file is not None:
+        df.to_csv(args.save_file, index=False)
 
