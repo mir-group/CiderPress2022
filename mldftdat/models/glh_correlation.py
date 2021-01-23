@@ -235,6 +235,17 @@ def get_etot_contribs(dft_dir, ccsd_dir, restricted):
 
     return np.array([E_pbe, E_ccsd])
 
+def get_etot_contribs(dft_dir, ccsd_dir, restricted):
+    with open(os.path.join(dft_dir, 'run_info.json'), 'r') as f:
+        dft_dat = json.load(f)
+    with open(os.path.join(ccsd_dir, 'run_info.json'), 'r') as f:
+        ccsd_dat = json.load(f)
+    if ccsd_dat['nelectron'] < 3:
+        E_ccsd = ccsd_dat['e_tot']
+    else:
+        E_ccsd = ccsd_dat['e_tot'] + ccsd_dat['e_tri']
+    return np.arra([dft_dat['e_tot'], E_ccsd])
+
 def store_total_energies_dataset(FNAME, MOL_FNAME,
                                  functional=DEFAULT_FUNCTIONAL,
                                  basis=DEFAULT_BASIS):

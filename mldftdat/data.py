@@ -1,8 +1,8 @@
 import numpy as np 
-from mldftdat.workflow_utils import get_save_dir
+from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT
 from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR,\
                              get_ldax, get_ldax_dens
-import os, json
+import os, json, yaml
 from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
@@ -11,6 +11,9 @@ from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e, run_scf
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.scf.stability import uhf_internal
+from pyscf import gto
+from collections import Counter
+from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
 
 
 def get_unique_coord_indexes_spherical(coords):
@@ -332,10 +335,7 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                                  save_mol_analyzer=False,
                                  full_analysis=False):
     from mldftdat import lowmem_analyzers
-    from collections import Counter
-    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
     from mldftdat.pyscf_utils import run_scf, run_cc
-    from pyscf import gto
     from mldftdat.dft.xc_models import MLFunctional
 
     if type(FUNCTIONAL) == str:
@@ -420,11 +420,11 @@ def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
                 e_tot = mf.e_tot
                 calc = mf
             elif type(FUNCTIONAL) == str:
-                func_path = os.path.join(DBPATH, 'MLFUNCTIONALS', FUNCTIONAL)
+                func_path = os.path.join(DBPATH, 'MLFUNCTIONALS', FUNCTIONAL + '.yaml')
                 if os.path.exists(os.path.join(func_path)):
                     from mldftdat.dft.numint import run_mlscf
                     calc_type = 'RKS' if 'RKS' in path else 'UKS'
-                    mf = run_mlscf(mol, calc_type, func_path)
+                    mf = run_mlscf(mol, calc_type, DBPATH, FUNCTIONAL)
                 else:
                     mf = run_scf(mol, calc_type, functional=FUNCTIONAL)
                 e_tot = mf.e_tot
@@ -666,3 +666,48 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
     rmse = np.sqrt(np.mean(errs**2))
     std = np.std(errs)
     return me, mae, rmse, std, result
+
+
+def load_run_info(mol_id, calc_type, functional, basis):
+    d = get_save_dir(SAVE_ROOT, calc_type, basis, mol_id, functional)
+    with open(os.path.append(d, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    return data
+
+def get_mol_atoms(mol, functional, basis):
+    atoms = [atomic_numbers[a[0]] for a in mol._atom]
+    formula = Counter(atoms)
+    elems = []
+    for Z in list(formula.keys()):
+        symb = chemical_symbols[Z]
+        spin = int(ground_state_magnetic_moments[Z])
+        count = formula[Z]
+        atom_id = 'atoms/{}-{}-{}'.format(Z, symb, spin)
+        elems.append((atom_id, count, 'UKS' if spin else 'RKS'))
+    return elems
+
+def get_augg2_ae(data_file, functional, basis):
+    with open(data_file, 'r') as f:
+        data = yaml.load(f, Loader=yaml.Loader)
+    calc_type = data['calc_type']
+    mol_ids = data['mols']
+    aes = {}
+    for mol_id in mol_ids:
+        dirname = get_save_dir(SAVE_ROOT, calc_type, basis, mol_id, functional)
+        d = get_run_data(dirname, return_data=['mol', 'e_tot'])
+        print(dirname, d['mol'])
+        mol = gto.mole.unpack(d['mol'])
+        mol.verbose = int(mol.verbose)
+        mol.charge = int(mol.charge)
+        mol.spin = int(mol.spin)
+        mol.symmetry = (mol.symmetry == 'True') or (mol.symmetry == True)
+        mol.build()
+        elems = get_mol_atoms(mol, functional, basis)
+        ae = d['e_tot']
+        for atom_id, count, atom_calc_type in elems:
+            dirname = get_save_dir(SAVE_ROOT, atom_calc_type, basis, atom_id, functional)
+            en = get_run_data(dirname, return_data=['e_tot'])['e_tot']
+            ae -= en * count
+        aes[mol_id] = ae
+    return aes
+    

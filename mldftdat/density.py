@@ -574,12 +574,10 @@ def contract_exchange_descriptors_c(desc):
     res = np.zeros((12,N))
     rho_data = desc[:6]
 
-    # rho, g0, s, alpha, nabla
     rho, s, alpha, tau_w, tau_unif = get_dft_input2(desc[:6])
     sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
     n43 = rho**(4.0/3)
-    svec = desc[1:4] / (sprefac * n43 + 1e-7)
-    nabla = rho_data[4] / (tau_unif + 1e-7)
+    svec = desc[1:4] / (sprefac * n43 + 1e-16)
 
     res[0] = rho
     res[1] = s**2

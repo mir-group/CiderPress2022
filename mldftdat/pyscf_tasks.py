@@ -3,7 +3,7 @@ from fireworks.utilities.fw_utilities import explicit_serialize
 from fireworks.utilities.fw_serializers import recursive_dict
 
 from ase import Atoms
-from pyscf import scf, dft, cc
+from pyscf import scf, dft, cc, gto
 
 import json
 
@@ -14,8 +14,10 @@ import mldftdat.lowmem_analyzers
 
 import os, psutil, multiprocessing, time, datetime
 from itertools import product
-from mldftdat.workflow_utils import safe_mem_cap_mb, time_func,\
+from mldftdat.workflow_utils import safe_mem_cap_mb, time_func, SAVE_ROOT,\
                                     get_functional_db_name, get_save_dir
+
+import yaml, joblib
 
 
 @explicit_serialize
@@ -155,10 +157,9 @@ class SCFFromDB(FiretaskBase):
 @explicit_serialize
 class MLSCFCalc(FiretaskBase):
 
-    required_params = ['struct', 'basis', 'calc_type',\
-                       'mlfunc_name', 'mlfunc_file', 'mlfunc_settings_file']
+    required_params = ['struct', 'basis', 'calc_type', 'mlfunc_name']
     optional_params = ['spin', 'charge', 'max_conv_tol',\
-                       'mlfunc_c_file']
+                       'mlfunc_file', 'mlfunc_c_file', 'mlfunc_settings_file']
 
     DEFAULT_MAX_CONV_TOL = 1e-6
 
@@ -173,48 +174,49 @@ class MLSCFCalc(FiretaskBase):
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
         calc_type = self['calc_type']
 
-        import joblib
-        if self.get('mlfunc_c_file') is None:
-            from mldftdat.dft import numint6 as numint
-            mlfunc = joblib.load(self['mlfunc_file'])
-        else:
-            from mldftdat.dft import numint5 as numint
-            mlfunc = joblib.load(self['mlfunc_file'])
-            mlfunc_c = joblib.load(self['mlfunc_c_file'])
-        import yaml
+        from mldftdat.dft import numint
 
-        #if not hasattr(mlfunc, 'y_to_f_mul'):
-        #    mlfunc.y_to_f_mul = None
-        with open(self['mlfunc_settings_file'], 'r') as f:
-            settings = yaml.load(f, Loader = yaml.Loader)
+        if self.get('mlfunc_settings_file') is None:
+            settings_fname = self['mlfunc_name'] + '.yaml'
+            settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                          settings_fname)
+        else:
+            settings_fname = self['mlfunc_settings_file']
+
+        with open(settings_fname, 'r') as f:
+            settings = yaml.load(f, Loader=yaml.Loader)
             if settings is None:
                 settings = {}
-        if self.get('mlfunc_c_file') is None:
-            if calc_type == 'RKS':
-                calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
+            if self.get('mlfunc_file') is None:
+                mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                           'CIDER', settings['mlfunc_file'])
             else:
-                calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
+                mlfunc_file = self['mlfunc_file']
+            mlfunc = joblib.load(mlfunc_file)
+        
+        if calc_type == 'RKS':
+            calc = numint.setup_rks_calc(mol, mlfunc, **settings)
         else:
-            if calc_type == 'RKS':
-                calc = numint.setup_rks_calc(mol, mlfunc, mlfunc_c, **settings)
-            else:
-                calc = numint.setup_uks_calc(mol, mlfunc, mlfunc_c, **settings)
+            calc = numint.setup_uks_calc(mol, mlfunc, **settings)
 
         start_time = time.monotonic()
         calc.kernel()
         stop_time = time.monotonic()
 
+        calc.damp = 4
+        calc.diis_start_cycle = 20
+        calc.max_cycle = 200
+
         max_iter = 50 # extra safety catch
         iter_step = 0
-        while not calc.converged and calc.conv_tol < max_conv_tol\
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
                 and iter_step < max_iter:
             iter_step += 1
             print ("Did not converge SCF, increasing conv_tol.")
-            calc.conv_tol *= 10
-
             start_time = time.monotonic()
             calc.kernel()
             stop_time = time.monotonic()
+            calc.conv_tol *= 10
 
         assert calc.converged, "SCF calculation did not converge!"
         update_spec={
@@ -459,6 +461,7 @@ class TrainingDataCollector(FiretaskBase):
             'e_tot'      : calc.e_tot,
             'functional' : fw_spec.get('functional'),
             'max_cycle'  : calc.max_cycle,
+            'mol'        : gto.mole.pack(mol),
             'nelectron'  : mol.nelectron,
             'spin'       : mol.spin,
             'struct'     : struct.todict(),
@@ -510,6 +513,7 @@ class TrainingDataCollector(FiretaskBase):
             analyzer.perform_full_analysis()
         if calc_type in ['CCSD', 'UCCSD'] and self.get('ccsd_t'):
             analyzer.calc_pert_triples()
+            mol_dat['e_tri'] = analyzer.e_tri
         print('FINISHED ANALYSIS', psutil.virtual_memory().available // 1e6)
         analyzer.dump(os.path.join(save_dir, 'data.hdf5'))
         print('DUMP ANALYSIS', psutil.virtual_memory().available // 1e6)
