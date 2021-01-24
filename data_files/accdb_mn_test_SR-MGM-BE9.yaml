@@ -1,6 +1,6 @@
 calc_type: UKS
 set:
-- SR-MGM-BE9_6
-- SR-MGM-BE9_4
-- SR-MGM-BE9_1
-- SR-MGM-BE9_9
+- Minnesota/SR-MGM-BE9_6
+- Minnesota/SR-MGM-BE9_4
+- Minnesota/SR-MGM-BE9_1
+- Minnesota/SR-MGM-BE9_9
