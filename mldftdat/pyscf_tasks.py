@@ -234,6 +234,119 @@ class MLSCFCalc(FiretaskBase):
 
 
 @explicit_serialize
+class USCFCalc(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'functional', 'functional_code']
+    optional_params = ['spin', 'charge', 'max_conv_tol', 'stability_functional',
+                       'stability_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-6
+
+    def run_task(self, fw_spec):
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        if self.get('spin') is not None:
+            kwargs['spin'] = self['spin']
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        calc_type = 'UKS'
+
+        if self.get('stability_functional') is None:
+            dm0 = None
+        else:
+            if self['stability_functional'] == 'HF':
+                ks = scf.UHF(mol)
+            else:
+                ks = scf.UKS(mol)
+                ks.xc = self['stability_functional']
+            ks.conv_tol = self.get('stability_conv_tol') or 1e-9
+
+            dm = None
+            for i in range(3):
+                ks.kernel(dm)
+                new_mo = uhf_internal(mf, with_symmetry=False)
+                dm = ks.make_rdm1(mo_coeff=new_mo, mo_occ=ks.mo_occ)
+                if new_mo == mf.mo_coeff:
+                    break
+            else:
+                raise RuntimeError('Did not find stable initial density matrix')
+
+        
+        settings_fname = self['mlfunc_name'].upper() + '.yaml'
+        settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                      settings_fname)
+        fcode = self['functional_type'].upper()[0]
+        if fcode == 'A':
+            # Conventional
+            if os.path.isfile(settings_fname):
+                with open(settings_fname, 'r') as f:
+                    settings = yaml.load(f, Loader=yaml.Loader)
+            else:
+                settings = {}
+            calc = setup_uks_calc(mol, self['mlfunc_name'], **settings)
+        elif fcode == 'B':
+            # GP/CIDER
+            from mldftdat.dft import numint
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'CIDER', settings['mlfunc_file'])
+            if settings.get('corr_file') is not None:
+                corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['mlfunc_file'])
+                corr_model = joblib.load(corr_file)
+                settings.update({'corr_model': corr_model})
+            mlfunc = joblib.load(mlfunc_file)
+            calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+        elif fcode == 'C':
+            # Hyper-GGA
+            from mldftdat.dft import glh_corr
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['mlfunc_file'])
+            mlfunc = joblib.load(mlfunc_file)
+            calc = glh_corr.setup_uks_calc(mol, mlfunc, **settings)
+        else:
+            raise ValueError('Invalid value of functional_type')
+
+        start_time = time.monotonic()
+        calc.kernel(dm)
+        stop_time = time.monotonic()
+
+        calc.damp = 4
+        calc.diis_start_cycle = 20
+        calc.max_cycle = 200
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            start_time = time.monotonic()
+            calc.kernel(dm)
+            stop_time = time.monotonic()
+            calc.conv_tol *= 10
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
 class SGXCorrCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type',\

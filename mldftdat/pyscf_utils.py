@@ -38,6 +38,21 @@ def mol_from_ase(atoms, basis, spin=0, charge=0):
     mol.build()
     return mol
 
+def setup_uks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
+    uks = dft.UKS(mol)
+    uks.xc = xc
+    uks.grids.level = grid_level
+    uks.grids.build()
+    logging.info('xc: {}, grid level: {}'.format(xc, grid_level))
+    if vv10:
+        logging.info('Using VV10 in UKS setup')
+        if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
+            calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+        else:
+            calc.nlcgrids.prune = None
+        calc.nlcgrids.level = 1
+    return uks
+
 def run_scf(mol, calc_type, functional=None, remove_ld=False, dm0=None):
     """
     Run an SCF calculation on a gto.Mole object (Mole)
@@ -54,7 +69,7 @@ def run_scf(mol, calc_type, functional=None, remove_ld=False, dm0=None):
     if 'KS' in calc_type and functional is not None:
         calc.xc = functional
         if 'MN' in functional:
-            print('MN grid level 4')
+            logging.info('MN grid level 4')
             calc.grids.level = 4
         if functional == 'wB97M_V':
             logging.info('Using Specialized wB97M-V params')
