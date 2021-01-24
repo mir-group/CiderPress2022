@@ -1,14 +1,14 @@
 calc_type: UKS
 set:
-- IP23_7
-- IP23_1
-- IP23_22
-- IP23_18
-- IP23_6
-- IP23_15
-- IP23_16
-- IP23_11
-- IP23_3
-- IP23_21
-- IP23_14
-- IP23_5
+- Minnesota/IP23_7
+- Minnesota/IP23_1
+- Minnesota/IP23_22
+- Minnesota/IP23_18
+- Minnesota/IP23_6
+- Minnesota/IP23_15
+- Minnesota/IP23_16
+- Minnesota/IP23_11
+- Minnesota/IP23_3
+- Minnesota/IP23_21
+- Minnesota/IP23_14
+- Minnesota/IP23_5

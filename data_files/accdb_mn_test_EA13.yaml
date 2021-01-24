@@ -1,8 +1,8 @@
 calc_type: UKS
 set:
-- EA13_8
-- EA13_10
-- EA13_4
-- EA13_2
-- EA13_3
-- EA13_6
+- Minnesota/EA13_8
+- Minnesota/EA13_10
+- Minnesota/EA13_4
+- Minnesota/EA13_2
+- Minnesota/EA13_3
+- Minnesota/EA13_6
