@@ -1,6 +1,6 @@
 calc_type: UKS
 set:
-- Minnesota/2pIsoE4_1
-- Minnesota/2pIsoE4_2
-- Minnesota/2pIsoE4_3
-- Minnesota/2pIsoE4_4
+- 2pIsoE4_1
+- 2pIsoE4_2
+- 2pIsoE4_3
+- 2pIsoE4_4

@@ -1,8 +1,8 @@
 calc_type: UKS
 set:
-- Minnesota/IsoL6_11_1
-- Minnesota/IsoL6_11_2
-- Minnesota/IsoL6_11_3
-- Minnesota/IsoL6_11_4
-- Minnesota/IsoL6_11_5
-- Minnesota/IsoL6_11_6
+- IsoL6_11_1
+- IsoL6_11_2
+- IsoL6_11_3
+- IsoL6_11_4
+- IsoL6_11_5
+- IsoL6_11_6

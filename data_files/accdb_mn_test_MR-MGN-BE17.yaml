@@ -1,10 +1,10 @@
 calc_type: UKS
 set:
-- Minnesota/MR-MGN-BE17_2
-- Minnesota/MR-MGN-BE17_6
-- Minnesota/MR-MGN-BE17_13
-- Minnesota/MR-MGN-BE17_1
-- Minnesota/MR-MGN-BE17_11
-- Minnesota/MR-MGN-BE17_9
-- Minnesota/MR-MGN-BE17_12
-- Minnesota/MR-MGN-BE17_17
+- MR-MGN-BE17_2
+- MR-MGN-BE17_6
+- MR-MGN-BE17_13
+- MR-MGN-BE17_1
+- MR-MGN-BE17_11
+- MR-MGN-BE17_9
+- MR-MGN-BE17_12
+- MR-MGN-BE17_17

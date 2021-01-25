@@ -1,8 +1,8 @@
 calc_type: UKS
 set:
-- Minnesota/MR-TM-BE13_11
-- Minnesota/MR-TM-BE13_13
-- Minnesota/MR-TM-BE13_5
-- Minnesota/MR-TM-BE13_3
-- Minnesota/MR-TM-BE13_7
-- Minnesota/MR-TM-BE13_1
+- MR-TM-BE13_11
+- MR-TM-BE13_13
+- MR-TM-BE13_5
+- MR-TM-BE13_3
+- MR-TM-BE13_7
+- MR-TM-BE13_1
