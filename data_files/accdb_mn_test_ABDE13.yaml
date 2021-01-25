@@ -1,8 +1,8 @@
 calc_type: UKS
 set:
-- Minnesota/ABDE13_09
-- Minnesota/ABDE13_03
-- Minnesota/ABDE13_07
-- Minnesota/ABDE13_12
-- Minnesota/ABDE13_11
-- Minnesota/ABDE13_01
+- ABDE13_09
+- ABDE13_03
+- ABDE13_07
+- ABDE13_12
+- ABDE13_11
+- ABDE13_01
