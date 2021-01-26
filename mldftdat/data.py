@@ -14,6 +14,8 @@ from pyscf.scf.stability import uhf_internal
 from pyscf import gto
 from collections import Counter
 from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+from ase import Atoms
+from ase.geometry.analysis import Analysis as ASEAnalysis
 
 
 def get_unique_coord_indexes_spherical(coords):
@@ -563,6 +565,23 @@ def get_run_total_energy(dirname):
         data = json.load(f)
     return data['e_tot']
 
+def get_nbond(atom):
+    symbols = [a[0] for a in atom]
+    positions = [a[1] for a in atom]
+    atoms = Atoms(symbols=symbols, positions=positions)
+    ana = ASEAnalysis(atoms)
+    bonds = ana.unique_bonds[0]
+    nb = 0
+    for b in bonds:
+        nb += len(b)
+    return nb
+
+def get_run_energy_and_nbond(dirname):
+    with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
+        data = json.load(f)
+    nb = get_nbond(data['mol']['atom'])
+    return data['e_tot'], nb
+
 default_return_data = ['e_tot', 'nelectron']
 def get_run_data(dirname, return_data=default_return_data):
     with open(os.path.join(dirname, 'run_info.json'), 'r') as f:
@@ -596,18 +615,29 @@ def read_accdb_structure(struct_id):
 
 from ase import Atoms
 
-def get_accdb_data(formula, FUNCTIONAL, BASIS):
+def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
     pred_energy = 0
+    if per_bond:
+        nbond = 0
     for sname, count in zip(formula['structs'], formula['counts']):
         struct, mol_id, spin, charge = read_accdb_structure(sname)
-        if spin == 0:
-            CALC_TYPE = 'RKS'
-        else:
-            CALC_TYPE = 'UKS'
+        #if spin == 0:
+        #    CALC_TYPE = 'RKS'
+        #else:
+        #    CALC_TYPE = 'UKS'
+        CALC_TYPE = 'UKS'
         dname = get_save_dir(os.environ['MLDFTDB'], CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
-        pred_energy += count * get_run_total_energy(dname)
+        if per_bond:
+            en, nb = get_run_energy_and_nbond(dname)
+            pred_energy += count * en
+            nbond += count * nb
+        else:
+            pred_energy += count * get_run_total_energy(dname)
 
-    return pred_energy, formula['energy']
+    if per_bond:
+        return pred_energy / abs(nbond), formula['energy'] / abs(nbond)
+    else:
+        return pred_energy, formula['energy']
 
 def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
     single = False
@@ -642,17 +672,20 @@ def get_accdb_formulas(dataset_eval_name):
             formulas[line[0]] = {'structs': structs, 'counts': counts, 'energy': energy}
     return formulas
 
-def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS):
+def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
+                          per_bond=False):
     formulas = get_accdb_formulas(dataset_eval_name)    
     result = {}
     errs = []
     for data_point_name, formula in list(formulas.items()):
-        #if not ('HTBH' in data_point_name):
+        #parts = data_point_name.split('_')
+        #if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
         #    continue
-        parts = data_point_name.split('_')
-        if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
+        if data_point_name not in data_names:
+            #print(data_point_name)
             continue
-        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS)
+        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS,
+                                             per_bond=per_bond)
         result[data_point_name] = {
             'pred' : pred_energy,
             'true' : energy
@@ -686,7 +719,7 @@ def get_mol_atoms(mol, functional, basis):
         elems.append((atom_id, count, 'UKS' if spin else 'RKS'))
     return elems
 
-def get_augg2_ae(data_file, functional, basis):
+def get_augg2_ae(data_file, functional, basis, per_bond=False):
     with open(data_file, 'r') as f:
         data = yaml.load(f, Loader=yaml.Loader)
     calc_type = data['calc_type']
@@ -695,7 +728,6 @@ def get_augg2_ae(data_file, functional, basis):
     for mol_id in mol_ids:
         dirname = get_save_dir(SAVE_ROOT, calc_type, basis, mol_id, functional)
         d = get_run_data(dirname, return_data=['mol', 'e_tot'])
-        print(dirname, d['mol'])
         mol = gto.mole.unpack(d['mol'])
         mol.verbose = int(mol.verbose)
         mol.charge = int(mol.charge)
@@ -704,10 +736,14 @@ def get_augg2_ae(data_file, functional, basis):
         mol.build()
         elems = get_mol_atoms(mol, functional, basis)
         ae = d['e_tot']
+        if per_bond:
+            nb = max(get_nbond(d['mol']['atom']), 1)
+        else:
+            nb = 1
         for atom_id, count, atom_calc_type in elems:
             dirname = get_save_dir(SAVE_ROOT, atom_calc_type, basis, atom_id, functional)
             en = get_run_data(dirname, return_data=['e_tot'])['e_tot']
             ae -= en * count
-        aes[mol_id] = ae
+        aes[mol_id] = ae / nb
     return aes
     
