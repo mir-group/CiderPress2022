@@ -43,14 +43,15 @@ def setup_uks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
     uks.xc = xc
     uks.grids.level = grid_level
     uks.grids.build()
-    logging.info('xc: {}, grid level: {}'.format(xc, grid_level))
+    logging.warning('xc: {}, grid level: {}'.format(xc, grid_level))
     if vv10:
-        logging.info('Using VV10 in UKS setup')
+        logging.warning('Using VV10 in UKS setup')
+        uks.nlc = 'VV10'
         if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
-            calc.nlcgrids.prune = dft.gen_grid.sg1_prune
+            uks.nlcgrids.prune = dft.gen_grid.sg1_prune
         else:
-            calc.nlcgrids.prune = None
-        calc.nlcgrids.level = 1
+            uks.nlcgrids.prune = None
+        uks.nlcgrids.level = 1
     return uks
 
 def run_scf(mol, calc_type, functional=None, remove_ld=False, dm0=None):

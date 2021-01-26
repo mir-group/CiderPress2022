@@ -243,6 +243,7 @@ class USCFCalc(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
+        from pyscf.scf.stability import uhf_internal
         atoms = Atoms.fromdict(self['struct'])
         kwargs = {}
         if self.get('spin') is not None:
@@ -251,6 +252,8 @@ class USCFCalc(FiretaskBase):
             kwargs['charge'] = self['charge']
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        mol.verbose = 4
+        mol.build()
         calc_type = 'UKS'
 
         if self.get('stability_functional') is None:
@@ -262,22 +265,22 @@ class USCFCalc(FiretaskBase):
                 ks = scf.UKS(mol)
                 ks.xc = self['stability_functional']
             ks.conv_tol = self.get('stability_conv_tol') or 1e-9
+            ks = scf.addons.remove_linear_dep_(ks)
 
             dm = None
             for i in range(3):
                 ks.kernel(dm)
-                new_mo = uhf_internal(mf, with_symmetry=False)
+                new_mo = uhf_internal(ks, with_symmetry=False)
                 dm = ks.make_rdm1(mo_coeff=new_mo, mo_occ=ks.mo_occ)
-                if new_mo == mf.mo_coeff:
+                if (new_mo == ks.mo_coeff).all():
                     break
             else:
                 raise RuntimeError('Did not find stable initial density matrix')
 
-        
-        settings_fname = self['mlfunc_name'].upper() + '.yaml'
+        settings_fname = self['functional'].upper() + '.yaml'
         settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
                                       settings_fname)
-        fcode = self['functional_type'].upper()[0]
+        fcode = self['functional_code'].upper()[0]
         if fcode == 'A':
             # Conventional
             if os.path.isfile(settings_fname):
@@ -285,7 +288,7 @@ class USCFCalc(FiretaskBase):
                     settings = yaml.load(f, Loader=yaml.Loader)
             else:
                 settings = {}
-            calc = setup_uks_calc(mol, self['mlfunc_name'], **settings)
+            calc = setup_uks_calc(mol, self['functional'], **settings)
         elif fcode == 'B':
             # GP/CIDER
             from mldftdat.dft import numint
@@ -295,7 +298,7 @@ class USCFCalc(FiretaskBase):
                                        'CIDER', settings['mlfunc_file'])
             if settings.get('corr_file') is not None:
                 corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                       'GLH', settings['mlfunc_file'])
+                                       'GLH', settings['mlfunc_c_file'])
                 corr_model = joblib.load(corr_file)
                 settings.update({'corr_model': corr_model})
             mlfunc = joblib.load(mlfunc_file)
@@ -311,6 +314,8 @@ class USCFCalc(FiretaskBase):
             calc = glh_corr.setup_uks_calc(mol, mlfunc, **settings)
         else:
             raise ValueError('Invalid value of functional_type')
+
+        calc = scf.addons.remove_linear_dep_(calc)
 
         start_time = time.monotonic()
         calc.kernel(dm)
@@ -341,7 +346,7 @@ class USCFCalc(FiretaskBase):
             'struct'    : atoms,
             'wall_time' : stop_time - start_time
         }
-        update_spec['functional'] = get_functional_db_name(self['mlfunc_name'])
+        update_spec['functional'] = get_functional_db_name(self['functional'])
 
         return FWAction(update_spec = update_spec)
 
