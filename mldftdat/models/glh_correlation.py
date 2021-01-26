@@ -565,6 +565,121 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     return coef_sets, scores
 
 
+def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
+                            use_vv10=False, regression_method='weighted_llsr'):
+    """
+    regression_method options:
+        weighted_lrr: weighted linear ridge regression
+        weighted_lasso: weighted lasso regression
+    """
+    import yaml
+    from collections import Counter
+    from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
+    from sklearn.metrics import r2_score
+    from pyscf import gto
+
+    with open(TRAIN_FILE, 'r') as f:
+        d = yaml.load(f, Loader=yaml.Loader)
+        weights = np.array(d['WEIGHTS'])
+        bond_counts = np.array(d['BOND_COUNTS'])
+    # TODO get formulas as (entry_num count)
+    # TODO get ref_etot
+
+    etot = np.load(os.path.join(AE_DIR, 'etot.npy'))
+    feat = np.load(os.path.join(AE_DIR, DESC_NAME))
+    if use_vv10:
+        vv10 = np.load(os.path.join(AE_DIR, 'vv10.npy'))
+    with open(os.path.join(AE_DIR, 'mols.yaml'), 'r') as f:
+        mols = yaml.load(f, Loader=yaml.Loader)['mols']
+
+    logging.debug("SHAPES {} {} {} {}".format(mlx.shape, etot.shape))
+
+    mols = [gto.mole.unpack(mol) for mol in mols]
+    for mol in mols:
+        mol.build()
+
+    N = etot.shape[0]
+    if use_vv10:
+        num_vv10 = vv10.shape[-1]
+    else:
+        num_vv10 = 1
+
+    np.random.seed(42)
+    lst = np.arange(len(formulas))
+    np.random.shuffle(lst)
+
+    for i in range(num_vv10):
+
+        if use_vv10:
+            E_vv10 = vv10[:,i]
+        E_dft = etot
+        E_x = mlx[:,0]
+        E_xcbas = mlx[:,1]
+        E_cbas = mlx[:,-2]
+        E_c = mlx[:,2:-2]
+        E_bas = E_dft - E_xcbas + E_x + E_cbas
+        if use_vv10:
+            diff -= E_vv10
+        stds = np.std(E_c, axis=0)
+
+        if type(noise) is not float:
+            noise = noise[:E_c.shape[1]]
+
+        X = np.zeros((len(formulas), E_c.shape[1]))
+        y = diff.copy()
+        for i in range(len(formulas)):
+            for count, entry_num in formulas[i]:
+                X[i,:] += count * E_c[entry_num,:]
+                y[i] -= count * E_bas[entry_num]
+
+        Xtr = X[lst[NVAL:]]
+        ytr = y[lst[NVAL:]]
+        wtr = weights[lst[NVAL:]]
+
+        Xts = X[lst[:NVAL]]
+        yts = y[lst[:NVAL]]
+
+        if regression_method == 'weighted_lrr':
+            if type(noise) == float:
+                noise = np.ones(Xtr.shape[1]) * noise
+            A = np.linalg.inv(np.dot(Xtr.T * wtr, Xtr) + np.diag(noise))
+            B = np.dot(Xtr.T, wtr * ytr)
+            coef = np.dot(A, B)
+        elif regression_method == 'weighted_lasso':
+            from sklearn.linear_model import Lasso
+            model = Lasso(alpha=noise, fit_intercept=False)
+            model.fit(Xtr * wtr[:,np.newaxis], ytr * wtr)
+            coef = model.coef_
+        else:
+            raise ValueError('Model choice not recognized')
+
+        score = r2_score(yts, np.dot(Xts, coef))
+        score0 = r2_score(yts, np.dot(Xts, 0 * coef))
+        logging.info("{} {}".format(Xts.shape, yts.shape))
+        logging.info("{} {}".format(score, score0))
+        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)),
+                     np.mean((Ecc-Edf)), np.std(Ecc-Edf))
+        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
+                     np.mean((Ecc-Edf)[valset_bools]),
+                     np.std((Ecc-Edf)[valset_bools]))
+        print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))),
+                     np.mean(y - np.dot(X, coef)),
+                     np.std(y - np.dot(X,coef)))
+        print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))),
+                     np.mean(yts - np.dot(Xts, coef)),
+                     np.std(yts-np.dot(Xts,coef)))
+        print(np.max(np.abs(y - np.dot(X, coef))),
+                     np.max(np.abs(Ecc - Edf)))
+        print(np.max(np.abs(yts - np.dot(Xts, coef))),
+                     np.max(np.abs(Ecc - Edf)[valset_bools]))
+        print(coef)
+
+        coef_sets.append(coef)
+        scores.append(score)
+
+    return coef_sets, scores
+
+
 def store_mols_in_order(FNAME, ROOT, MOL_IDS, IS_RESTRICTED_LIST,
                         VAL_SET=None, mol_id_full=False,
                         functional=DEFAULT_FUNCTIONAL,
