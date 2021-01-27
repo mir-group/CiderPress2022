@@ -1,6 +1,6 @@
 from fireworks import LaunchPad, Firework
 from mldftdat.pyscf_tasks import SCFCalcConvergenceFixer, SCFCalc
-from setup_fireworks import make_dft_from_hf_firework
+from mldftdat.fw_setup import make_dft_from_hf_firework
 
 lpad = LaunchPad.auto_load()
 
