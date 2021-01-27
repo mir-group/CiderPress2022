@@ -639,6 +639,14 @@ def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
     else:
         return pred_energy, formula['energy']
 
+def get_accdb_mol_ids(formula):
+    pred_energy = 0
+    mol_ids = []
+    for sname, count in zip(formula['structs'], formula['counts']):
+        struct, mol_id, spin, charge = read_accdb_structure(sname)
+        mol_ids.append(mol_id)        
+    return mol_ids
+
 def get_accdb_data_point(data_point_names, FUNCTIONAL, BASIS):
     single = False
     if not isinstance(data_point_names, list):
@@ -674,7 +682,7 @@ def get_accdb_formulas(dataset_eval_name):
 
 def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
                           per_bond=False):
-    formulas = get_accdb_formulas(dataset_eval_name)    
+    formulas = get_accdb_formulas(dataset_eval_name)
     result = {}
     errs = []
     for data_point_name, formula in list(formulas.items()):
@@ -700,6 +708,18 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
     std = np.std(errs)
     return me, mae, rmse, std, result
 
+def get_accdb_mol_set(dataset_eval_name, data_names):
+    formulas = get_accdb_formulas(dataset_eval_name)    
+    result = {}
+    errs = []
+    all_mols = set([])
+    for data_point_name, formula in list(formulas.items()):
+        if data_point_name not in data_names:
+            continue
+        mol_ids = get_accdb_mol_ids(formula)
+        for mol_id in mol_ids:
+            all_mols.add(mol_id)
+    return all_mols
 
 def load_run_info(mol_id, calc_type, functional, basis):
     d = get_save_dir(SAVE_ROOT, calc_type, basis, mol_id, functional)
