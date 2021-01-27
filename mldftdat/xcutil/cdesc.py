@@ -632,6 +632,10 @@ def get_rmn15_desc2(n, zeta, x2, chi, version):
     return np.concatenate([m1 * wterms, m2 * wterms,
                            m3 * wterms], axis=0)
 
+def get_chidesc_small(chi):
+    return np.array([chi**2-chi, chi**3-chi, chi**4-chi**2]),\
+           np.array([2*chi-1, 3*chi**2-1, 4*chi**3-2*chi])
+
 def get_amix_schmidt(n, zeta, x2, chi):
     """
     Mixing parameter defined by Schmidt and Kummel 2014
