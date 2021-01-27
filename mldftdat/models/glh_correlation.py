@@ -269,6 +269,26 @@ def store_total_energies_dataset(FNAME, MOL_FNAME,
 
     np.save(FNAME, y)
 
+def store_dft_energies_dataset_accdb(FNAME, MOL_FNAME,
+                                     functional=DEFAULT_FUNCTIONAL,
+                                     basis=DEFAULT_BASIS):
+
+    # DFT, CCSD
+    y = np.zeros([0, 2])
+
+    with open(os.path.join(MOL_FNAME), 'r') as f:
+        data = yaml.load(f, Loader = yaml.Loader)
+        dft_dirs = data['dft_dirs']
+        is_restricted_list = data['is_restricted_list']
+
+    for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
+        logging.info('Storing total energies from {}'.format(dft_dir))
+
+        dft_ccsd = get_etot_contribs(dft_dir, ccsd_dir, is_restricted)
+
+        y = np.vstack([y, dft_ccsd])
+
+    np.save(FNAME, y)
 
 def get_vv10_contribs(dft_dir, restricted, NLC_COEFS):
 
