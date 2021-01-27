@@ -578,25 +578,32 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     from sklearn.metrics import r2_score
     from pyscf import gto
 
+    with open(MOL_FILE, 'r') as f:
+        d = yaml.load(f, Loader=yaml.Loader)
+        bond_counts = np.array(d['BOND_COUNTS'])
+        mols = np.array(d['MOL_IDS'])
     with open(TRAIN_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)
-        weights = np.array(d['WEIGHTS'])
-        bond_counts = np.array(d['BOND_COUNTS'])
+        weights = np.array(d['weights'])
+        names = np.array(d['set'])
+
+    mol_to_ind = {}
+    for i in range(len(mols)):
+        mol_to_ind[mols[i]] = i
+
+    all_formulas = get_accdb_formulas(DATASET_EVAL_NAME)
+    formulas = []
+    for name in dataset_names:
+        formulas.append(all_formulas[name])
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
     etot = np.load(os.path.join(AE_DIR, 'etot.npy'))
-    feat = np.load(os.path.join(AE_DIR, DESC_NAME))
+    mlx = np.load(os.path.join(AE_DIR, DESC_NAME))
     if use_vv10:
         vv10 = np.load(os.path.join(AE_DIR, 'vv10.npy'))
-    with open(os.path.join(AE_DIR, 'mols.yaml'), 'r') as f:
-        mols = yaml.load(f, Loader=yaml.Loader)['mols']
 
     logging.debug("SHAPES {} {} {} {}".format(mlx.shape, etot.shape))
-
-    mols = [gto.mole.unpack(mol) for mol in mols]
-    for mol in mols:
-        mol.build()
 
     N = etot.shape[0]
     if use_vv10:
@@ -626,9 +633,13 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             noise = noise[:E_c.shape[1]]
 
         X = np.zeros((len(formulas), E_c.shape[1]))
-        y = diff.copy()
+        y = np.zeros(len(formulas))
         for i in range(len(formulas)):
-            for count, entry_num in formulas[i]:
+            counts = formulas[i]['counts']
+            structs = formulas[i]['structs']
+            entries = [mol_to_ind[s] for s in structs]
+            y[i] = formulas[i]['energy']
+            for count, entry_num in zip(counts, entries):
                 X[i,:] += count * E_c[entry_num,:]
                 y[i] -= count * E_bas[entry_num]
 
