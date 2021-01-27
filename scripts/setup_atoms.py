@@ -1,4 +1,4 @@
-from setup_fireworks import make_hf_firework, make_dft_firework, make_ccsd_firework, LaunchPad
+from mldftdat.fw_setup import make_hf_firework, make_dft_firework, make_ccsd_firework, LaunchPad
 from ase import Atoms
 import ase.io
 

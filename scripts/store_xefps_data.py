@@ -1,6 +1,6 @@
 #from mldftdat.gp import DFTGP
 from mldftdat.workflow_utils import get_save_dir
-from setup_fireworks import SAVE_ROOT
+from mldftdat.fw_setup import SAVE_ROOT
 import os
 from joblib import load
 from mldftdat.dft.numint3 import NLNumInt

@@ -100,21 +100,20 @@ class VSXCContribs():
         tot = 0
 
         gammax = 0.004
-        achi, dachi = get_chi_desc_small(chi[0])
+        achi, dachi = get_chidesc_small(chi[0])
         A = 17.0 / 3
         slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.c[:3], achi)
         dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.c[:3], dachi)
-        slu, dsludx2, dsludchi = [c[5:13].dot(term) for term in \
+        slu, dsludx2, dsludchi = [self.c[5:13].dot(term) for term in \
                                   get_sl_small(x2u[0], chiu[0], gammax)]
-        sld, dslddx2, dslddchi = [c[5:13].dot(term) for term in \
+        sld, dslddx2, dslddchi = [self.c[5:13].dot(term) for term in \
                                   get_sl_small(x2d[0], chid[0], gammax)]
-        nlu, dnludf, dnludchi = [c[13:].dot(term) for term in \
+        nlu, dnludf, dnludchi = [self.c[13:].dot(term) for term in \
                                  get_xefa_small(fu, chiu[0])]
-        nld, dnlddf, dnlddchi = [c[13:].dot(term) for term in \
+        nld, dnlddf, dnlddchi = [self.c[13:].dot(term) for term in \
                                  get_xefa_small(fd, chid[0])]
 
         tot += c1 * slc + c0 * (1 - slc)
-        tot += c0 * slc0
         tot += self.c[3] * c1 * amix * (ft-1)
         tot += self.c[4] * c0 * amix * (ft-1)
         tot += ldaxm[0] * slu

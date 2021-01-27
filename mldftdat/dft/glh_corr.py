@@ -414,7 +414,9 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
             gbn = None
         else:
             tnuc = tnuc[0] - time.clock(), tnuc[1] - time.time()
-            jpart, gv = batch_jk(mol, coords, rhog, fg)
+            if with_j:
+                rhog = rhog.copy()
+            jpart, gv = batch_jk(mol, coords, rhog, fg.copy())
             tnuc = tnuc[0] + time.clock(), tnuc[1] + time.time()
 
         if with_j:
@@ -502,7 +504,6 @@ class SGXCorr(SGX):
 class HFCNumInt(pyscf_numint.NumInt):
 
     def __init__(self, corr_model, vv10_coeff=None):
-        print ("FTERM SCALE", fterm_scale)
         super(HFCNumInt, self).__init__()
         self.corr_model = corr_model
 
@@ -532,31 +533,23 @@ class HFCNumInt(pyscf_numint.NumInt):
                 verbose=None):
         if deriv > 1:
             raise NotImplementedError('Only 1st derivative supported')
-        N = rho_data[0].shape[-1]
+        N = rho[0].shape[-1]
         e = np.zeros(N)
-        vtot = [np.zeros((N,2)), np.zeros((N,3)), None,
-                np.zeros((N,2))]
+        vxc = [np.zeros((N,2)), np.zeros((N,3)), None,
+               np.zeros((N,2))]
         return e, vxc, None, None
 
 
 def setup_rks_calc(mol, corr_model, vv10_coeff=None):
     rks = dft.RKS(mol)
     rks.xc = 'SCAN'
-    rks._numint = HFCNumInt(css, cos, cx, cm, ca,
-                           dss, dos, dx, dm, da,
-                           vv10_coeff=vv10_coeff,
-                           fterm_scale=fterm_scale)
+    rks._numint = HFCNumInt(corr_model, vv10_coeff=vv10_coeff)
     rks = sgx_fit_corr(rks)
-    rks.with_df.debug = False
     return rks
 
 def setup_uks_calc(mol, corr_model, vv10_coeff=None):
     uks = dft.UKS(mol)
     uks.xc = 'SCAN'
-    uks._numint = HFCNumInt(css, cos, cx, cm, ca,
-                           dss, dos, dx, dm, da,
-                           vv10_coeff=vv10_coeff,
-                           fterm_scale=fterm_scale)
+    uks._numint = HFCNumInt(corr_model, vv10_coeff=vv10_coeff)
     uks = sgx_fit_corr(uks)
-    uks.with_df.debug = True
     return uks
