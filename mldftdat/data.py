@@ -619,6 +619,7 @@ def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
     pred_energy = 0
     if per_bond:
         nbond = 0
+        #nbond = None
     for sname, count in zip(formula['structs'], formula['counts']):
         struct, mol_id, spin, charge = read_accdb_structure(sname)
         #if spin == 0:
@@ -631,11 +632,13 @@ def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
             en, nb = get_run_energy_and_nbond(dname)
             pred_energy += count * en
             nbond += count * nb
+            #if nbond is None:
+            #    nbond = nb
         else:
             pred_energy += count * get_run_total_energy(dname)
 
     if per_bond:
-        return pred_energy / abs(nbond), formula['energy'] / abs(nbond)
+        return pred_energy, formula['energy'], abs(nbond)
     else:
         return pred_energy, formula['energy']
 
@@ -681,10 +684,11 @@ def get_accdb_formulas(dataset_eval_name):
     return formulas
 
 def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
-                          per_bond=False):
+                          per_bond=False, comp_functional=None):
     formulas = get_accdb_formulas(dataset_eval_name)
     result = {}
     errs = []
+    nbonds = 0
     for data_point_name, formula in list(formulas.items()):
         #parts = data_point_name.split('_')
         #if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
@@ -692,12 +696,18 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
         if data_point_name not in data_names:
             #print(data_point_name)
             continue
-        pred_energy, energy = get_accdb_data(formula, FUNCTIONAL, BASIS,
-                                             per_bond=per_bond)
+        pred_energy, energy, nbond = get_accdb_data(formula, FUNCTIONAL, BASIS,
+                                                    per_bond=True)
+        nbonds += nbond
         result[data_point_name] = {
             'pred' : pred_energy,
             'true' : energy
         }
+        if comp_functional is not None:
+            pred_ref, _ = get_accdb_data(formula, comp_functional, BASIS,
+                                         per_bond=per_bond)
+            energy = pred_ref
+            result[data_point_name]['true'] = pred_ref
         print(pred_energy-energy)
         errs.append(pred_energy-energy)
     errs = np.array(errs)
@@ -706,7 +716,10 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
     mae = np.mean(np.abs(errs))
     rmse = np.sqrt(np.mean(errs**2))
     std = np.std(errs)
-    return me, mae, rmse, std, result
+    if per_bond:
+        return np.sum(errs) / nbonds, np.sum(np.abs(errs)) / nbonds
+    else:
+        return me, mae, rmse, std, result
 
 def get_accdb_mol_set(dataset_eval_name, data_names):
     formulas = get_accdb_formulas(dataset_eval_name)    
