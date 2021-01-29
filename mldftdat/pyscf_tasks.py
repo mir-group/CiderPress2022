@@ -389,8 +389,8 @@ class USCFCalcTricky(FiretaskBase):
                 ks = scf.UKS(mol)
                 ks.xc = self['stability_functional']
             ks.conv_tol = self.get('stability_conv_tol') or 1e-7
-            calc.damp = 4
-            calc.diis_start_cycle = 20
+            ks.damp = 4
+            ks.diis_start_cycle = 20
             ks = scf.addons.remove_linear_dep_(ks,
                 lindep=lindep, cholesky_threshold=cholesky_threshold)
 
