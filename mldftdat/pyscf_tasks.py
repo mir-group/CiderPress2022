@@ -503,7 +503,10 @@ class USCFCalcTricky2(FiretaskBase):
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, 'def2-tzvp', **kwargs)
         mol.verbose = 4
+        new_mol = mol.copy()
+        new_mol.basis = self['basis']
         mol.build()
+        new_mol.build()
         calc_type = 'UKS'
 
         lindep = 1e-9
@@ -519,12 +522,14 @@ class USCFCalcTricky2(FiretaskBase):
                 ks.xc = self['stability_functional']
             ks.conv_tol = self.get('stability_conv_tol') or 1e-7
             ks.damp = 4
-            ks.diis_start_cycle = 20
+            ks.level_shift = 0.4
+            ks.diis_start_cycle = 50
+            ks.max_cycle = 200
             ks = scf.addons.remove_linear_dep_(ks,
                 lindep=lindep, cholesky_threshold=cholesky_threshold)
 
             dm = None
-            for i in range(3):
+            for i in range(5):
                 ks.kernel(dm)
                 new_mo = uhf_internal(ks, with_symmetry=False)
                 dm = ks.make_rdm1(mo_coeff=new_mo, mo_occ=ks.mo_occ)
@@ -533,16 +538,15 @@ class USCFCalcTricky2(FiretaskBase):
             else:
                 raise RuntimeError('Did not find stable initial density matrix')
 
+        print('SETTING UP MOL')
         init_mol = mol
-        mol = init_mol.copy()
-        mol.basis = self['basis']
-        mol.build()
+        mol = new_mol
         s = mol.get_ovlp()
         mo = ks.mo_coeff
         mo_occ = ks.mo_occ
         def fproj(mo):
-            mo = addons.project_mo_nr2nr(init_mol, mo, mol)
-            norm = numpy.einsum('pi,pi->i', mo.conj(), s.dot(mo))
+            mo = scf.addons.project_mo_nr2nr(init_mol, mo, mol)
+            norm = np.einsum('pi,pi->i', mo.conj(), s.dot(mo))
             mo /= np.sqrt(norm)
             return mo
 
@@ -584,12 +588,14 @@ class USCFCalcTricky2(FiretaskBase):
         else:
             raise ValueError('Invalid value of functional_type')
 
+        print('SETTING UP UKS')
         calc.conv_tol = 1e-8
         calc = scf.addons.remove_linear_dep_(calc,
                 lindep=lindep, cholesky_threshold=cholesky_threshold)
 
-        dm = calc.make_rdm1([fproj(mo[0]), fproj(mo[1])], mo_occ)
+        dm = calc.make_rdm1(mo_coeff=[fproj(mo[0]), fproj(mo[1])], mo_occ=mo_occ)
 
+        print(dm.shape, type(calc))
         start_time = time.monotonic()
         calc.kernel(dm)
         stop_time = time.monotonic()
