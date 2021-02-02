@@ -252,6 +252,7 @@ class USCFCalc(FiretaskBase):
             kwargs['charge'] = self['charge']
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        mol.ecp = self['basis']
         mol.verbose = 4
         mol.build()
         calc_type = 'UKS'
@@ -373,6 +374,7 @@ class USCFCalcTricky(FiretaskBase):
             kwargs['charge'] = self['charge']
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        mol.ecp = self['basis']
         mol.verbose = 4
         mol.build()
         calc_type = 'UKS'
@@ -502,6 +504,7 @@ class USCFCalcTricky2(FiretaskBase):
             kwargs['charge'] = self['charge']
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         mol = mol_from_ase(atoms, 'def2-tzvp', **kwargs)
+        mol.ecp = self['basis']
         mol.verbose = 4
         new_mol = mol.copy()
         new_mol.basis = self['basis']
@@ -1211,8 +1214,9 @@ class GridBenchmark(FiretaskBase):
                     else:
                         calc.nlcgrids.prune = None
                     calc.nlcgrids.level = 1
+            calc.grids.atom_grid = {}
             for site in mol._atom:
-                calc.grids.atom_grid = {site[0]: grid}
+                calc.grids.atom_grid[site[0]] = grid
             calc.grids.prune = gen_grid.nwchem_prune if self['prune'] else None
             calc.grids.radi_method = radi_method
             calc.DIIS = scf.diis.ADIIS
