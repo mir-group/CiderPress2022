@@ -234,6 +234,103 @@ class MLSCFCalc(FiretaskBase):
 
 
 @explicit_serialize
+class RSCFCalc(FiretaskBase):
+
+    required_params = ['struct', 'basis', 'functional', 'functional_code']
+    optional_params = ['charge', 'max_conv_tol', 'stability_functional',
+                       'stability_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-6
+
+    def run_task(self, fw_spec):
+        from pyscf.scf.stability import uhf_internal
+        atoms = Atoms.fromdict(self['struct'])
+        kwargs = {}
+        kwargs['spin'] = 0
+        if self.get('charge') is not None:
+            kwargs['charge'] = self['charge']
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
+        mol = mol_from_ase(atoms, self['basis'], **kwargs)
+        mol.ecp = self['basis']
+        mol.verbose = 4
+        mol.build()
+        calc_type = 'RKS'
+
+        settings_fname = self['functional'].upper() + '.yaml'
+        settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                      settings_fname)
+        fcode = self['functional_code'].upper()[0]
+        if fcode == 'A':
+            # Conventional
+            if os.path.isfile(settings_fname):
+                with open(settings_fname, 'r') as f:
+                    settings = yaml.load(f, Loader=yaml.Loader)
+            else:
+                settings = {}
+            calc = setup_rks_calc(mol, self['functional'], **settings)
+        elif fcode == 'B':
+            # GP/CIDER
+            from mldftdat.dft import numint
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'CIDER', settings['mlfunc_file'])
+            if settings.get('corr_file') is not None:
+                corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['mlfunc_c_file'])
+                corr_model = joblib.load(corr_file)
+                settings.update({'corr_model': corr_model})
+            mlfunc = joblib.load(mlfunc_file)
+            calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+        elif fcode == 'C':
+            # Hyper-GGA
+            from mldftdat.dft import glh_corr
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['mlfunc_file'])
+            mlfunc = joblib.load(mlfunc_file)
+            calc = glh_corr.setup_rks_calc(mol, mlfunc, **settings)
+        else:
+            raise ValueError('Invalid value of functional_type')
+
+        calc = scf.addons.remove_linear_dep_(calc)
+
+        start_time = time.monotonic()
+        calc.kernel()
+        stop_time = time.monotonic()
+
+        calc.damp = 4
+        calc.diis_start_cycle = 20
+        calc.max_cycle = 200
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            start_time = time.monotonic()
+            calc.kernel()
+            stop_time = time.monotonic()
+            calc.conv_tol *= 10
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['functional'])
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
 class USCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'functional', 'functional_code']
@@ -1133,8 +1230,9 @@ class GridBenchmark(FiretaskBase):
         normalize (str): Whether to use the overlap matrix normalization scheme.
     """
 
-    required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune']
-    optional_params = ['mlfunc_file', 'mlfunc_settings_file', 'normalize']
+    required_params = ['functional', 'radi_method', 'rad', 'ang', 'prune',
+                       'functional_code']
+    optional_params = ['normalize']
 
     DEFAULT_MAX_CONV_TOL = 1e-9
 
@@ -1185,35 +1283,56 @@ class GridBenchmark(FiretaskBase):
         # perform DFT calculations
         results = {}
         for name, mol in list(mols.items()) + list(dimers.items()):
+            mol.verbose = 4
             mol.build()
-            if self.get('mlfunc_file') is not None:
-                with open(self['mlfunc_settings_file'], 'r') as f:
-                    settings = yaml.load(f, Loader = yaml.Loader)
-                    if settings is None:
-                        settings = {}
-                from mldftdat.dft import numint6 as numint
-                mlfunc = joblib.load(self['mlfunc_file'])
-                if mol.spin == 0:
-                    calc = numint.setup_rks_calc3(mol, mlfunc, **settings)
+
+            settings_fname = self['functional'].upper() + '.yaml'
+            settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                          settings_fname)
+            fcode = self['functional_code'].upper()[0]
+            if fcode == 'A':
+                # Conventional
+                if os.path.isfile(settings_fname):
+                    with open(settings_fname, 'r') as f:
+                        settings = yaml.load(f, Loader=yaml.Loader)
                 else:
-                    calc = numint.setup_uks_calc3(mol, mlfunc, **settings)
+                    settings = {}
+                if mol.spin == 0:
+                    calc = setup_rks_calc(mol, self['functional'], **settings)
+                else:
+                    calc = setup_uks_calc(mol, self['functional'], **settings)
+            elif fcode == 'B':
+                # GP/CIDER
+                from mldftdat.dft import numint
+                with open(settings_fname, 'r') as f:
+                    settings = yaml.load(f, Loader=yaml.Loader)
+                mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                           'CIDER', settings['mlfunc_file'])
+                if settings.get('corr_file') is not None:
+                    corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                           'GLH', settings['mlfunc_c_file'])
+                    corr_model = joblib.load(corr_file)
+                    settings.update({'corr_model': corr_model})
+                mlfunc = joblib.load(mlfunc_file)
+                if mol.spin == 0:
+                    calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+                else:
+                    calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+            elif fcode == 'C':
+                # Hyper-GGA
+                from mldftdat.dft import glh_corr
+                with open(settings_fname, 'r') as f:
+                    settings = yaml.load(f, Loader=yaml.Loader)
+                mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                           'GLH', settings['mlfunc_file'])
+                mlfunc = joblib.load(mlfunc_file)
+                if mol.spin == 0:
+                    calc = glh_corr.setup_rks_calc(mol, mlfunc, **settings)
+                else:
+                    calc = glh_corr.setup_uks_calc(mol, mlfunc, **settings)
             else:
-                if mol.spin == 0:
-                    calc = dft.RKS(mol)
-                    calc.xc = self['functional']
-                else:
-                    calc = dft.UKS(mol)
-                    calc.xc = self['functional']
-                if self['functional'] == 'wB97M_V':
-                    print ('Specialized wB97M-V params')
-                    calc.nlc = 'VV10'
-                    calc.grids.prune = None
-                    calc.grids.level = 4
-                    if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
-                        calc.nlcgrids.prune = dft.gen_grid.sg1_prune
-                    else:
-                        calc.nlcgrids.prune = None
-                    calc.nlcgrids.level = 1
+                raise ValueError('Invalid value of functional_type')
+
             calc.grids.atom_grid = {}
             for site in mol._atom:
                 calc.grids.atom_grid[site[0]] = grid

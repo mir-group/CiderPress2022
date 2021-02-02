@@ -38,6 +38,22 @@ def mol_from_ase(atoms, basis, spin=0, charge=0):
     mol.build()
     return mol
 
+def setup_rks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
+    rks = dft.RKS(mol)
+    rks.xc = xc
+    rks.grids.level = grid_level
+    rks.grids.build()
+    logging.warning('xc: {}, grid level: {}'.format(xc, grid_level))
+    if vv10:
+        logging.warning('Using VV10 in UKS setup')
+        rks.nlc = 'VV10'
+        if np.array([gto.charge(mol.atom_symbol(i)) <= 18 for i in range(mol.natm)]).all():
+            rks.nlcgrids.prune = dft.gen_grid.sg1_prune
+        else:
+            rks.nlcgrids.prune = None
+        rks.nlcgrids.level = 1
+    return rks
+
 def setup_uks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
     uks = dft.UKS(mol)
     uks.xc = xc
