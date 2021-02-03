@@ -1276,8 +1276,8 @@ class GridBenchmark(FiretaskBase):
 
         from pyscf.dft import gen_grid, radi
         grid = (self['rad'], self['ang'])
-        RADI_METHODS = [radi.treutler, radi.gauss_chebyshev, radi.double_exponential,\
-                        radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_jacobi]
+        RADI_METHODS = [radi.treutler, radi.gauss_chebyshev]#, radi.double_exponential,\
+                        #radi.clenshaw_curtis, radi.gauss_lobatto, radi.gauss_jacobi]
         radi_method = RADI_METHODS[self['radi_method']]
 
         # perform DFT calculations
@@ -1364,7 +1364,7 @@ class GridBenchmark(FiretaskBase):
         if self.get('normalize'):
             fname = fname[:-5] + '_norm.yaml'
 
-        bench_dir = os.path.join(os.environ['MLDFTDB'], 'BENCHMARK')
+        bench_dir = os.path.join(os.environ['MLDFTDB'], 'BENCH')
         os.makedirs(bench_dir, exist_ok=True)
         save_file = os.path.join(bench_dir, fname)
         with open(save_file, 'w') as f:
