@@ -540,14 +540,14 @@ class HFCNumInt(pyscf_numint.NumInt):
         return e, vxc, None, None
 
 
-def setup_rks_calc(mol, corr_model, vv10_coeff=None):
+def setup_rks_calc(mol, corr_model, vv10_coeff=None, **kwargs):
     rks = dft.RKS(mol)
     rks.xc = 'SCAN'
     rks._numint = HFCNumInt(corr_model, vv10_coeff=vv10_coeff)
     rks = sgx_fit_corr(rks)
     return rks
 
-def setup_uks_calc(mol, corr_model, vv10_coeff=None):
+def setup_uks_calc(mol, corr_model, vv10_coeff=None, **kwargs):
     uks = dft.UKS(mol)
     uks.xc = 'SCAN'
     uks._numint = HFCNumInt(corr_model, vv10_coeff=vv10_coeff)
