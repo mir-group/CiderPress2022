@@ -95,7 +95,9 @@ class VSXCContribs():
                np.zeros((N,2))]
         # deriv wrt n, zeta, x2, chi, F
         vtmp = [np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N), np.zeros(N)]
+        # deriv wrt x2u, chiu, Fu
         vtmpu = [np.zeros(N), np.zeros(N), np.zeros(N)]
+        # deriv wrt x2d, chid, Fd
         vtmpd = [np.zeros(N), np.zeros(N), np.zeros(N)]
         tot = 0
 
@@ -127,17 +129,17 @@ class VSXCContribs():
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) \
             + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1)
-        cond = nt>1e-4
+        cond = nt>1e-6
         vtmp[0][cond] += (tmp * vmixn)[cond]
         vtmp[1][cond] += (tmp * vmixz)[cond]
         vtmp[2][cond] += (tmp * vmixx2)[cond]
         vtmp[3][cond] += (tmp * vmixchi)[cond]
         # exchange-like enhancment derivs
-        tmp = ldaxu * amix
+        tmp = ldaxm[0]
         vtmpu[0] += tmp * dsludx2
         vtmpu[1] += tmp * (dsludchi + dnludchi)
         vtmpu[2] += tmp * dnludf
-        tmp = ldaxd * amix
+        tmp = ldaxm[1]
         vtmpd[0] += tmp * dslddx2
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf

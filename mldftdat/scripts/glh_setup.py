@@ -25,7 +25,10 @@ def store_mols(args):
                         functional=args.functional, basis=args.basis)
 
 def store_etot(args):
-    mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
+    if args.accdb:
+        mol_file = args.mol_file
+    else:
+        mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
     save_file = os.path.join(get_data_dir(args), 'etot.npy')
     if args.accdb:
         store_total_energies_accdb(save_file, mol_file,
@@ -50,7 +53,10 @@ def store_vv10(args):
                                     basis=args.basis)
 
 def store_desc(args):
-    mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
+    if args.accdb:
+        mol_file = args.mol_file
+    else:
+        mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
     save_file = os.path.join(get_data_dir(args), args.desc_name)
     if args.mlfunc is not None:
         mlfunc = load(args.mlfunc)
@@ -107,6 +113,8 @@ if __name__ == '__main__':
                         type=str)
     parser.add_argument('--accdb', action='store_true',
                         help='indicate use of ACCDB data as opposed to atomization energies')
+    parser.add_argument('--mol-file', type=str)
+
 
     mol_parser = subparsers.add_parser('store_mols')
     mol_parser.add_argument('mol_file', type=str,

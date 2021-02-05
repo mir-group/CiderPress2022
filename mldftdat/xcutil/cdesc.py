@@ -131,8 +131,8 @@ def get_phi1(zeta):
     """
     Spin polarization function for alpha=1 limt of SCAN
     """
-    zeta = np.minimum(zeta, 0.9999)
-    zeta = np.maximum(zeta, -0.9999)
+    zeta = np.minimum(zeta, 1-1e-10)
+    zeta = np.maximum(zeta, -1+1e-10)
     phi = ((1 - zeta)**0.6666666666666666 + (1 + zeta)**0.6666666666666666)/2.
     dphi = (-2/(3.*(1 - zeta)**0.3333333333333333) + 2/(3.*(1 + zeta)**0.3333333333333333))/2.
     return phi, dphi
