@@ -693,6 +693,13 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
         #parts = data_point_name.split('_')
         #if not (parts[0] == 'IP23' and int(parts[1]) <= 13):
         #    continue
+        skip = False
+        #for term in formula['structs']:
+        #    if 'Pd' in term:
+        #        skip = True
+        #        break
+        if skip:
+            continue
         if data_point_name not in data_names:
             #print(data_point_name)
             continue

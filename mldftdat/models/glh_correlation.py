@@ -457,6 +457,7 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             get_terms(aetot, amlx)
         if type(noise) is not float:
             noise = noise[:E_c.shape[1]]
+        print('NOISE', noise)
         E_c = np.append(E_c, E_c2, axis=0)
         diff = np.append(diff, diff2)
         E_ccsd = np.append(E_ccsd, E_ccsd2)
@@ -475,8 +476,8 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         weights = []
         for i in range(len(mols)):
             if i in formulas.keys():
-                #weights.append(1.0)
-                weights.append(1.0 / (len(mols[i]._atom) - 1))
+                weights.append(1.0)
+                #weights.append(1.0 / (len(mols[i]._atom) - 1))
                 formula = formulas[i]
                 if formula.get(1) == 2 and formula.get(8) == 1 and len(list(formula.keys()))==2:
                     waterind = i
@@ -499,7 +500,7 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 else:
                     weights.append(1e-8 / mols[i].nelectron if mols[i].nelectron <= 10 else 0)
         for i in range(len(amols)):
-            weights.append(8 / amols[i].nelectron)
+            weights.append(4 / amols[i].nelectron)
             if i in ind_to_Z_ion.keys():
                 j = len(mols) + i
                 k = len(mols) + Z_to_ind_bsl[ind_to_Z_ion[i]]
