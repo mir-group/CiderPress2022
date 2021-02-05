@@ -28,6 +28,7 @@ fd or Fd : spin-beta XEF e_{x,d} nd^{-4/3} / (2^{1/3} C_{LDA})
 
 import jax.numpy as jnp
 from jax import jit, vmap, grad, value_and_grad
+from functools import partial
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / jnp.pi)**(1.0/3)
 alphax = 0.001867
@@ -59,6 +60,7 @@ FZ20            = jnp.array([1.709920934161365617563962776245])
 # SEMILOCAL BASELINES #
 #######################
 
+@jit
 def get_rs(n):
     """
     Wigner-Seitz radius:
@@ -66,6 +68,7 @@ def get_rs(n):
     rs = (4 * jnp.pi * n / 3)**(-1.0/3)
     return rs
 
+@jit
 def get_zeta(nu, nd):
     """
     Spin polarization
@@ -73,6 +76,7 @@ def get_zeta(nu, nd):
     zeta = (-nd + nu)/(nd + nu)
     return zeta
 
+@partial(jit, static_argnums=(1,))
 def get_pw92term(rs, code):
     """
     Helper function for pw92 correlation
@@ -90,23 +94,21 @@ def get_pw92term(rs, code):
         + beta2*rs + beta3*rs**1.5 + beta4*rs**2)))
     return lda
 
-_get_pw92_0 = jit(lambda rs: get_pw92term(rs, 0))
-_get_pw92_1 = jit(lambda rs: get_pw92term(rs, 1))
-_get_pw92_2 = jit(lambda rs: get_pw92term(rs, 2))
-
+@jit
 def get_pw92(rs, zeta):
     """
     PW92 correlation functional
     """
-    ec0 = _get_pw92_0(rs)
-    ec1 = _get_pw92_1(rs)
-    alphac = _get_pw92_2(rs)
+    ec0 = get_pw92term(rs, 0)
+    ec1 = get_pw92term(rs, 1)
+    alphac = get_pw92term(rs, 2)
 
     fzeta = (-2 + (1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/(-2 + 2*2**0.3333333333333333)
     e = ec0 + (-ec0 + ec1)*fzeta*zeta**4 - (alphac*fzeta*(1 - zeta**4))/FZ20
 
     return e
 
+@jit
 def get_phi0(zeta):
     """
     Spin polarization function for alpha=0 limit of SCAN
@@ -114,6 +116,7 @@ def get_phi0(zeta):
     G = (1 - zeta**12)*(1 - 2.363*(-1 + ((1 - zeta)**1.3333333333333333 + (1 + zeta)**1.3333333333333333)/2.))
     return G
 
+@jit
 def get_phi1(zeta):
     """
     Spin polarization function for alpha=1 limt of SCAN
@@ -121,34 +124,32 @@ def get_phi1(zeta):
     zeta = jnp.minimum(zeta, 0.9999)
     zeta = jnp.maximum(zeta, -0.9999)
     phi = ((1 - zeta)**0.6666666666666666 + (1 + zeta)**0.6666666666666666)/2.
-    dphi = (-2/(3.*(1 - zeta)**0.3333333333333333) + 2/(3.*(1 + zeta)**0.3333333333333333))/2.
-    return phi, dphi
+    return phi
 
+@jit
 def get_baseline0inf(zeta, s2):
     """
     Define n_{gamma} = gamma^3 n(gamma r)
     Returns lim_{gamma -> infty} epsilon_{SCAN}(alpha=0)
     """
-    G, dG = get_phi0(zeta)
+    G = get_phi0(zeta)
     elim = b1c*G*jnp.log(1 + (1 - jnp.e)/(jnp.e*(1 + 4*chiinf*s2)**0.25))
-    dedG = b1c*jnp.log(1 + (1 - jnp.e)/(jnp.e*(1 + 4*chiinf*s2)**0.25))
-    deds2 = -((b1c*chiinf*(1 - jnp.e)*G)/(jnp.e*(1 + 4*chiinf*s2)**1.25*(1 + (1 - jnp.e)/(jnp.e*(1 + 4*chiinf*s2)**0.25))))
-    return elim, dedG * dG, deds2
+    return elim
 
+@partial(jit, static_argnums=(2,))
 def get_baseline1inf(zeta, s2, ss=False):
     """
     Define n_{gamma} = gamma^3 n(gamma r)
     Returns lim_{gamma -> infty} epsilon_{SCAN}(alpha=1)
     """
     if ss:
-        phi, dphi = 2**(-1.0/3), 0
+        phi = 2**(-1.0/3), 0
     else:
-        phi, dphi = get_phi1(zeta)
+        phi = get_phi1(zeta)
     elim = gamma*phi**3*jnp.log(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))
-    dedphi = (-2*chi*gamma*s2)/((1 + (4*chi*s2)/phi**2)**1.25*(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))) + 3*gamma*phi**2*jnp.log(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25))
-    deds2 = (chi*gamma*phi)/((1 + (4*chi*s2)/phi**2)**1.25*(1.0000000001 - (1 + (4*chi*s2)/phi**2)**(-0.25)))
-    return elim, dedphi*dphi, deds2
+    return elim
 
+@jit
 def get_baseline_inf(zeta, x2, chi):
     """
     Mixes baseline0inf and baseline1inf using chi in a smooth
@@ -156,26 +157,23 @@ def get_baseline_inf(zeta, x2, chi):
     """
     a = 17. / 3
     D = a * (1 - chi) / (a - chi)
-    dDdchi = (a - a**2) / (a - chi)**2
     s2 = x2 / sprefac**2
-    e0lim, de0dzeta, de0ds2 = get_baseline0inf(zeta, s2)
-    e1lim, de1dzeta, de1ds2 = get_baseline1inf(zeta, s2)
+    e0lim = get_baseline0inf(zeta, s2)
+    e1lim = get_baseline1inf(zeta, s2)
     elim = e1lim * D + e0lim * (1 - D)
-    dedzeta = de1dzeta * D + de0dzeta * (1 - D)
-    deds2 = de1ds2 * D + de0ds2 * (1 - D)
-    dedchi = (e1lim - e0lim) * dDdchi
-    return elim, dedzeta, deds2 / sprefac**2, dedchi
+    return elim
 
+'''
 def get_baseline_inf_z(nu, nd, g2, D):
     """
     Mixes baseline0inf and baseline1inf using tau_w / tau
     in a smooth way
     """
     N = nu.shape[0]
-    s2, ds2n, ds2g2 = get_s2(nu+nd, g2 + 1e-30)
-    zeta, dzetau, dzetad = get_zeta(nu, nd)
-    e0lim, de0dzeta, de0ds2 = baseline0inf(zeta, s2)
-    e1lim, de1dzeta, de1ds2 = baseline1inf(zeta, s2)
+    s2 = get_s2(nu+nd, g2 + 1e-30)
+    zeta = get_zeta(nu, nd)
+    e0lim = baseline0inf(zeta, s2)
+    e1lim = baseline1inf(zeta, s2)
     elim = e1lim * D[0] + e0lim * (1 - D[0])
     dedzeta = de1dzeta * D[0] + de0dzeta * (1 - D[0])
     deds2 = de1ds2 * D[0] + de0ds2 * (1 - D[0])
@@ -191,7 +189,9 @@ def get_baseline_inf_z(nu, nd, g2, D):
     vxc[1][:,1] += 2 * deds2 * ds2g2
     vxc[1][:,2] += deds2 * ds2g2
     return elim, vxc
+'''
 
+@jit
 def get_baseline0(rs, zeta, s2):
     """
     epsilon_{SCAN}(alpha=0)
@@ -201,85 +201,53 @@ def get_baseline0(rs, zeta, s2):
     EC = G*(lda + b1c*jnp.log(1 + (-1 + jnp.exp(-lda/b1c))*(1 - (1 + 4*chiinf*s2)**(-0.25))))
     return EC
 
+@partial(jit, static_argnums=(3,))
 def get_baseline1(lda, rs, zeta, s2, ss=False):
     """
     epsilon_{SCAN}(alpha=1)
     """
-    Pi = jnp.pi
-    Log = jnp.log
-    Exp = jnp.exp
     if ss:
-        phi, dphi = 2**(-1.0/3), 0
+        phi = 2**(-1.0/3), 0
     else:
-        phi, dphi = get_phi1(zeta)
+        phi = get_phi1(zeta)
     beta = (0.066725*(1 + 0.1*rs))/(1 + 0.1778*rs)
-    dbetadrs = (-0.011863705000000002*(1 + 0.1*rs))/(1 + 0.1778*rs)**2 + 0.006672500000000001/(1 + 0.1778*rs)
     w1 = -1. + jnp.exp(-lda/(gamma*phi**3))
-    dw1dlda = -(1/(jnp.exp(lda/(gamma*phi**3))*gamma*phi**3))
-    dw1dphi = (3*lda)/(jnp.exp(lda/(gamma*phi**3))*gamma*phi**4)
-    t2 = (1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs)
-    dt2drs = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs**2)
-    dt2ds2 = (1.5**0.6666666666666666*Pi**1.3333333333333333)/(4.*phi**2*rs)
-    dt2dphi = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(2.*phi**3*rs)
-    e = lda + gamma*phi**3*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
-    dedlda = 1
-    dedt2 = (beta*phi**3)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
-    dedphi = 3*gamma*phi**2*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
-    dedbeta = (phi**3*t2)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
-    dedw1 = (gamma*phi**3*(1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25) - (beta*t2)/(gamma*(1 + (4*beta*t2)/(gamma*w1))**1.25*w1)))/(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+    t2 = (1.5**0.6666666666666666*jnp.pi**1.3333333333333333*s2)/(4.*phi**2*rs)
+    e = lda + gamma*phi**3*jnp.log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
     
-    dedrs = dedbeta * dbetadrs + dedt2 * dt2drs
-    dedlda += dedw1 * dw1dlda
-    dedrs += dedt2 * dt2drs + dedbeta * dbetadrs
-    deds2 = dedt2 * dt2ds2
-    dedphi += dedt2 * dt2dphi + dedw1 * dw1dphi
-    
-    return e, dedlda, dedrs, dedphi * dphi, deds2
+    return e
 
+'''
 def get_ss_baseline(n, g2):
     """
     epsilon_{SCAN}(alpha=1,zeta=1)
     """
     N = n.shape[0]
-    rs, drs = get_rs(n)
-    s2, ds2n, ds2g2 = get_s2(n, g2)
+    rs = get_rs(n)
+    s2 = get_s2(n, g2)
     #lda, dlda = eval_xc(',LDA_C_PW_MOD', (n, 0*n), spin=1)[:2]
-    lda, dlda = get_pw92term(rs, 1)
+    lda = get_pw92term(rs, 1)
     #dlda = (dlda[0][:,0] - lda) / n
-    e, dedlda, dedrs, _, deds2 = get_baseline1(lda, rs, 1, s2, ss=True)
-    vxc = [None, None, None, None]
-    #vxc[0] = dedrs * drs + deds2 * ds2n + dedlda * dlda
-    vxc[0] = (dedrs + dedlda * dlda) * drs + deds2 * ds2n
-    vxc[1] = deds2 * ds2g2 * n
-    vxc[0] = vxc[0] * n + e
-    return e, vxc
+    e = get_baseline1(lda, rs, 1, s2, ss=True)
+    return e
+'''
 
-def get_os_baseline(nu, nd, g2, type = 0):
+@partial(jit, static_argnums=(3,))
+def get_os_baseline(nu, nd, g2, type=0):
     """
     epsilon_{SCAN}(alpha=type)
     type=0 or 1
     """
     N = nu.shape[0]
-    rs, drs = get_rs(nu+nd)
-    zeta, dzetau, dzetad = get_zeta(nu, nd)
-    s2, ds2n, ds2g2 = get_s2(nu+nd, g2)
+    rs = get_rs(nu+nd)
+    zeta = get_zeta(nu, nd)
+    s2 = get_s2(nu+nd, g2)
     if type == 0:
-        e, dedrs, dedzeta, deds2 = get_baseline0(rs, zeta, s2)
+        e = get_baseline0(rs, zeta, s2)
     else:
-        lda, dldadrs, dldadzeta = get_pw92(rs, zeta)
-        e, dedlda, dedrs, dedzeta, deds2 = get_baseline1(lda, rs, zeta, s2)
-        dedrs += dedlda * dldadrs
-        dedzeta += dedzeta * dldadzeta
-    vxc = [jnp.zeros((N,2)), jnp.zeros((N,3)), None, None]
-    vxc[0][:,0] = dedrs * drs + dedzeta * dzetau + deds2 * ds2n
-    vxc[0][:,1] = dedrs * drs + dedzeta * dzetad + deds2 * ds2n
-    vxc[0] *= (nu + nd)[:,jnp.newaxis]
-    vxc[0] += e[:,jnp.newaxis]
-    vxc[1][:,0] = deds2 * ds2g2
-    vxc[1][:,1] = deds2 * 2 * ds2g2
-    vxc[1][:,2] = deds2 * ds2g2
-    vxc[1] *= (nu + nd)[:,jnp.newaxis]
-    return e, vxc
+        lda = get_pw92(rs, zeta)
+        e = get_baseline1(lda, rs, zeta, s2)
+    return e
 
 
 
@@ -288,41 +256,34 @@ def get_os_baseline(nu, nd, g2, type = 0):
 # SCALE-INVARIANT SEMI-LOCAL DESCRIPTORS #
 ##########################################
 
+@jit
 def get_x2(n, g2):
     """
     Takes n and g2 and returns the squared normalized gradient
     without the constant included in s^2
     x^2 = g2 / n^{8/3}
     """
-    return g2/(n**2.6666666666666665+1e-16),\
-           (-8*g2)/(3.*n**3.6666666666666665+1e-16),\
-           1/(n**(2.6666666666666665)+1e-16)
+    return g2/(n**2.6666666666666665+1e-16)
 
+@jit
 def get_s2(n, g2):
     """
     Returns the normalized gradient (see get_x2) with the usual
     normalization constant
     s^2 = g2 / (sprefac^2 * n^{8/3})
     """
-    a, b, c = get_x2(n, g2)
-    return a / sprefac**2 + 1e-10, b / sprefac**2, c / sprefac**2
+    return get_x2(n, g2) / sprefac**2
 
+@jit
 def get_alpha(n, zeta, g2, t):
     """
     The iso-orbital indicator alpha used by SCAN
     """
     d = 0.5 * ((1+zeta)**(5./3) + (1-zeta)**(5./3))
-    dd = (5./6) * ((1+zeta)**(2./3) - (1-zeta)**(2./3))
     alpha = (t - g2/(8*n)) / (CFC*n**(5./3)*d)
-    alphap = jnp.append(alpha[n>1e-8], [0])
-    return alpha,\
-           ((-5 * t + g2 / n) / n) / (3 * CFC * d * n**(5./3)),\
-           -alpha / d * dd,\
-           -1.0 / (8 * CFC * n**(8./3) * d),\
-           1.0 / (CFC * n**(5./3) * d)
-#-(5.0/3) * alpha / n + (g2 / (8*n**2)) / (CFC * n**(5./3) * d),\
-#(-5 * t + g2 / n) / (3 * CFC * d * n**(8./3)),\
+    return alpha
 
+@jit
 def get_chi(alpha):
     """
     Transformation of alpha to [-1,1], similar but not identical
@@ -333,35 +294,21 @@ def get_chi(alpha):
     atomic tail or non-covalent bond -> chi = -1
     """
     chi = (1 - alpha) / (1 + alpha)
-    return chi, -2 / (1 + alpha)**2
+    return chi
 
+@jit
 def get_chi_full_deriv(n, zeta, g2, t):
     """
     Returns chi directly without first calculating alpha,
     for numerical stability.
     """
     d = 0.5 * ((1+zeta)**(5./3) + (1-zeta)**(5./3))
-    dd = (5./6) * ((1+zeta)**(2./3) - (1-zeta)**(2./3))
     tau_u = CFC * d * n**(5./3)
     tau_w = g2/(8*n)
     tau = jnp.maximum(t, tau_w)
     D = (tau_u + tau - tau_w)
     chi = jnp.sin(jnp.pi/2 * (tau_u - tau + tau_w) / D)
-    #chi = (tau_u - tau + tau_w) / D
-    deriv = jnp.pi/2 * jnp.cos(jnp.pi/2 * (tau_u - tau + tau_w) / D)
-    tmp1 = 2 * (tau - tau_w) / D
-    tmp2 = CFC * (5./3) * n**(2./3) * d / D
-    tmp3 = CFC * n**(5./3) * dd / D
-    tmp4 = 2 * tau_u / D
-    tmp5 = -(tau_w / n) / D
-    tmp6 = 1 / (8 * n * D)
-    return chi,\
-           deriv*(tmp1 * tmp2 + tmp4 * tmp5),\
-           deriv*(tmp1 * tmp3),\
-           deriv*(tmp4 * tmp6),\
-           deriv*(-tmp4 / D)
-
-
+    return chi
 
 
 #####################
