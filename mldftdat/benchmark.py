@@ -77,6 +77,34 @@ def analyze_level(functional, ang, prune=True):
             mses.append(mse)
         print(radi_method, mses)
 
+def analyze_level(functional, radi_method, prune=True, num=5):
+    ds = {}
+    lvls = [(35, 86), (50, 194), (75, 302), (99,590), (250,974)][:num]
+    maxr = lvls[-1][0]
+    ds = {}
+    for rad, ang in lvls:
+        ds[rad] = load_data(functional, radi_method, rad, ang, prune)
+    mses = []
+    for rad, ang in lvls[:-1]:
+        mse = 0
+        count = 0
+        atoms = ['H', 'O', 'N', 'S', 'F', 'Ar']
+        aw = 1 / np.array([1, 2, 2, 3, 2, 3])
+        for i, k in enumerate(atoms):
+            mse += (ds[rad][k]['e_tot'] - ds[maxr][k]['e_tot'])**2 * aw[i]
+        mols = ['H2O', 'SF6', 'NO']
+        mw = 1 / np.array([2, 6, 1])
+        for i, k in enumerate(mols):
+            mse += (ds[rad][k]['e_tot'] - ds[maxr][k]['e_tot'])**2 * mw[i]
+            count += 1
+        #mse += (water_ae(ds[rad]) - water_ae(ds[maxr]))**2 / 2
+        #mse += (no_ae(ds[rad]) - no_ae(ds[maxr]))**2
+        #mse += (sf6_ae(ds[rad]) - sf6_ae(ds[maxr]))**2 / 6
+        tw = np.sum(aw) + np.sum(mw)
+        mse = np.sqrt(mse / tw)
+        mses.append(mse)
+    return mses
+
 def analyze_rad(functional, ang, prune=True):
     for radi_method in [0,1,2,3,4]:
         ds = {}
