@@ -7,7 +7,7 @@ from pyscf.dft.numint import NumInt
 from mldftdat.density import get_exchange_descriptors2
 import os
 import numpy as np
-import yaml
+import yaml, json
 import logging
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
@@ -189,7 +189,7 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
                           [Ecbas, dft_analyzer.fx_total]], axis=0)
 
 
-def _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter):
+def _store_corr_helper(FNAME, dft_dirs, is_restricted_list, MLFUNC, desc_getter):
     X = None
 
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
@@ -215,7 +215,7 @@ def store_corr_contribs_dataset(FNAME, MOL_FNAME, MLFUNC=None,
         data = yaml.load(f, Loader = yaml.Loader)
         dft_dirs = data['dft_dirs']
         is_restricted_list = data['is_restricted_list']
-    _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter)
+    _store_corr_helper(FNAME, dft_dirs, is_restricted_list, MLFUNC, desc_getter)
 
 def _load_accdb_info(MOL_FNAME, basis, functional):
     with open(os.path.join(MOL_FNAME), 'r') as f:
@@ -227,14 +227,15 @@ def _load_accdb_info(MOL_FNAME, basis, functional):
         calc_type = 'RKS' if is_restricted else 'UKS'
         dft_dirs.append(get_save_dir(SAVE_ROOT, calc_type, basis,
                                      mol_id, functional))
+    return dft_dirs, is_restricted_list
 
 def store_corr_contribs_accdb(FNAME, MOL_FNAME, MLFUNC=None,
                               desc_getter=default_desc_getter,
                               functional=DEFAULT_FUNCTIONAL,
                               basis=DEFAULT_BASIS):
     
-    _load_accdb_info(MOL_FNAME, basis, functional)
-    _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter)
+    dft_dirs, is_restricted_list = _load_accdb_info(MOL_FNAME, basis, functional)
+    _store_corr_helper(FNAME, dft_dirs, is_restricted_list, MLFUNC, desc_getter)
 
 
 def get_etot_contribs(dft_dir, ccsd_dir, restricted):
@@ -271,17 +272,17 @@ def store_total_energies_dataset(FNAME, MOL_FNAME,
 
     np.save(FNAME, y)
 
-def store_dft_energies_accdb(FNAME, MOL_FNAME,
+def store_total_energies_accdb(FNAME, MOL_FNAME,
                              functional=DEFAULT_FUNCTIONAL,
                              basis=DEFAULT_BASIS):
     # DFT, CCSD
-    y = np.zeros(0)
-    _load_accdb_info(MOL_FNAME, basis, functional)
+    y = np.array([])
+    dft_dirs, is_restricted_list = _load_accdb_info(MOL_FNAME, basis, functional)
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
         logging.info('Storing total energies from {}'.format(dft_dir))
         with open(os.path.join(dft_dir, 'run_info.json'), 'r') as f:
             dft_dat = json.load(f)
-        y = np.vstack([y, dft_dat['e_tot']t])
+        y = np.append(y, [dft_dat['e_tot']])
     np.save(FNAME, y)
 
 
@@ -658,6 +659,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 X[i,:] += count * E_c[entry_num,:]
                 y[i] -= count * E_bas[entry_num]
 
+        NVAL = 25
         Xtr = X[lst[NVAL:]]
         ytr = y[lst[NVAL:]]
         wtr = weights[lst[NVAL:]]
