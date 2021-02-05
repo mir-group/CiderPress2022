@@ -189,18 +189,7 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
                           [Ecbas, dft_analyzer.fx_total]], axis=0)
 
 
-def store_corr_contribs_dataset(FNAME, MOL_FNAME, MLFUNC=None,
-                                desc_getter=default_desc_getter,
-                                functional=DEFAULT_FUNCTIONAL,
-                                basis=DEFAULT_BASIS):
-
-    with open(os.path.join(MOL_FNAME), 'r') as f:
-        data = yaml.load(f, Loader = yaml.Loader)
-        dft_dirs = data['dft_dirs']
-        is_restricted_list = data['is_restricted_list']
-
-    #SIZE = ndesc + 4
-    #X = np.zeros([0,SIZE])
+def _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter):
     X = None
 
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
@@ -217,23 +206,36 @@ def store_corr_contribs_dataset(FNAME, MOL_FNAME, MLFUNC=None,
 
     np.save(FNAME, X)
 
+def store_corr_contribs_dataset(FNAME, MOL_FNAME, MLFUNC=None,
+                                desc_getter=default_desc_getter,
+                                functional=DEFAULT_FUNCTIONAL,
+                                basis=DEFAULT_BASIS):
 
-def get_etot_contribs(dft_dir, ccsd_dir, restricted):
+    with open(os.path.join(MOL_FNAME), 'r') as f:
+        data = yaml.load(f, Loader = yaml.Loader)
+        dft_dirs = data['dft_dirs']
+        is_restricted_list = data['is_restricted_list']
+    _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter)
 
-    if restricted:
-        dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
-        ccsd_analyzer = CCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
-    else:
-        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
-        ccsd_analyzer = UCCSDAnalyzer.load(ccsd_dir + '/data.hdf5')
+def _load_accdb_info(MOL_FNAME, basis, functional):
+    with open(os.path.join(MOL_FNAME), 'r') as f:
+        data = yaml.load(f, Loader=yaml.Loader)
+        mol_ids = data['MOL_IDS']
+        is_restricted_list = data['IS_RESTRICTED_LIST']
+    dft_dirs = []
+    for mol_id, is_restricted in zip(mol_ids, is_restricted_list):
+        calc_type = 'RKS' if is_restricted else 'UKS'
+        dft_dirs.append(get_save_dir(SAVE_ROOT, calc_type, basis,
+                                     mol_id, functional))
 
-    E_pbe = dft_analyzer.e_tot
-    if ccsd_analyzer.mol.nelectron < 3:
-        E_ccsd = ccsd_analyzer.e_tot
-    else:
-        E_ccsd = ccsd_analyzer.e_tot + ccsd_analyzer.e_tri
+def store_corr_contribs_accdb(FNAME, MOL_FNAME, MLFUNC=None,
+                              desc_getter=default_desc_getter,
+                              functional=DEFAULT_FUNCTIONAL,
+                              basis=DEFAULT_BASIS):
+    
+    _load_accdb_info(MOL_FNAME, basis, functional)
+    _store_corr_helper(dft_dirs, is_restricted_list, MLFUNC, desc_getter)
 
-    return np.array([E_pbe, E_ccsd])
 
 def get_etot_contribs(dft_dir, ccsd_dir, restricted):
     with open(os.path.join(dft_dir, 'run_info.json'), 'r') as f:
@@ -269,26 +271,19 @@ def store_total_energies_dataset(FNAME, MOL_FNAME,
 
     np.save(FNAME, y)
 
-def store_dft_energies_dataset_accdb(FNAME, MOL_FNAME,
-                                     functional=DEFAULT_FUNCTIONAL,
-                                     basis=DEFAULT_BASIS):
-
+def store_dft_energies_accdb(FNAME, MOL_FNAME,
+                             functional=DEFAULT_FUNCTIONAL,
+                             basis=DEFAULT_BASIS):
     # DFT, CCSD
-    y = np.zeros([0, 2])
-
-    with open(os.path.join(MOL_FNAME), 'r') as f:
-        data = yaml.load(f, Loader = yaml.Loader)
-        dft_dirs = data['dft_dirs']
-        is_restricted_list = data['is_restricted_list']
-
+    y = np.zeros(0)
+    _load_accdb_info(MOL_FNAME, basis, functional)
     for dft_dir, is_restricted in zip(dft_dirs, is_restricted_list):
         logging.info('Storing total energies from {}'.format(dft_dir))
-
-        dft_ccsd = get_etot_contribs(dft_dir, ccsd_dir, is_restricted)
-
-        y = np.vstack([y, dft_ccsd])
-
+        with open(os.path.join(dft_dir, 'run_info.json'), 'r') as f:
+            dft_dat = json.load(f)
+        y = np.vstack([y, dft_dat['e_tot']t])
     np.save(FNAME, y)
+
 
 def get_vv10_contribs(dft_dir, restricted, NLC_COEFS):
 
@@ -601,7 +596,6 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
 
     with open(MOL_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)
-        bond_counts = np.array(d['BOND_COUNTS'])
         mols = np.array(d['MOL_IDS'])
     with open(TRAIN_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)

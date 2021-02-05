@@ -27,9 +27,14 @@ def store_mols(args):
 def store_etot(args):
     mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
     save_file = os.path.join(get_data_dir(args), 'etot.npy')
-    store_total_energies_dataset(save_file, mol_file,
-                                 functional=args.functional,
-                                 basis=args.basis)
+    if args.accdb:
+        store_total_energies_accdb(save_file, mol_file,
+                                   functional=args.functional,
+                                   basis=args.basis)
+    else:
+        store_total_energies_dataset(save_file, mol_file,
+                                     functional=args.functional,
+                                     basis=args.basis)
 
 def store_vv10(args):
     mol_file = os.path.join(get_data_dir(args), 'mols.yaml')
@@ -61,10 +66,16 @@ def store_desc(args):
         sys.path.append(mpath)
         desc_getter = getattr(__import__(mname), args.desc_getter)
         print(desc_getter)
-    store_corr_contribs_dataset(save_file, mol_file, mlfunc,
-                                desc_getter=desc_getter,
-                                functional=args.functional,
-                                basis=args.basis)
+    if args.accdb:
+        store_corr_contribs_accdb(save_file, mol_file, mlfunc,
+                                  desc_getter=desc_getter,
+                                  functional=args.functional,
+                                  basis=args.basis)
+    else:
+        store_corr_contribs_dataset(save_file, mol_file, mlfunc,
+                                    desc_getter=desc_getter,
+                                    functional=args.functional,
+                                    basis=args.basis)
 
 def train_coefs(args):
     if os.path.exists(args.noise):
@@ -74,8 +85,14 @@ def train_coefs(args):
     ae_dir = get_data_dir(args)
     atom_dir = os.path.join(SAVE_ROOT, 'DATASETS/GLH', args.functional,
                             args.basis, args.atom_dir)
-    solve_from_stored_ae(ae_dir, atom_dir, args.desc_name, noise=noise,
-                         use_vv10=args.use_vv10, regression_method=args.regression_method)
+    if args.accdb:
+        solve_from_stored_accdb(ae_dir, atom_dir, args.desc_name,
+                                noise=noise, use_vv10=args.use_vv10,
+                                regression_method=args.regression_method)
+    else:
+        solve_from_stored_ae(ae_dir, atom_dir, args.desc_name,
+                             noise=noise, use_vv10=args.use_vv10,
+                             regression_method=args.regression_method)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
@@ -88,6 +105,8 @@ if __name__ == '__main__':
                         help='Basis set to use')
     parser.add_argument('--functional', default=DEFAULT_FUNCTIONAL,
                         type=str)
+    parser.add_argument('--accdb', action='store_true',
+                        help='indicate use of ACCDB data as opposed to atomization energies')
 
     mol_parser = subparsers.add_parser('store_mols')
     mol_parser.add_argument('mol_file', type=str,
