@@ -46,29 +46,36 @@ class VSXCContribs():
         self.c = c
         self.cf = fterm_scale
 
-    def xefc1(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
-        pass
-
-    def xefc2(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd):
+    def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd, hfx=True):
 
         ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3) + 1e-16
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
         ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3) + 1e-16
         dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
         ldaxt = ldaxu + ldaxd
-        ft = (exu + exd) / ldaxt
-        fu = exu / ldaxu
-        fd = exd / ldaxd
-        dftdxu = 1 / ldaxt
-        dftdxd = 1 / ldaxt
-        # double check these derivatives
-        dftdnu = -ft / ldaxt * dldaxu
-        dftdnd = -ft / ldaxt * dldaxd
-
-        dfudnu = -fu / ldaxu * dldaxu
-        dfddnd = -fd / ldaxd * dldaxd
-        dfudxu = 1 / ldaxu
-        dfddxd = 1 / ldaxd
+        if hfx:
+            ft = (exu + exd) / ldaxt
+            fu = exu / ldaxu
+            fd = exd / ldaxd
+            dftdxu = 1 / ldaxt
+            dftdxd = 1 / ldaxt
+            # double check these derivatives
+            dftdnu = -ft / ldaxt * dldaxu
+            dftdnd = -ft / ldaxt * dldaxd
+            dfudnu = -fu / ldaxu * dldaxu
+            dfddnd = -fd / ldaxd * dldaxd
+            dfudxu = 1 / ldaxu
+            dfddxd = 1 / ldaxd
+        else:
+            fu = exu
+            fd = exd
+            ft = (ldaxu * fu + ldaxd * fd) / ldaxt
+            dftdfu = ldaxu / ldaxt
+            dftdfd = ldaxd / ldaxt
+            dftdnu = ldaxd * (fu - fd) / ldaxt**2 * dldaxu
+            dftdnd = ldaxu * (fd - fu) / ldaxt**2 * dldaxd
+            dfudnu = -fu / ldaxu * dldaxu
+            dfddnd = -fd / ldaxd * dldaxd
 
         g2 = g2u + g2d + 2 * g2o
         nt = nu + nd
@@ -178,18 +185,32 @@ class VSXCContribs():
         vxc[2][:,1] += tmp
         vxc[0][:,0] += vtmp[4] * dftdnu
         vxc[0][:,1] += vtmp[4] * dftdnd
-        vxc[3][:,0] += vtmp[4] * dftdxu
-        vxc[3][:,1] += vtmp[4] * dftdxd
+        if hfx:
+            vxc[3][:,0] += vtmp[4] * dftdxu
+            vxc[3][:,1] += vtmp[4] * dftdxd
 
-        vxc[0][:,0] += vtmpu[0] * x2u[1] + vtmpu[1] * chiu[1] + vtmpu[2] * dfudnu
-        vxc[1][:,0] += vtmpu[0] * x2u[2] + vtmpu[1] * chiu[3]
-        vxc[2][:,0] += vtmpu[1] * chiu[4]
-        vxc[3][:,0] += vtmpu[2] * dfudxu
+            vxc[0][:,0] += vtmpu[0] * x2u[1] + vtmpu[1] * chiu[1] + vtmpu[2] * dfudnu
+            vxc[1][:,0] += vtmpu[0] * x2u[2] + vtmpu[1] * chiu[3]
+            vxc[2][:,0] += vtmpu[1] * chiu[4]
+            vxc[3][:,0] += vtmpu[2] * dfudxu
 
-        vxc[0][:,1] += vtmpd[0] * x2d[1] + vtmpd[1] * chid[1] + vtmpd[2] * dfddnd
-        vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
-        vxc[2][:,1] += vtmpd[1] * chid[4]
-        vxc[3][:,1] += vtmpd[2] * dfddxd
+            vxc[0][:,1] += vtmpd[0] * x2d[1] + vtmpd[1] * chid[1] + vtmpd[2] * dfddnd
+            vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
+            vxc[2][:,1] += vtmpd[1] * chid[4]
+            vxc[3][:,1] += vtmpd[2] * dfddxd
+        else:
+            vxc[3][:,0] += vtmp[4] * dftdfu
+            vxc[3][:,1] += vtmp[4] * dftdfd
+
+            vxc[0][:,0] += vtmpu[0] * x2u[1] + vtmpu[1] * chiu[1]
+            vxc[1][:,0] += vtmpu[0] * x2u[2] + vtmpu[1] * chiu[3]
+            vxc[2][:,0] += vtmpu[1] * chiu[4]
+            vxc[3][:,0] += vtmpu[2]
+
+            vxc[0][:,1] += vtmpd[0] * x2d[1] + vtmpd[1] * chid[1]
+            vxc[1][:,2] += vtmpd[0] * x2d[2] + vtmpd[1] * chid[3]
+            vxc[2][:,1] += vtmpd[1] * chid[4]
+            vxc[3][:,1] += vtmpd[2]
 
         thr = 1e-6
         rhou, rhod = nu, nd
@@ -206,3 +227,9 @@ class VSXCContribs():
         #print("NANS", np.isnan(vxc[0]).any(), np.isnan(vxc[1]).any(), np.isnan(vxc[2]).any(), np.isnan(vxc[3]).any())
 
         return tot, vxc
+
+    def xefc1(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
+        return self.xefc(nu, nd, g2u, g2o, g2d, tu, td, fu, fd, hfx=False)
+
+    def xefc2(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd):
+        return self.xefc(nu, nd, g2u, g2o, g2d, tu, td, exu, exd, hfx=True)
