@@ -277,7 +277,7 @@ class RSCFCalc(FiretaskBase):
                                        'CIDER', settings['mlfunc_file'])
             if settings.get('corr_file') is not None:
                 corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                       'GLH', settings['mlfunc_c_file'])
+                                       'GLH', settings['corr_file'])
                 corr_model = joblib.load(corr_file)
                 settings.update({'corr_model': corr_model})
             mlfunc = joblib.load(mlfunc_file)
