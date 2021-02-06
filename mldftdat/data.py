@@ -610,7 +610,6 @@ def read_accdb_structure(struct_id):
             symbols.append(symbol)
             coords.append([x,y,z])
         struct = Atoms(symbols, positions = coords)
-        print(charge, spin, struct)
     return struct, os.path.join('ACCDB', struct_id), spin, charge
 
 from ase import Atoms

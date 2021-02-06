@@ -594,6 +594,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     from ase.data import chemical_symbols, atomic_numbers, ground_state_magnetic_moments
     from sklearn.metrics import r2_score
     from pyscf import gto
+    from mldftdat.data import get_accdb_formulas
+
+    MOL_FILE = 'data_files/glh_mn_tr.yaml'
+    TRAIN_FILE = 'data_files/accdb_mn_train_all.yaml'
+    DATASET_EVAL_NAME = '../ACCDB/Databases/Minnesota/DatasetEval.csv'
 
     with open(MOL_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)
@@ -601,11 +606,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     with open(TRAIN_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)
         weights = np.array(d['weights'])
-        names = np.array(d['set'])
+        dataset_names = np.array(d['set'])
 
     mol_to_ind = {}
     for i in range(len(mols)):
-        mol_to_ind[mols[i]] = i
+        mol_to_ind[mols[i].split('/')[-1]] = i
 
     all_formulas = get_accdb_formulas(DATASET_EVAL_NAME)
     formulas = []
@@ -619,7 +624,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     if use_vv10:
         vv10 = np.load(os.path.join(AE_DIR, 'vv10.npy'))
 
-    logging.debug("SHAPES {} {} {} {}".format(mlx.shape, etot.shape))
+    logging.debug("SHAPES {} {}".format(mlx.shape, etot.shape))
 
     N = etot.shape[0]
     if use_vv10:
@@ -630,6 +635,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     np.random.seed(42)
     lst = np.arange(len(formulas))
     np.random.shuffle(lst)
+
+    coef_sets = []
+    scores = []
 
     for i in range(num_vv10):
 
@@ -685,21 +693,21 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         logging.info("{} {}".format(Xts.shape, yts.shape))
         logging.info("{} {}".format(score, score0))
-        print('SCAN ALL', np.mean(np.abs(Ecc-Edf)),
-                     np.mean((Ecc-Edf)), np.std(Ecc-Edf))
-        print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
-                     np.mean((Ecc-Edf)[valset_bools]),
-                     np.std((Ecc-Edf)[valset_bools]))
+        #print('SCAN ALL', np.mean(np.abs()),
+        #             np.mean((Ecc-Edf)), np.std(Ecc-Edf))
+        #print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
+        #             np.mean((Ecc-Edf)[valset_bools]),
+        #             np.std((Ecc-Edf)[valset_bools]))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))),
                      np.mean(y - np.dot(X, coef)),
                      np.std(y - np.dot(X,coef)))
         print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))),
                      np.mean(yts - np.dot(Xts, coef)),
                      np.std(yts-np.dot(Xts,coef)))
-        print(np.max(np.abs(y - np.dot(X, coef))),
-                     np.max(np.abs(Ecc - Edf)))
-        print(np.max(np.abs(yts - np.dot(Xts, coef))),
-                     np.max(np.abs(Ecc - Edf)[valset_bools]))
+        #print(np.max(np.abs(y - np.dot(X, coef))),
+        #             np.max(np.abs(Ecc - Edf)))
+        #print(np.max(np.abs(yts - np.dot(Xts, coef))),
+        #             np.max(np.abs(Ecc - Edf)[valset_bools]))
         print(coef)
 
         coef_sets.append(coef)
