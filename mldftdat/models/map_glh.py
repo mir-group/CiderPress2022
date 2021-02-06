@@ -106,6 +106,8 @@ class VSXCContribs():
         A = 17.0 / 3
         slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.c[:3], achi)
         dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.c[:3], dachi)
+        slc *= 0
+        dslc *= 0
         slu, dsludx2, dsludchi = [self.c[5:13].dot(term) for term in \
                                   get_sl_small(x2u[0], chiu[0], gammax)]
         sld, dslddx2, dslddchi = [self.c[5:13].dot(term) for term in \
