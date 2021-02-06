@@ -48,9 +48,9 @@ class VSXCContribs():
 
     def xefc(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd, hfx=True):
 
-        ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3) + 1e-16
+        ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3) + 1e-20
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
-        ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3) + 1e-16
+        ldaxd = 2**(1.0/3) * LDA_FACTOR * nd**(4.0/3) + 1e-20
         dldaxd = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nd**(1.0/3)
         ldaxt = ldaxu + ldaxd
         if hfx:

@@ -311,9 +311,9 @@ def get_x2(n, g2):
     without the constant included in s^2
     x^2 = g2 / n^{8/3}
     """
-    return g2/(n**2.6666666666666665+1e-16),\
-           (-8*g2)/(3.*n**3.6666666666666665+1e-16),\
-           1/(n**(2.6666666666666665)+1e-16)
+    return g2/(n**2.6666666666666665+1e-20),\
+           (-8*g2)/(3.*n**3.6666666666666665+1e-20),\
+           1/(n**(2.6666666666666665)+1e-20)
 
 def get_s2(n, g2):
     """
@@ -322,7 +322,7 @@ def get_s2(n, g2):
     s^2 = g2 / (sprefac^2 * n^{8/3})
     """
     a, b, c = get_x2(n, g2)
-    return a / sprefac**2 + 1e-10, b / sprefac**2, c / sprefac**2
+    return a / sprefac**2 + 1e-16, b / sprefac**2, c / sprefac**2
 
 def get_alpha(n, zeta, g2, t):
     """
@@ -331,7 +331,6 @@ def get_alpha(n, zeta, g2, t):
     d = 0.5 * ((1+zeta)**(5./3) + (1-zeta)**(5./3))
     dd = (5./6) * ((1+zeta)**(2./3) - (1-zeta)**(2./3))
     alpha = (t - g2/(8*n)) / (CFC*n**(5./3)*d)
-    alphap = np.append(alpha[n>1e-8], [0])
     return alpha,\
            ((-5 * t + g2 / n) / n) / (3 * CFC * d * n**(5./3)),\
            -alpha / d * dd,\

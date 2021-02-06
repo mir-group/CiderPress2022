@@ -347,10 +347,8 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
     chkpt = time.monotonic()
 
     if mlfunc.corr_model is not None:
-        tot, vxc = mlfunc.corr_model.xefc(rhou, rhod, g2u, g2o, g2d,
-                                          tu, td, F[0], F[1],
-                                          include_aug_sl=True,
-                                          include_aug_nl=True)
+        tot, vxc = mlfunc.corr_model.xefc1(rhou, rhod, g2u, g2o, g2d,
+                                           tu, td, F[0], F[1])
         
         logging.debug('Adding correlation contribution')
         weights = grid.weights

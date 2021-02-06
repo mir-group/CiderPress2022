@@ -234,10 +234,7 @@ def _eval_corr_uks(corr_model, rho_data, F):
     #vtot = [np.zeros((N,2)), np.zeros((N,3)), np.zeros((N,2)),
     #        np.zeros((N,2)), np.zeros((N,2))]
     exc, vxc = corr_model.xefc2(rhou, rhod, g2u, g2o, g2d,
-                                tu, td, F[0], F[1],
-                                include_baseline=False,
-                                include_aug_sl=True,
-                                include_aug_nl=True)
+                                tu, td, F[0], F[1])
 
     return exc / (rhot + 1e-16), [vxc[0], vxc[1], np.zeros((N,2)), vxc[2], vxc[3]]
 
