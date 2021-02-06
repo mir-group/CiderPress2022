@@ -46,9 +46,10 @@ class VSXCContribs():
         self.c = c
         self.cf = fterm_scale
 
-    def xefc2(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd,
-              include_baseline=True, include_aug_sl=True,
-              include_aug_nl=True):
+    def xefc1(self, nu, nd, g2u, g2o, g2d, tu, td, fu, fd):
+        pass
+
+    def xefc2(self, nu, nd, g2u, g2o, g2d, tu, td, exu, exd):
 
         ldaxu = 2**(1.0/3) * LDA_FACTOR * nu**(4.0/3) + 1e-16
         dldaxu = 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR * nu**(1.0/3)
