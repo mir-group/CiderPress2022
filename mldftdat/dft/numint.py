@@ -470,6 +470,11 @@ def run_mlscf(mol, calc_type, SAVE_ROOT, mlfunc_name, remove_ld=False,
     mlfunc_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
                                 'CIDER', settings['mlfunc_file'])
     mlfunc = joblib.load(mlfunc_fname)
+    if settings.get('corr_file') is not None:
+        corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                               'GLH', settings['corr_file'])
+        corr_model = joblib.load(corr_file)
+        settings.update({'corr_model': corr_model})
     if calc_type == 'RKS':
         mf = setup_rks_calc(mol, mlfunc, **settings)
     elif calc_type == 'UKS':
