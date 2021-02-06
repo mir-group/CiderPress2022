@@ -182,7 +182,7 @@ def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10):
 
 def sgx_fit_corr(mf, auxbasis=None, with_df=None):
     # needs to:
-    # 1. Wrap in typical SGX but with get get_jkc function
+    # 1. Wrap in typical SGX but with get_jkc function
     #    instead of the normal get_jk function
     # 2. Find a way to pass the correlation energy and
     #    vc by attaching it to sgx and then returning
