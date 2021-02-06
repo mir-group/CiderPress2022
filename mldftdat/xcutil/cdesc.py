@@ -131,10 +131,13 @@ def get_phi1(zeta):
     """
     Spin polarization function for alpha=1 limt of SCAN
     """
-    zeta = np.minimum(zeta, 1-1e-10)
-    zeta = np.maximum(zeta, -1+1e-10)
-    phi = ((1 - zeta)**0.6666666666666666 + (1 + zeta)**0.6666666666666666)/2.
-    dphi = (-2/(3.*(1 - zeta)**0.3333333333333333) + 2/(3.*(1 + zeta)**0.3333333333333333))/2.
+    thr = 1-1e-10
+    zeta = np.minimum(zeta, thr)
+    zeta = np.maximum(zeta, -thr)
+    p = 2./3
+    pp = 1./3
+    phi = ((1 - zeta)**p + (1 + zeta)**p)/2.
+    dphi = (-2/(3.*(1 - zeta)**pp) + 2/(3.*(1 + zeta)**pp))/2.
     return phi, dphi
 
 def get_baseline0inf(zeta, s2):
@@ -250,7 +253,7 @@ def get_baseline1(lda, rs, zeta, s2, ss=False):
     dedrs += dedt2 * dt2drs + dedbeta * dbetadrs
     deds2 = dedt2 * dt2ds2
     dedphi += dedt2 * dt2dphi + dedw1 * dw1dphi
-    
+
     return e, dedlda, dedrs, dedphi * dphi, deds2
 
 def get_ss_baseline(n, g2):
@@ -271,7 +274,7 @@ def get_ss_baseline(n, g2):
     vxc[0] = vxc[0] * n + e
     return e, vxc
 
-def get_os_baseline(nu, nd, g2, type = 0):
+def get_os_baseline(nu, nd, g2, type=0):
     """
     epsilon_{SCAN}(alpha=type)
     type=0 or 1
