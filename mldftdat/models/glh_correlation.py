@@ -658,6 +658,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
 
         X = np.zeros((len(formulas), E_c.shape[1]))
         y = np.zeros(len(formulas))
+        pbe_err = y.copy()
         for i in range(len(formulas)):
             counts = formulas[i]['counts']
             structs = formulas[i]['structs']
@@ -667,9 +668,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 print(structs, formulas[i]['energy'])
             entries = [mol_to_ind[s] for s in structs]
             y[i] = formulas[i]['energy']
+            pbe_err[i] = formulas[i]['energy']
             for count, entry_num in zip(counts, entries):
                 X[i,:] += count * E_c[entry_num,:]
                 y[i] -= count * E_bas[entry_num]
+                pbe_err[i] -= count * E_dft[entry_num]
             if is_atom:
                 print(y[i], X[i,:])
 
@@ -704,6 +707,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         #print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
         #             np.mean((Ecc-Edf)[valset_bools]),
         #             np.std((Ecc-Edf)[valset_bools]))
+        print('DFT ALL', np.mean(np.abs(pbe_err)))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))),
                      np.mean(y - np.dot(X, coef)),
                      np.std(y - np.dot(X,coef)))
