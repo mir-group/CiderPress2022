@@ -87,11 +87,14 @@ class VSXCContribs():
         chi = get_chi_full_deriv(nt, zeta[0], g2, tu+td)
         chiu = get_chi_full_deriv(nu, 1, g2u, tu)
         chid = get_chi_full_deriv(nd, -1, g2d, td)
-        #chiu[0][np.isnan(chiu[0])] = 0
-        #chid[0][np.isnan(chid[0])] = 0
+        chiu[0][np.isnan(chiu[0])] = 0
+        chid[0][np.isnan(chid[0])] = 0
         
         c0, v0 = get_os_baseline(nu, nd, g2, type=0)
         c1, v1 = get_os_baseline(nu, nd, g2, type=1)
+        #v1[0] *= 0
+        #v1[1] *= 0
+        #c1 *= 0
         c0 *= nt
         c1 *= nt
         amix, vmixn, vmixz, vmixx2, vmixchi = get_amix_schmidt2(nt, zeta[0], x2[0], chi[0])
@@ -114,8 +117,6 @@ class VSXCContribs():
         A = 17.0 / 3
         slc = A * (1 - chi[0]) / (A - chi[0]) - np.dot(self.c[:3], achi)
         dslc = (A - A**2) / (A - chi[0])**2 - np.dot(self.c[:3], dachi)
-        slc *= 0
-        dslc *= 0
         slu, dsludx2, dsludchi = [self.c[5:13].dot(term) for term in \
                                   get_sl_small(x2u[0], chiu[0], gammax)]
         sld, dslddx2, dslddchi = [self.c[5:13].dot(term) for term in \
