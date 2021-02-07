@@ -59,7 +59,6 @@ class VSXCContribs():
             fd = exd / ldaxd
             dftdxu = 1 / ldaxt
             dftdxd = 1 / ldaxt
-            # double check these derivatives
             dftdnu = -ft / ldaxt * dldaxu
             dftdnd = -ft / ldaxt * dldaxd
             dfudnu = -fu / ldaxu * dldaxu
@@ -92,9 +91,6 @@ class VSXCContribs():
         
         c0, v0 = get_os_baseline(nu, nd, g2, type=0)
         c1, v1 = get_os_baseline(nu, nd, g2, type=1)
-        #v1[0] *= 0
-        #v1[1] *= 0
-        #c1 *= 0
         c0 *= nt
         c1 *= nt
         amix, vmixn, vmixz, vmixx2, vmixchi = get_amix_schmidt2(nt, zeta[0], x2[0], chi[0])
@@ -140,7 +136,7 @@ class VSXCContribs():
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) \
             + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1)
-        """
+        
         cond = nt>1e-6
         vtmp[0][cond] += (tmp * vmixn)[cond]
         vtmp[1][cond] += (tmp * vmixz)[cond]
@@ -151,7 +147,7 @@ class VSXCContribs():
         vtmp[1] += (tmp * vmixz)
         vtmp[2] += (tmp * vmixx2)
         vtmp[3] += (tmp * vmixchi)
-
+        """
         # exchange-like enhancment derivs
         tmp = ldaxm[0]
         vtmpu[0] += tmp * dsludx2

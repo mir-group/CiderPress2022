@@ -336,6 +336,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     max_memory = sgx.max_memory - lib.current_memory()[0]
     sblk = sgx.blockdim
     blksize = min(ngrids, max(4, int(min(sblk, max_memory*1e6/8/nao**2))))
+    
     for i0, i1 in lib.prange(0, ngrids, blksize):
         coords = grids.coords[i0:i1]
         ao = mol.eval_gto('GTOval', coords)
@@ -345,6 +346,8 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     ovlp = mol.intor_symmetric('int1e_ovlp')
     proj = scipy.linalg.solve(sn, ovlp)
     proj_dm = lib.einsum('ki,xij->xkj', proj, dms)
+    
+    #proj_dm = dms.copy()
 
     t1 = logger.timer_debug1(mol, "sgX initialziation", *t0)
     vj = numpy.zeros_like(dms)
