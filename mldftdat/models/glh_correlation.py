@@ -661,11 +661,17 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         for i in range(len(formulas)):
             counts = formulas[i]['counts']
             structs = formulas[i]['structs']
+            is_atom = False
+            if len(structs) == 1 and 'AE17' in structs[0]:
+                is_atom = True
+                print(structs, formulas[i]['energy'])
             entries = [mol_to_ind[s] for s in structs]
             y[i] = formulas[i]['energy']
             for count, entry_num in zip(counts, entries):
                 X[i,:] += count * E_c[entry_num,:]
                 y[i] -= count * E_bas[entry_num]
+            if is_atom:
+                print(y[i], X[i,:])
 
         NVAL = 25
         Xtr = X[lst[NVAL:]]
@@ -712,7 +718,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
 
         coef_sets.append(coef)
         scores.append(score)
-
+        print(y)
     return coef_sets, scores
 
 
