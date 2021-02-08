@@ -69,9 +69,10 @@ def get_zeta(nu, nd):
     """
     Spin polarization
     """
-    zeta = (-nd + nu)/(nd + nu)
-    dzetau = (2*nd)/((nd + nu)**2)
-    dzetad = (-2*nu)/((nd + nu)**2)
+    nt = nd + nu
+    zeta = (-nd + nu) / nt
+    dzetau = (2*nd/nt)/nt
+    dzetad = (-2*nu/nt)/nt
     return zeta, dzetau, dzetad
 
 def get_pw92term(rs, code):
@@ -250,11 +251,48 @@ def get_baseline1(lda, rs, zeta, s2, ss=False):
     
     dedrs = dedbeta * dbetadrs + dedt2 * dt2drs
     dedlda += dedw1 * dw1dlda
-    dedrs += dedt2 * dt2drs + dedbeta * dbetadrs
     deds2 = dedt2 * dt2ds2
     dedphi += dedt2 * dt2dphi + dedw1 * dw1dphi
 
     return e, dedlda, dedrs, dedphi * dphi, deds2
+
+def get_baseline1b(rs, zeta, s2, ss=False):
+    """
+    epsilon_{SCAN}(alpha=1)
+    """
+    lda, dldadrs, dldadzeta = get_pw92(rs, zeta)
+    Pi = np.pi
+    Log = np.log
+    Exp = np.exp
+    if ss:
+        phi, dphi = 2**(-1.0/3), 0
+    else:
+        phi, dphi = get_phi1(zeta)
+    beta = (0.066725*(1 + 0.1*rs))/(1 + 0.1778*rs)
+    dbetadrs = (-0.011863705000000002*(1 + 0.1*rs))/(1 + 0.1778*rs)**2 + 0.006672500000000001/(1 + 0.1778*rs)
+    w1 = -1. + np.exp(-lda/(gamma*phi**3))
+    dw1dlda = -(1/(np.exp(lda/(gamma*phi**3))*gamma*phi**3))
+    dw1dphi = (3*lda)/(np.exp(lda/(gamma*phi**3))*gamma*phi**4)
+    t2 = (1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs)
+    dt2drs = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(4.*phi**2*rs**2)
+    dt2ds2 = (1.5**0.6666666666666666*Pi**1.3333333333333333)/(4.*phi**2*rs)
+    dt2dphi = -(1.5**0.6666666666666666*Pi**1.3333333333333333*s2)/(2.*phi**3*rs)
+    e = lda + gamma*phi**3*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+    dedlda = 1
+    dedt2 = (beta*phi**3)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
+    dedphi = 3*gamma*phi**2*Log(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+    dedbeta = (phi**3*t2)/((1 + (4*beta*t2)/(gamma*w1))**1.25*(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1))
+    dedw1 = (gamma*phi**3*(1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25) - (beta*t2)/(gamma*(1 + (4*beta*t2)/(gamma*w1))**1.25*w1)))/(1 + (1 - (1 + (4*beta*t2)/(gamma*w1))**(-0.25))*w1)
+    
+    dedrs = dedbeta * dbetadrs + dedt2 * dt2drs
+    dedlda += dedw1 * dw1dlda
+    deds2 = dedt2 * dt2ds2
+    dedphi += dedt2 * dt2dphi + dedw1 * dw1dphi
+
+    dedrs += dedlda * dldadrs
+    dedzeta = dedphi * dphi + dedlda * dldadzeta
+
+    return e, dedrs, dedzeta, deds2
 
 def get_ss_baseline(n, g2):
     """
@@ -301,7 +339,20 @@ def get_os_baseline(nu, nd, g2, type=0):
     vxc[1] *= (nu + nd)[:,np.newaxis]
     return e, vxc
 
-
+def get_os_baseline2(n, zeta, x2, type=0):
+    """
+    epsilon_{SCAN}(alpha=type)
+    type=0 or 1
+    """
+    N = n.shape[0]
+    rs, drs = get_rs(n)
+    s2 = x2 / sprefac**2
+    if type == 0:
+        e, dedrs, dedzeta, deds2 = get_baseline0(rs, zeta, s2)
+    else:
+        e, dedrs, dedzeta, deds2 = get_baseline1b(rs, zeta, s2)
+    dedn = -rs / 3 * dedrs
+    return e, -rs / 3 * dedrs + e, dedzeta * n, n * deds2 / sprefac**2
 
 
 ##########################################
