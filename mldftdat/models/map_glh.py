@@ -91,8 +91,8 @@ class VSXCContribs():
         
         #c0, v0 = get_os_baseline(nu, nd, g2, type=0)
         #c1, v1 = get_os_baseline(nu, nd, g2, type=1)
-        c0, dc0dn, dc0dz, dc0dx2 = get_os_baseline2(nt, zeta, x2, type=0)
-        c1, dc1db, dc1dz, dc1dx2 = get_os_baseline2(nt, zeta, x2, type=1)
+        c0, dc0dn, dc0dz, dc0dx2 = get_os_baseline2(nt, zeta[0], x2[0], type=0)
+        c1, dc1dn, dc1dz, dc1dx2 = get_os_baseline2(nt, zeta[0], x2[0], type=1)
         c0 *= nt
         c1 *= nt
         amix, vmixn, vmixz, vmixx2, vmixchi = get_amix_schmidt2(nt, zeta[0], x2[0], chi[0])
