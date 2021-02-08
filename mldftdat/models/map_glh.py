@@ -89,13 +89,12 @@ class VSXCContribs():
         chiu[0][np.isnan(chiu[0])] = 0
         chid[0][np.isnan(chid[0])] = 0
         
-        #c0, v0 = get_os_baseline(nu, nd, g2, type=0)
-        #c1, v1 = get_os_baseline(nu, nd, g2, type=1)
         c0, dc0dn, dc0dz, dc0dx2 = get_os_baseline2(nt, zeta[0], x2[0], type=0)
         c1, dc1dn, dc1dz, dc1dx2 = get_os_baseline2(nt, zeta[0], x2[0], type=1)
         c0 *= nt
         c1 *= nt
         amix, vmixn, vmixz, vmixx2, vmixchi = get_amix_schmidt2(nt, zeta[0], x2[0], chi[0])
+        
         ldaxm = (ldaxu * amix, ldaxd * amix)
         N = nt.shape[0]
         vxc = [np.zeros((N,2)),
@@ -139,7 +138,7 @@ class VSXCContribs():
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) \
             + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1)
         
-        cond = nt>1e-6
+        cond = nt>1e-8
         vtmp[0][cond] += (tmp * vmixn)[cond]
         vtmp[1][cond] += (tmp * vmixz)[cond]
         vtmp[2][cond] += (tmp * vmixx2)[cond]
@@ -159,9 +158,8 @@ class VSXCContribs():
         vtmpd[0] += tmp * dslddx2
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
+        
         # baseline derivs
-        #fill_vxc_base_os_(vxc, v0, 1 - slc + self.c[4] * amix * (ft-1))
-        #fill_vxc_base_os_(vxc, v1, slc + self.c[3] * amix * (ft-1))
         tmp = 1 - slc + self.c[4] * amix * (ft-1)
         vtmp[0] += tmp * dc0dn
         vtmp[1] += tmp * dc0dz
