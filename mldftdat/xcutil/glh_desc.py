@@ -264,8 +264,9 @@ def desc_set1_cider(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
                         np.dot(cx * amix * (Fx-1), weights)])
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
-    Xterms1 = np.dot([ldaxu * (Fxu-1), ldaxd * (Fxd-1)], weights)
-    Xterms2 = np.dot([ldaxu * gtu, ldaxd * gtd], weights)
+    #Xterms1 = np.dot([ldaxu * (Fxu-1), ldaxd * (Fxd-1)], weights)
+    #Xterms2 = np.dot([ldaxu * gtu, ldaxd * gtd], weights)
+    Xterms = [np.dot(ldaxu * (Fxu-1) + ldaxd * (Fxd-1), weights)]
 
     return Ecscan, np.concatenate([Eterms, Eterms2, Fterms,
-                                   Xterms1, Xterms2], axis=0)
+                                   Xterms], axis=0)
