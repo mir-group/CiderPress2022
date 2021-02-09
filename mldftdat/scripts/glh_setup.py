@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import yaml
 import sys
 import logging
+from joblib import load
 
 import numpy as np
 
