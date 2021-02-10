@@ -169,7 +169,7 @@ class SCFFromStableDBEntry(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
-
+        calc_type = self['calc_type']
         if self.get('functional') is not None:
             functional = get_functional_db_name(self['functional'])
         else:
@@ -178,14 +178,14 @@ class SCFFromStableDBEntry(FiretaskBase):
                             self['basis'], self['mol_id'],
                             functional=functional)
         if 'U' in calc_type:
+            from mldftdat.lowmem_analyzers import UHFAnalyzer
             analyzer = UHFAnalyzer.load(adir)
         else:
+            from mldftdat.lowmem_analyzers import RHFAnalyzer
             analyzer = RHFAnalyzer.load(adir)
         dm0 = analyzer.calc.make_rdm1()
         mol = analyzer.mol
         
-        calc_type = self['calc_type']
-
         settings_fname = self['functional'].upper() + '.yaml'
         settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
                                       settings_fname)
