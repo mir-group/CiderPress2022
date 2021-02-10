@@ -155,6 +155,121 @@ class SCFFromDB(FiretaskBase):
 
 
 @explicit_serialize
+class SCFFromStableDBEntry(FiretaskBase):
+    """
+    Rerun converged, stable calculation with a new functional,
+    particularly one for which stability analysis cannot be performed,
+    such as SCAN or an ML functional.
+    """
+
+    required_params = ['functional', 'basis', 'functional_code',
+                       'calc_type', 'mol_id', 'stability_functional']
+    optional_params = ['max_conv_tol']
+
+    DEFAULT_MAX_CONV_TOL = 1e-6
+
+    def run_task(self, fw_spec):
+
+        if self.get('functional') is not None:
+            functional = get_functional_db_name(self['functional'])
+        else:
+            functional = None
+        adir = get_save_dir(os.environ['MLDFTDB'], self['calc_type'],
+                            self['basis'], self['mol_id'],
+                            functional=functional)
+        if 'U' in calc_type:
+            analyzer = UHFAnalyzer.load(adir)
+        else:
+            analyzer = RHFAnalyzer.load(adir)
+        dm0 = analyzer.calc.make_rdm1()
+        mol = analyzer.mol
+        
+        calc_type = self['calc_type']
+
+        settings_fname = self['functional'].upper() + '.yaml'
+        settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                      settings_fname)
+        fcode = self['functional_code'].upper()[0]
+        if fcode == 'A':
+            # Conventional
+            if os.path.isfile(settings_fname):
+                with open(settings_fname, 'r') as f:
+                    settings = yaml.load(f, Loader=yaml.Loader)
+            else:
+                settings = {}
+            if 'U' in calc_type:
+                calc = setup_uks_calc(mol, self['functional'], **settings)
+            else:
+                calc = setup_rks_calc(mol, self['functional'], **settings)
+        elif fcode == 'B':
+            # GP/CIDER
+            from mldftdat.dft import numint
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'CIDER', settings['mlfunc_file'])
+            if settings.get('corr_file') is not None:
+                corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['corr_file'])
+                corr_model = joblib.load(corr_file)
+                settings.update({'corr_model': corr_model})
+            mlfunc = joblib.load(mlfunc_file)
+            if 'U' in calc_type:
+                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+            else:
+                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+        elif fcode == 'C':
+            # Hyper-GGA
+            from mldftdat.dft import glh_corr
+            with open(settings_fname, 'r') as f:
+                settings = yaml.load(f, Loader=yaml.Loader)
+            mlfunc_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
+                                       'GLH', settings['mlfunc_file'])
+            mlfunc = joblib.load(mlfunc_file)
+            if 'U' in calc_type:
+                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+            else:
+                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+        else:
+            raise ValueError('Invalid value of functional_type')
+
+        calc = scf.addons.remove_linear_dep_(calc)
+
+        start_time = time.monotonic()
+        calc.kernel(dm0)
+        stop_time = time.monotonic()
+
+        calc.damp = 4
+        calc.diis_start_cycle = 20
+        calc.max_cycle = 200
+
+        max_iter = 50 # extra safety catch
+        iter_step = 0
+        while not calc.converged and calc.conv_tol <= max_conv_tol\
+                and iter_step < max_iter:
+            iter_step += 1
+            print ("Did not converge SCF, increasing conv_tol.")
+            start_time = time.monotonic()
+            calc.kernel(dm0)
+            stop_time = time.monotonic()
+            calc.conv_tol *= 10
+
+        assert calc.converged, "SCF calculation did not converge!"
+        update_spec={
+            'calc'      : calc,
+            'calc_type' : calc_type,
+            'conv_tol'  : calc.conv_tol,
+            'cpu_count' : multiprocessing.cpu_count(),
+            'mol'       : mol,
+            'struct'    : atoms,
+            'wall_time' : stop_time - start_time
+        }
+        update_spec['functional'] = get_functional_db_name(self['functional'])
+
+        return FWAction(update_spec = update_spec)
+
+
+@explicit_serialize
 class MLSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'calc_type', 'mlfunc_name']
@@ -238,7 +353,7 @@ class RSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'functional', 'functional_code']
     optional_params = ['charge', 'max_conv_tol', 'stability_functional',
-                       'stability_conv_tol']
+                       'stability_conv_tol', 'read_stab_func_from_db']
 
     DEFAULT_MAX_CONV_TOL = 1e-6
 
