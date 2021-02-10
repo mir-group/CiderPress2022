@@ -40,7 +40,7 @@ def load_mol_ids(mol_id_file):
 def read_accdb_structure(struct_id):
     fname = '{}.xyz'.format(os.path.join(ACCDB_DIR, 'Geometries', struct_id))
     with open(fname, 'r') as f:
-        print(fname)
+        #print(fname)
         lines = f.readlines()
         natom = int(lines[0])
         charge_and_spin = lines[1].split()
@@ -58,5 +58,5 @@ def read_accdb_structure(struct_id):
             symbols.append(symbol)
             coords.append([x,y,z])
         struct = Atoms(symbols, positions = coords)
-        print(charge, spin, struct)
+        #print(charge, spin, struct)
     return struct, os.path.join('ACCDB', struct_id), spin, charge
