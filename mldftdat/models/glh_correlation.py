@@ -619,7 +619,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
 
     MOL_FILE = 'data_files/glh_mn_tr.yaml'
     TRAIN_FILE = 'data_files/accdb_mn_train_all.yaml'
-    DATASET_EVAL_NAME = '../ACCDB/Databases/Minnesota/DatasetEval.csv'
+    #DATASET_EVAL_NAME = '../ACCDB/Databases/Minnesota/DatasetEval.csv'
+    DATASET_EVAL_NAME = 'data_files/DatasetEvalSOC.csv'
 
     with open(MOL_FILE, 'r') as f:
         d = yaml.load(f, Loader=yaml.Loader)
