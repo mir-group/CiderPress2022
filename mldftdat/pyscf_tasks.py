@@ -170,10 +170,7 @@ class SCFFromStableDBEntry(FiretaskBase):
 
     def run_task(self, fw_spec):
 
-        if self.get('functional') is not None:
-            functional = get_functional_db_name(self['functional'])
-        else:
-            functional = None
+        functional = get_functional_db_name(self['stability_functional'])
         adir = get_save_dir(os.environ['MLDFTDB'], self['calc_type'],
                             self['basis'], self['mol_id'],
                             functional=functional)
@@ -184,6 +181,7 @@ class SCFFromStableDBEntry(FiretaskBase):
         dm0 = analyzer.calc.make_rdm1()
         mol = analyzer.mol
         
+        functional = get_functional_db_name(self['functional'])
         calc_type = self['calc_type']
 
         settings_fname = self['functional'].upper() + '.yaml'
