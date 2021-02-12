@@ -707,8 +707,8 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
             'true' : energy
         }
         if comp_functional is not None:
-            pred_ref, _ = get_accdb_data(formula, comp_functional, BASIS,
-                                         per_bond=per_bond)
+            pred_ref, _, _ = get_accdb_data(formula, comp_functional, BASIS,
+                                            per_bond=True)
             energy = pred_ref
             result[data_point_name]['true'] = pred_ref
         print(pred_energy-energy)

@@ -9,16 +9,16 @@ BASIS = 'def2-tzvpp'
 
 import numpy as np
 
-c = np.array([ 0.08893247,  0.34775039, -0.55727308,  0.3983381,   0.47733845,  0.14178125,
- -0.04135754,  0.68747863, -0.64866956,  0.73496249, -0.47801523,  0.17958114,
-  0.40809167,  0.75531126, -1.18289192, -0.37781771, -0.47749114, -0.11893029,
- -0.07837232, -1.19085653])
+c = np.array([ 0.09458185,  0.42005969, -0.53499793,  0.39486842,  0.47500668,  0.14274847,
+ -0.04226082,  0.6947042,  -0.66793513,  0.76889933, -0.5669118,   0.19841883,
+  0.40328066,  0.72598104, -1.18196255, -0.34286538, -0.43444723, -0.10741351,
+ -0.05860007, -1.18938227])
 
 corr_model = map_glh.VSXCContribs(c)
 from joblib import dump, load
-#dump(corr_model, os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'TEST2.joblib'))
+dump(corr_model, os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'CIDER_ITER0.joblib'))
 
-#corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'TEST.joblib'))
+corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'CIDER_ITER0.joblib'))
 mlfunc = load("/n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/MLFUNCTIONALS/CIDER/SPLINE_A_HEG_WIDE.joblib")
 
 mol = gto.M(atom='H', basis=BASIS, spin=1)

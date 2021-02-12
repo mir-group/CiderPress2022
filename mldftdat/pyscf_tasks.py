@@ -169,23 +169,23 @@ class SCFFromStableDBEntry(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
+        max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         calc_type = self['calc_type']
-        if self.get('functional') is not None:
-            functional = get_functional_db_name(self['functional'])
-        else:
-            functional = None
+        functional = get_functional_db_name(self['stability_functional'])
         adir = get_save_dir(os.environ['MLDFTDB'], self['calc_type'],
                             self['basis'], self['mol_id'],
                             functional=functional)
         if 'U' in calc_type:
             from mldftdat.lowmem_analyzers import UHFAnalyzer
-            analyzer = UHFAnalyzer.load(adir)
+            analyzer = UHFAnalyzer.load(os.path.join(adir, 'data.hdf5'))
         else:
             from mldftdat.lowmem_analyzers import RHFAnalyzer
-            analyzer = RHFAnalyzer.load(adir)
+            analyzer = RHFAnalyzer.load(os.path.join(adir, 'data.hdf5'))
         dm0 = analyzer.calc.make_rdm1()
         mol = analyzer.mol
         
+        functional = get_functional_db_name(self['functional'])
+
         settings_fname = self['functional'].upper() + '.yaml'
         settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
                                       settings_fname)
@@ -227,9 +227,9 @@ class SCFFromStableDBEntry(FiretaskBase):
                                        'GLH', settings['mlfunc_file'])
             mlfunc = joblib.load(mlfunc_file)
             if 'U' in calc_type:
-                calc = numint.setup_uks_calc(mol, mlfunc, **settings)
+                calc = glh_corr.setup_uks_calc(mol, mlfunc, **settings)
             else:
-                calc = numint.setup_rks_calc(mol, mlfunc, **settings)
+                calc = glh_corr.setup_rks_calc(mol, mlfunc, **settings)
         else:
             raise ValueError('Invalid value of functional_type')
 
@@ -239,8 +239,8 @@ class SCFFromStableDBEntry(FiretaskBase):
         calc.kernel(dm0)
         stop_time = time.monotonic()
 
-        calc.damp = 4
-        calc.diis_start_cycle = 20
+        calc.damp = 5
+        calc.diis_start_cycle = 50
         calc.max_cycle = 200
 
         max_iter = 50 # extra safety catch
@@ -253,6 +253,10 @@ class SCFFromStableDBEntry(FiretaskBase):
             calc.kernel(dm0)
             stop_time = time.monotonic()
             calc.conv_tol *= 10
+
+        symbols = [a[0] for a in mol._atom]
+        positions = [a[1] for a in mol._atom]
+        atoms = Atoms(symbols=symbols, positions=positions)
 
         assert calc.converged, "SCF calculation did not converge!"
         update_spec={
@@ -511,7 +515,7 @@ class USCFCalc(FiretaskBase):
                                        'CIDER', settings['mlfunc_file'])
             if settings.get('corr_file') is not None:
                 corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                       'GLH', settings['mlfunc_c_file'])
+                                       'GLH', settings['corr_file'])
                 corr_model = joblib.load(corr_file)
                 settings.update({'corr_model': corr_model})
             mlfunc = joblib.load(mlfunc_file)
@@ -639,7 +643,7 @@ class USCFCalcTricky(FiretaskBase):
                                        'CIDER', settings['mlfunc_file'])
             if settings.get('corr_file') is not None:
                 corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                       'GLH', settings['mlfunc_c_file'])
+                                       'GLH', settings['corr_file'])
                 corr_model = joblib.load(corr_file)
                 settings.update({'corr_model': corr_model})
             mlfunc = joblib.load(mlfunc_file)
@@ -786,7 +790,7 @@ class USCFCalcTricky2(FiretaskBase):
                                        'CIDER', settings['mlfunc_file'])
             if settings.get('corr_file') is not None:
                 corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                       'GLH', settings['mlfunc_c_file'])
+                                       'GLH', settings['corr_file'])
                 corr_model = joblib.load(corr_file)
                 settings.update({'corr_model': corr_model})
             mlfunc = joblib.load(mlfunc_file)
@@ -1425,7 +1429,7 @@ class GridBenchmark(FiretaskBase):
                                            'CIDER', settings['mlfunc_file'])
                 if settings.get('corr_file') is not None:
                     corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                           'GLH', settings['mlfunc_c_file'])
+                                           'GLH', settings['corr_file'])
                     corr_model = joblib.load(corr_file)
                     settings.update({'corr_model': corr_model})
                 mlfunc = joblib.load(mlfunc_file)
@@ -1451,6 +1455,8 @@ class GridBenchmark(FiretaskBase):
             calc.grids.atom_grid = {}
             for site in mol._atom:
                 calc.grids.atom_grid[site[0]] = grid
+            if fcode == 'C':
+                calc.with_df.atom_grid = calc.grids.atom_grid
             calc.grids.prune = gen_grid.nwchem_prune if self['prune'] else None
             calc.grids.radi_method = radi_method
             calc.DIIS = scf.diis.ADIIS

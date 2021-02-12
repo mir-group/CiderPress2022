@@ -138,10 +138,11 @@ class VSXCContribs():
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) \
             + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1)
         
-        vtmp[0] += (tmp * vmixn)
-        vtmp[1] += (tmp * vmixz)
-        vtmp[2] += (tmp * vmixx2)
-        vtmp[3] += (tmp * vmixchi)
+        cond = nt > 1e-4
+        vtmp[0][cond] += (tmp * vmixn)[cond]
+        vtmp[1][cond] += (tmp * vmixz)[cond]
+        vtmp[2][cond] += (tmp * vmixx2)[cond]
+        vtmp[3][cond] += (tmp * vmixchi)[cond]
         
         # exchange-like enhancment derivs
         tmp = ldaxm[0]
@@ -219,7 +220,7 @@ class VSXCContribs():
             vxc[2][:,1] += vtmpd[1] * chid[4]
             vxc[3][:,1] += vtmpd[2]
 
-        thr = 1e-7
+        thr = 1e-6
         rhou, rhod = nu, nd
         tot[(rhou+rhod)<thr] = 0
         vxc[0][rhou<thr,0] = 0
