@@ -115,20 +115,21 @@ class VSXCContribs():
 
         gamma = 0.004 * 2**(2./3)
         gammax = 0.004
+        gammass = gammax
 
-        gt = gamma * x2 / (1 + gamma * x2)
-        gtu = gammass * x2u / (1 + gammass * x2u)
-        gtd = gammass * x2d / (1 + gammass * x2d)
-        dgt = gamma / (1 + gamma * x2)**2
-        dgtu = gammass / (1 + gammass * x2u)**2
-        dgtd = gammass / (1 + gammass * x2d)**2
+        gt = gamma * x2[0] / (1 + gamma * x2[0])
+        gtu = gammass * x2u[0] / (1 + gammass * x2u[0])
+        gtd = gammass * x2d[0] / (1 + gammass * x2d[0])
+        dgt = gamma / (1 + gamma * x2[0])**2
+        dgtu = gammass / (1 + gammass * x2u[0])**2
+        dgtd = gammass / (1 + gammass * x2d[0])**2
 
-        Fexp = np.exp(-2*(Fx-1)**2) * (Fx-1)
-        Fexpu = np.exp(-2*(Fxu-1)**2) * (Fxu-1)
-        Fexpd = np.exp(-2*(Fxd-1)**2) * (Fxu-1)
-        dFexp = np.exp(-2*(Fx-1)**2) * (1 - 4 * (Fx-1)**2)
-        dFexpu = np.exp(-2*(Fxu-1)**2) * (1 - 4 * (Fxu-1)**2)
-        dFexpd = np.exp(-2*(Fxd-1)**2) * (1 - 4 * (Fxd-1)**2)
+        Fexp = np.exp(-2*(ft-1)**2) * (ft-1)
+        Fexpu = np.exp(-2*(fu-1)**2) * (fu-1)
+        Fexpd = np.exp(-2*(fd-1)**2) * (fd-1)
+        dFexp = np.exp(-2*(ft-1)**2) * (1 - 4 * (ft-1)**2)
+        dFexpu = np.exp(-2*(fu-1)**2) * (1 - 4 * (fu-1)**2)
+        dFexpd = np.exp(-2*(fd-1)**2) * (1 - 4 * (fd-1)**2)
 
         achi, dachi = get_chidesc_small(chi[0])
         A = 17.0 / 3
@@ -150,7 +151,7 @@ class VSXCContribs():
         tot += ldaxm[1] * sld
         tot += ldaxm[0] * nlu
         tot += ldaxm[1] * nld
-        tot += self.c[20] * c1 * (1-chi**2) * Fexp
+        tot += self.c[20] * c1 * (1-chi[0]**2) * Fexp
         tot += self.c[21] * c0 * Fexp
         ldaf = ldaxu * Fexpu + ldaxd * Fexpd
         tot += self.c[22] * amix**2 * ldaf
@@ -165,17 +166,16 @@ class VSXCContribs():
         # enhancment terms on c1 and c0
         vtmp[3] += (c1 - c0) * dslc
         vtmp[4] += (self.c[3] * c1 * amix + self.c[4] * c0 * amix)
-        vtmp[4] += (self.c[20] * c1 * (1-chi**2) * dFexp \
+        vtmp[4] += (self.c[20] * c1 * (1-chi[0]**2) * dFexp \
                   + self.c[21] * c0 * dFexp)
-        vtmp[3] -= 2 * chi * self.c[20] * c1 * (ft-1)
-        
+        vtmp[3] -= 2 * chi[0] * self.c[20] * c1 * (ft-1)
         vtmp[2] += (self.c[25] * c1 + self.c[26] * c0) * amix * dgt
 
         # amix derivs and exchange-like rho derivs
         tmp = ldaxu * (slu + nlu) + ldaxd * (sld + nld) \
-            + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1) \
-            + 2 * amix * (self.c[22] * ldaf + self.c[27] * ldag) \
-            + self.c[25] * c1 * gt + self.c[26] * c0 * gt
+            + self.c[3] * c1 * (ft-1) + self.c[4] * c0 * (ft-1)
+        tmp += 2 * amix * (self.c[22] * ldaf + self.c[27] * ldag) \
+               + self.c[25] * c1 * gt + self.c[26] * c0 * gt
         
         cond = nt > 1e-4
         vtmp[0][cond] += (tmp * vmixn)[cond]
@@ -191,7 +191,7 @@ class VSXCContribs():
         vtmp[1][cond] += (tmp * v2mixz)[cond]
         vtmp[2][cond] += (tmp * v2mixx2)[cond]
         vtmp[3][cond] += (tmp * v2mixchi)[cond]
-        
+
         # exchange-like enhancment derivs
         tmp = ldaxm[0]
         vtmpu[0] += tmp * dsludx2
@@ -201,23 +201,22 @@ class VSXCContribs():
         vtmpd[0] += tmp * dslddx2
         vtmpd[1] += tmp * (dslddchi + dnlddchi)
         vtmpd[2] += tmp * dnlddf
-        vtmpu[2] += tmp * ldaxd * dFexpd
-
+        
         tmp = self.c[22] * amix**2 + self.c[23] * a2mix + self.c[24] * a2mix**2
         vtmpu[2] += tmp * ldaxu * dFexpu
         vtmpd[2] += tmp * ldaxd * dFexpd
         tmp = self.c[27] * amix**2 + self.c[28] * a2mix + self.c[29] * a2mix**2
         vtmpu[0] += tmp * ldaxu * dgtu
         vtmpd[0] += tmp * ldaxd * dgtd
-        
+
         # baseline derivs
-        tmp = 1 - slc + self.c[4] * amix * (ft-1) \
-              + self.c[21] * (ft-1) + self.c[26] * amix * gt
+        tmp = 1 - slc + self.c[4] * amix * (ft-1)
+        tmp += self.c[21] * (ft-1) + self.c[26] * amix * gt
         vtmp[0] += tmp * dc0dn
         vtmp[1] += tmp * dc0dz
         vtmp[2] += tmp * dc0dx2
-        tmp = slc + self.c[3] * amix * (ft-1) \
-              + self.c[20] * (1-chi**2) * (ft-1) + self.c[25] * gt * amix
+        tmp = slc + self.c[3] * amix * (ft-1)
+        tmp += self.c[20] * (1-chi[0]**2) * (ft-1) + self.c[25] * gt * amix
         vtmp[0] += tmp * dc1dn
         vtmp[1] += tmp * dc1dz
         vtmp[2] += tmp * dc1dx2
