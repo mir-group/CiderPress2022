@@ -1,6 +1,7 @@
 from mldftdat.pyscf_tasks import SCFCalc, CCSDCalc, TrainingDataCollector,\
                                 LoadCalcFromDB, DFTFromHF, MLSCFCalc, SGXCorrCalc,\
-                                GridBenchmark, USCFCalc
+                                GridBenchmark, USCFCalc, RSCFCalc,\
+                                SCFFromStableDBEntry
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, ACCDB_DIR,\
                                     read_accdb_structure
 from fireworks import Firework, LaunchPad
@@ -32,6 +33,19 @@ def make_uks_firework(struct, mol_id, basis, spin, functional,
                   functional_code=functional_code,
                   spin=spin, charge=charge, stability_functional=stability_functional,
                   **kwargs)
+    t2 = TrainingDataCollector(save_root_dir=SAVE_ROOT, mol_id=mol_id,
+                               skip_analysis=skip_analysis)
+    return Firework([t1, t2], name=name)
+
+def make_stable_firework(calc_type, mol_id, basis,
+                         functional, functional_code,
+                         stability_functional, name=None,
+                         skip_analysis=True, **kwargs):
+    t1 = SCFFromStableDBEntry(basis=basis, functional=functional,
+                              functional_code=functional_code,
+                              mol_id=mol_id, calc_type=calc_type,
+                              stability_functional=stability_functional,
+                              **kwargs)
     t2 = TrainingDataCollector(save_root_dir=SAVE_ROOT, mol_id=mol_id,
                                skip_analysis=skip_analysis)
     return Firework([t1, t2], name=name)

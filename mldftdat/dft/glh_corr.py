@@ -156,11 +156,11 @@ def get_uveff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     vxc = lib.tag_array(vxc, ecoul=ecoul, exc=exc, vj=vj, vk=vk)
     return vxc
 
-
-def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10):
+def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10, atom_grid=None):
     Ktime = (time.clock(), time.time())
     grids = dft.gen_grid.Grids(mol)
     grids.level = level
+    grids.atom_grid = atom_grid or {}
     grids.build(with_non0tab=True)
 
     ngrids = grids.weights.size
@@ -474,12 +474,14 @@ class SGXCorr(SGX):
         super(SGXCorr, self).__init__(mol, auxbasis)
         self.grids_level_i = 3
         self.grids_level_f = 3
+        self.atom_grid = {}
 
     def build(self, level=None):
         if level is None:
             level = self.grids_level_f
 
-        self.grids = get_gridss_with_non0tab(self.mol, level, self.grids_thrd)
+        self.grids = get_gridss_with_non0tab(self.mol, level, self.grids_thrd,
+                                             atom_grid=self.atom_grid)
         self._opt = _make_opt(self.mol)
 
         # TODO no rsh currently

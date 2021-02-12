@@ -638,6 +638,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     formulas = []
     for name in dataset_names:
         formulas.append(all_formulas[name])
+    for i, name in enumerate(dataset_names):
+        if 'IP23' in name:
+            weights[i] *= 4
+        elif 'EA13' in name:
+            weights[i] *= 4
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
@@ -705,6 +710,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
 
         Xts = X[lst[:NVAL]]
         yts = y[lst[:NVAL]]
+        print(dataset_names[lst[:NVAL]])
 
         if regression_method == 'weighted_lrr':
             if type(noise) == float:
@@ -740,11 +746,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         #             np.max(np.abs(Ecc - Edf)))
         #print(np.max(np.abs(yts - np.dot(Xts, coef))),
         #             np.max(np.abs(Ecc - Edf)[valset_bools]))
-        print(coef)
+        print(coef.tolist())
 
         coef_sets.append(coef)
         scores.append(score)
-        print(y)
+        #print(y)
     return coef_sets, scores
 
 
