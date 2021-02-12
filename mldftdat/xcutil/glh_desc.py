@@ -176,7 +176,7 @@ def desc_set3(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
 
     Fexp = np.exp(-2*(Fx-1)**2) * (Fx-1)
     Fexpu = np.exp(-2*(Fxu-1)**2) * (Fxu-1)
-    Fexpd = np.exp(-2*(Fxd-1)**2) * (Fxu-1)
+    Fexpd = np.exp(-2*(Fxd-1)**2) * (Fxd-1)
     cmscale = 17.0 / 3
     cmix = cmscale * (1 - chi) / (cmscale - chi)
     cmix_terms0 = np.array([chi**2-chi, chi**3-chi, chi**4-chi**2])
@@ -206,7 +206,7 @@ def desc_set3(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     return Ecscan, np.concatenate([Eterms, Eterms2, Fterms, Eterms3,
                                    Eterms4, Eterms5, Eterms6], axis=0)
 
-
+"""
 def desc_set4(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     rhot = rhou + rhod
     g2 = g2u + 2* g2o + g2d
@@ -285,6 +285,7 @@ def desc_set4(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     return Ecscan, np.concatenate([Eterms, Eterms2, Fterms,
                                    Eterms3, Eterms4,
                                    Eterms5, Eterms6], axis=0)
+"""
 
 
 def desc_set1_cider(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
