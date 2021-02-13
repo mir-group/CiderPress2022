@@ -166,9 +166,9 @@ class VSXCContribs():
         # enhancment terms on c1 and c0
         vtmp[3] += (c1 - c0) * dslc
         vtmp[4] += (self.c[3] * c1 * amix + self.c[4] * c0 * amix)
-        vtmp[4] += (self.c[20] * c1 * (1-chi[0]**2) * dFexp \
-                  + self.c[21] * c0 * dFexp)
-        vtmp[3] -= 2 * chi[0] * self.c[20] * c1 * (ft-1)
+        vtmp[4] += self.c[20] * c1 * (1-chi[0]**2) * dFexp \
+                  + self.c[21] * c0 * dFexp
+        vtmp[3] -= 2 * chi[0] * self.c[20] * c1 * Fexp
         vtmp[2] += (self.c[25] * c1 + self.c[26] * c0) * amix * dgt
 
         # amix derivs and exchange-like rho derivs
@@ -190,7 +190,7 @@ class VSXCContribs():
         vtmp[0][cond] += (tmp * v2mixn)[cond]
         vtmp[1][cond] += (tmp * v2mixz)[cond]
         vtmp[2][cond] += (tmp * v2mixx2)[cond]
-        vtmp[3][cond] += (tmp * v2mixchi)[cond]
+        #vtmp[3][cond] += (tmp * v2mixchi)[cond]
 
         # exchange-like enhancment derivs
         tmp = ldaxm[0]
@@ -211,12 +211,12 @@ class VSXCContribs():
 
         # baseline derivs
         tmp = 1 - slc + self.c[4] * amix * (ft-1)
-        tmp += self.c[21] * (ft-1) + self.c[26] * amix * gt
+        tmp += self.c[21] * Fexp + self.c[26] * amix * gt
         vtmp[0] += tmp * dc0dn
         vtmp[1] += tmp * dc0dz
         vtmp[2] += tmp * dc0dx2
         tmp = slc + self.c[3] * amix * (ft-1)
-        tmp += self.c[20] * (1-chi[0]**2) * (ft-1) + self.c[25] * gt * amix
+        tmp += self.c[20] * (1-chi[0]**2) * Fexp + self.c[25] * amix * gt
         vtmp[0] += tmp * dc1dn
         vtmp[1] += tmp * dc1dz
         vtmp[2] += tmp * dc1dx2
