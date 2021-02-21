@@ -25,6 +25,17 @@ def get_dft_tasks(struct, mol_id, basis, spin, functional=None, charge=0,
                                skip_analysis = skip_analysis)
     return t1, t2
 
+def make_rks_firework(struct, mol_id, basis, functional,
+                      functional_code, charge=0, skip_analysis=False,
+                      name=None, **kwargs):
+    struct_dict = struct.todict()
+    t1 = RSCFCalc(struct=struct_dict, basis=basis, functional=functional,
+                  functional_code=functional_code,
+                  charge=charge, **kwargs)
+    t2 = TrainingDataCollector(save_root_dir=SAVE_ROOT, mol_id=mol_id,
+                               skip_analysis=skip_analysis)
+    return Firework([t1, t2], name=name)
+
 def make_uks_firework(struct, mol_id, basis, spin, functional,
                       functional_code, charge=0, skip_analysis=False,
                       stability_functional='HF', name=None, **kwargs):
