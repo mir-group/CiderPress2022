@@ -169,6 +169,7 @@ class SCFFromStableDBEntry(FiretaskBase):
     DEFAULT_MAX_CONV_TOL = 1e-6
 
     def run_task(self, fw_spec):
+        import gc
         max_conv_tol = self.get('max_conv_tol') or self.DEFAULT_MAX_CONV_TOL
         calc_type = self['calc_type']
         functional = get_functional_db_name(self['stability_functional'])
@@ -183,6 +184,9 @@ class SCFFromStableDBEntry(FiretaskBase):
             analyzer = RHFAnalyzer.load(os.path.join(adir, 'data.hdf5'))
         dm0 = analyzer.calc.make_rdm1()
         mol = analyzer.mol
+
+        analyzer = None
+        gc.collect()
         
         functional = get_functional_db_name(self['functional'])
 
@@ -356,8 +360,7 @@ class MLSCFCalc(FiretaskBase):
 class RSCFCalc(FiretaskBase):
 
     required_params = ['struct', 'basis', 'functional', 'functional_code']
-    optional_params = ['charge', 'max_conv_tol', 'stability_functional',
-                       'stability_conv_tol', 'read_stab_func_from_db']
+    optional_params = ['charge', 'max_conv_tol']
 
     DEFAULT_MAX_CONV_TOL = 1e-6
 
