@@ -18,7 +18,7 @@ from mldftdat.workflow_utils import safe_mem_cap_mb, time_func, SAVE_ROOT,\
                                     get_functional_db_name, get_save_dir
 
 import yaml, joblib
-
+import gc
 
 @explicit_serialize
 class SCFCalc(FiretaskBase):
@@ -418,6 +418,8 @@ class RSCFCalc(FiretaskBase):
 
         calc = scf.addons.remove_linear_dep_(calc)
 
+        gc.collect()
+
         start_time = time.monotonic()
         calc.kernel()
         stop_time = time.monotonic()
@@ -536,6 +538,8 @@ class USCFCalc(FiretaskBase):
             raise ValueError('Invalid value of functional_type')
 
         calc = scf.addons.remove_linear_dep_(calc)
+
+        gc.collect()
 
         start_time = time.monotonic()
         calc.kernel(dm)

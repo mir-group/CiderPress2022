@@ -627,6 +627,9 @@ def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
         #    CALC_TYPE = 'UKS'
         CALC_TYPE = 'UKS'
         dname = get_save_dir(os.environ['MLDFTDB'], CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
+        if not os.path.exists(dname):
+            CALC_TYPE = 'RKS'
+            dname = get_save_dir(os.environ['MLDFTDB'], CALC_TYPE, BASIS, mol_id, FUNCTIONAL)
         if per_bond:
             en, nb = get_run_energy_and_nbond(dname)
             pred_energy += count * en
