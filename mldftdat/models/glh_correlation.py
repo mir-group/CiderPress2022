@@ -617,7 +617,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
     from pyscf import gto
     from mldftdat.data import get_accdb_formulas
 
-    MOL_FILE = 'data_files/glh_mn_tr.yaml'
+    MOL_FILE = 'data_files/glh_mn_tr2.yaml'
     TRAIN_FILE = 'data_files/accdb_mn_train_all.yaml'
     #DATASET_EVAL_NAME = '../ACCDB/Databases/Minnesota/DatasetEval.csv'
     DATASET_EVAL_NAME = 'data_files/DatasetEvalSOC.csv'
@@ -640,9 +640,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         formulas.append(all_formulas[name])
     for i, name in enumerate(dataset_names):
         if 'IP23' in name:
-            weights[i] *= 4
+            weights[i] *= 8
         elif 'EA13' in name:
-            weights[i] *= 4
+            weights[i] *= 8
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
@@ -692,7 +692,6 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             is_atom = False
             if len(structs) == 1 and 'AE17' in structs[0]:
                 is_atom = True
-                print(structs, formulas[i]['energy'])
             entries = [mol_to_ind[s] for s in structs]
             y[i] = formulas[i]['energy']
             pbe_err[i] = formulas[i]['energy']
@@ -700,10 +699,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 X[i,:] += count * E_c[entry_num,:]
                 y[i] -= count * E_bas[entry_num]
                 pbe_err[i] -= count * E_dft[entry_num]
-            if is_atom:
-                print(y[i], X[i,:])
 
-        NVAL = 25
+        NVAL = 0
         Xtr = X[lst[NVAL:]]
         ytr = y[lst[NVAL:]]
         wtr = weights[lst[NVAL:]]
@@ -726,15 +723,10 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         else:
             raise ValueError('Model choice not recognized')
 
-        score = r2_score(yts, np.dot(Xts, coef))
-        score0 = r2_score(yts, np.dot(Xts, 0 * coef))
+        #score = r2_score(yts, np.dot(Xts, coef))
+        #score0 = r2_score(yts, np.dot(Xts, 0 * coef))
         logging.info("{} {}".format(Xts.shape, yts.shape))
-        logging.info("{} {}".format(score, score0))
-        #print('SCAN ALL', np.mean(np.abs()),
-        #             np.mean((Ecc-Edf)), np.std(Ecc-Edf))
-        #print('SCAN VAL', np.mean(np.abs(Ecc-Edf)[valset_bools]),
-        #             np.mean((Ecc-Edf)[valset_bools]),
-        #             np.std((Ecc-Edf)[valset_bools]))
+        #logging.info("{} {}".format(score, score0))
         print('DFT ALL', np.mean(np.abs(pbe_err)))
         print('ML ALL', np.mean(np.abs(y - np.dot(X, coef))),
                      np.mean(y - np.dot(X, coef)),
@@ -742,15 +734,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         print('ML VAL', np.mean(np.abs(yts - np.dot(Xts, coef))),
                      np.mean(yts - np.dot(Xts, coef)),
                      np.std(yts-np.dot(Xts,coef)))
-        #print(np.max(np.abs(y - np.dot(X, coef))),
-        #             np.max(np.abs(Ecc - Edf)))
-        #print(np.max(np.abs(yts - np.dot(Xts, coef))),
-        #             np.max(np.abs(Ecc - Edf)[valset_bools]))
         print(coef.tolist())
 
         coef_sets.append(coef)
-        scores.append(score)
-        #print(y)
+        #scores.append(score)
+    
     return coef_sets, scores
 
 

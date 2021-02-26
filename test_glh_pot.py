@@ -9,7 +9,7 @@ from joblib import load
 import numpy as np
 from pyscf.sgx.sgx import sgx_fit
 
-corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'TEST.joblib'))
+corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'HHGGA_ITER0.joblib'))
 
 mol = gto.Mole(atom='Cl', basis='def2-qzvppd', spin=1, verbose=4)
 mol.ecp = 'def2-qzvppd'

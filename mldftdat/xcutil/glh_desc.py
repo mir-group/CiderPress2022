@@ -312,14 +312,14 @@ def desc_set1_cider(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
 
     gamma = 2**(2./3) * 0.004
     gammass = 0.004
-    gtu = gammass * g2u / (1 + gammass * g2u)
-    gtd = gammass * g2d / (1 + gammass * g2d)
     chi = get_chi_full_deriv(rhot + 1e-16, zeta, g2, tu + td)[0]
     chiu = get_chi_full_deriv(rhou + 1e-16, 1, g2u, tu)[0]
     chid = get_chi_full_deriv(rhod + 1e-16, 1, g2d, td)[0]
     x2 = get_x2(nu+nd, g2)[0]
     x2u = get_x2(nu, g2u)[0]
     x2d = get_x2(nd, g2d)[0]
+    gtu = gammass * x2u / (1 + gammass * x2u)
+    gtd = gammass * x2d / (1 + gammass * x2d)
     amix = get_amix_schmidt2(rhot, zeta, x2, chi)[0]
     chidesc = np.array(get_chi_desc(chi)[:4])
     chidescu = np.array(get_chi_desc(chiu)[:4])
@@ -343,9 +343,9 @@ def desc_set1_cider(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
                         np.dot(cx * amix * (Fx-1), weights)])
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
-    #Xterms1 = np.dot([ldaxu * (Fxu-1), ldaxd * (Fxd-1)], weights)
-    #Xterms2 = np.dot([ldaxu * gtu, ldaxd * gtd], weights)
-    Xterms = [np.dot(ldaxu * (Fxu-1) + ldaxd * (Fxd-1), weights)]
+    Xterms = [np.dot(ldaxu * (Fxu-1) + ldaxd * (Fxd-1), weights),
+              np.dot(ldaxu * gtu + ldaxd * gtd, weights),
+              np.dot(ldaxu * gtu**2 + ldaxd * gtd**2, weights)]
 
     return Ecscan, np.concatenate([Eterms, Eterms2, Fterms,
                                    Xterms], axis=0)
