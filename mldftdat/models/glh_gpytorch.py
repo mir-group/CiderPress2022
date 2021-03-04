@@ -8,13 +8,14 @@ class CovarianceMatrix(torch.nn.Module):
     def __init__(self, ndim, init_guess=None):
         super(CovarianceMatrix, self).__init__()
         if init_guess is None:
-            self.mat = torch.Parameter(torch.identity(ndim))
+            self.mat = torch.nn.Parameter(torch.eye(ndim))
         else:
             mat = torch.tensor(init_guess, dtype=torch.float64)
-            self.mat = torch.cholesky(mat)
+            mat = torch.cholesky(mat)
+            self.mat = torch.nn.Parameter(mat)
 
     def forward(self, x):
-        return torch.dot(self.mat, x)
+        return torch.matmul(x, self.mat)
 
 
 class LinearModel(gpytorch.models.ExactGP):
@@ -32,10 +33,10 @@ class LinearModel(gpytorch.models.ExactGP):
 class CovLinearModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood,
                  ndim, init_guess=None):
-        super(LinearModel, self).__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ConstantMean()
+        super(CovLinearModel, self).__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ZeroMean()#ConstantMean()
         self.covar_module = gpytorch.kernels.LinearKernel()
-        self.cov_mat = CovarianceMatrix()
+        self.cov_mat = CovarianceMatrix(ndim, init_guess)
 
     def forward(self, x):
         x = self.cov_mat(x)
@@ -63,7 +64,10 @@ def train(train_x, train_y, test_x, test_y,
     print(train_x.size(), train_y.size())
 
     if fixed_noise is None:
-        likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        likelihood = gpytorch.likelihoods.GaussianLikelihood(
+                    noise_constraint=gpytorch.constraints.Interval(1e-6,1e-3)
+                )
+        likelihood.noise = torch.tensor([0.0001])
     else:
         print('using fixed noise')
         likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(
@@ -74,7 +78,7 @@ def train(train_x, train_y, test_x, test_y,
             model = CovLinearModel(train_x, train_y, likelihood, nfeat)
         else:
             model = CovLinearModel(train_x, train_y, likelihood,
-                                   nfeat, cov_mat=cov_mat)
+                                   nfeat, init_guess=cov_mat)
     else:
         model = LinearModel(train_x, train_y, likelihood)
 
@@ -86,13 +90,13 @@ def train(train_x, train_y, test_x, test_y,
     if lfbgs:
         training_iterations = 100
     else:
-        training_iterations = 500
+        training_iterations = 2000
 
     model.train()
     likelihood.train()
 
     if not lfbgs:
-        optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     else:
         optimizer = torch.optim.LBFGS(model.parameters(),
                                       lr=lr, max_iter=200,
@@ -101,7 +105,6 @@ def train(train_x, train_y, test_x, test_y,
     print(optimizer.state_dict())
 
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
-    mll2 = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
     print(model.state_dict())
     print(likelihood.state_dict())
@@ -136,12 +139,10 @@ def train(train_x, train_y, test_x, test_y,
 
     model.eval()
     likelihood.eval()
-    with torch.no_grad(), gpytorch.settings.skip_posterior_variances(state=True):#, gpytorch.settings.use_toeplitz(False):#, gpytorch.settings.fast_pred_var():
-        preds = model(test_x)
-    print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - test_y))))
+    preds = model(train_x)
+    wts = model(torch.eye(nfeat, dtype=torch.float64))
+    print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - train_y))))
+    print('COEFS: {}'.format((wts.mean.detach()).numpy().tolist()))
+    print('NOISE: {}'.format(likelihood.noise))
 
-    if not isinstance(model, GPRModel):
-        for setting in settings:
-            setting.__exit__()
-
-    return model, min_loss
+    return wts.mean.detach().numpy(), min_loss

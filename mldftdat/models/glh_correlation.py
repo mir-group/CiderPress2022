@@ -580,12 +580,12 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             model.fit(Xtr * wtr[:,np.newaxis], ytr * wtr)
             coef = model.coef_
         elif regression_method == 'bayesian_lr':
-            from glh_gpytorch import *
+            from glh_gpytorch import train
             model, loss = train(Xtr, ytr, Xts, yts)
             print('LOSS', loss)
             coef = np.zeros(Xtr.shape[1])
         else:
-            raise ValueError('Model choice not recognized')
+            raise ValueError('Model choice not recognized {}'.format(regression_method))
 
         score = r2_score(yts, np.dot(Xts, coef))
         score0 = r2_score(yts, np.dot(Xts, 0 * coef))
@@ -735,6 +735,14 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             model = Lasso(alpha=noise, fit_intercept=False)
             model.fit(Xtr * wtr[:,np.newaxis], ytr * wtr)
             coef = model.coef_
+        elif regression_method == 'bayesian_lr':
+            from mldftdat.models.glh_gpytorch import train
+            fn = pbe_err**2
+            fn = np.minimum(3e-5, np.maximum(1e-7, fn))
+            cov = Xtr.T.dot(Xtr)
+            coef, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
+                                cov_mat=cov, lfbgs=True, lr=0.005)
+            print('LOSS', loss)
         else:
             raise ValueError('Model choice not recognized')
 
