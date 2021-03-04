@@ -579,6 +579,11 @@ def solve_from_stored_ae(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             model = Lasso(alpha=noise, fit_intercept=False)
             model.fit(Xtr * wtr[:,np.newaxis], ytr * wtr)
             coef = model.coef_
+        elif regression_method == 'bayesian_lr':
+            from glh_gpytorch import *
+            model, loss = train(Xtr, ytr, Xts, yts)
+            print('LOSS', loss)
+            coef = np.zeros(Xtr.shape[1])
         else:
             raise ValueError('Model choice not recognized')
 
