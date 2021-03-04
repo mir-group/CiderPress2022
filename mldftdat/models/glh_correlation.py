@@ -147,13 +147,23 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
         if exact:
             ex = dft_analyzer.fx_energy_density / (rho_data[0] + 1e-20)
         else:
-            desc  = np.zeros((N, len(mlfunc.desc_list)))
-            ddesc = np.zeros((N, len(mlfunc.desc_list)))
-            xdesc = get_exchange_descriptors2(dft_analyzer, restricted=True)
-            for i, d in enumerate(mlfunc.desc_list):
-                desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
-            xef = mlfunc.get_F(desc)
-            ex = LDA_FACTOR * xef * rho_data[0]**(1.0/3)
+            desc  = np.zeros((N, mlfunc.nfeat))
+            ex = np.zeros(N)
+            ggkwargs = {
+                    'version': mlfunc.desc_version,
+                    'a0': mlfunc.a0,
+                    'fac_mul': mlfunc.fac_mul,
+                    'amin': mlfunc.amin
+            }
+            print('GGKWARGS', ggkwargs)
+            blksize = 2000
+            for p0, p1 in lib.prange(0, N, blksize):
+                mini_grid = _DummyGrid(dft_analyzer.grid.weights[p0:p1],
+                                       dft_analyzer.grid.coords[p0:p1])
+                mini_ana = _DummyAnalyzer(dft_analyzer.mol, mini_grid, dft_analyzer.rdm1)
+                xdesc = get_exchange_descriptors2(mini_ana, restricted=True, **ggkwargs)
+                xef = mlfunc.get_F(xdesc[mlfunc.desc_order])
+                ex[p0:p1] = LDA_FACTOR * xef * rho_data[0,p0:p1]**(1.0/3)
         exu = ex
         exd = ex
         exo = ex
@@ -640,9 +650,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         formulas.append(all_formulas[name])
     for i, name in enumerate(dataset_names):
         if 'IP23' in name:
-            weights[i] *= 8
+            weights[i] *= 4
         elif 'EA13' in name:
-            weights[i] *= 8
+            weights[i] *= 4
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
