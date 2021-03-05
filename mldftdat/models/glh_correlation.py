@@ -658,6 +658,25 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             weights[i] *= 8
         elif 'EA13' in name:
             weights[i] *= 8
+
+    if regression_method == 'bayesian_lr':
+        unc = []
+        for i, name in enumerate(dataset_names):
+            if 'IP23' in name:
+                unc.append(1e-3)
+            elif 'EA13' in name:
+                unc.append(1e-3)
+            elif 'SR' in name or 'MR' in name or 'ABDE' in name:
+                _, _, nbond = \
+                    get_accdb_data(formula, 'PBE', 'def2-qzvppd',
+                                   per_bond=True)
+                if 'TM' in name:
+                    unc.append(2e-3 * abs(nbond))
+                else:
+                    unc.append(5e-4 * abs(nbond))
+            else:
+                unc.append(2e-3)
+        unc = np.array(unc)**2
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
@@ -741,7 +760,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             fn = np.minimum(3e-5, np.maximum(1e-7, fn))
             cov = Xtr.T.dot(Xtr)
             coef, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
-                                cov_mat=cov, lfbgs=True, lr=0.005)
+                               cov_mat=cov, lfbgs=True, lr=0.005,
+                               fixed_noise=unc)
             print('LOSS', loss)
         else:
             raise ValueError('Model choice not recognized')
