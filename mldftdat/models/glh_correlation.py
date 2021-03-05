@@ -655,9 +655,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         formulas.append(all_formulas[name])
     for i, name in enumerate(dataset_names):
         if 'IP23' in name:
-            weights[i] *= 4
+            weights[i] *= 8
         elif 'EA13' in name:
-            weights[i] *= 4
+            weights[i] *= 8
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
@@ -715,7 +715,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 y[i] -= count * E_bas[entry_num]
                 pbe_err[i] -= count * E_dft[entry_num]
 
-        NVAL = 0
+        NVAL = 25
         Xtr = X[lst[NVAL:]]
         ytr = y[lst[NVAL:]]
         wtr = weights[lst[NVAL:]]
