@@ -660,8 +660,10 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             weights[i] *= 8
 
     if regression_method == 'bayesian_lr':
+        from mldftdat.data import get_accdb_data
         unc = []
         for i, name in enumerate(dataset_names):
+            formula = all_formulas[name]
             if 'IP23' in name:
                 unc.append(1e-3)
             elif 'EA13' in name:
@@ -676,7 +678,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                     unc.append(5e-4 * abs(nbond))
             else:
                 unc.append(2e-3)
-        unc = np.array(unc)**2
+        unc = np.array(unc)
+        print(unc, np.mean(unc), unc.shape)
     # TODO get formulas as (entry_num count)
     # TODO get ref_etot
 
@@ -734,10 +737,13 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 y[i] -= count * E_bas[entry_num]
                 pbe_err[i] -= count * E_dft[entry_num]
 
-        NVAL = 25
+        NVAL = 0
         Xtr = X[lst[NVAL:]]
         ytr = y[lst[NVAL:]]
         wtr = weights[lst[NVAL:]]
+        if regression_method == 'bayesian_lr':
+            unctr = unc[lst[NVAL:]]
+            dsettr = dataset_names[lst[NVAL:]]
 
         Xts = X[lst[:NVAL]]
         yts = y[lst[:NVAL]]
@@ -759,10 +765,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             fn = pbe_err**2
             fn = np.minimum(3e-5, np.maximum(1e-7, fn))
             cov = Xtr.T.dot(Xtr)
-            coef, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
+            coef, onoise, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
                                cov_mat=cov, lfbgs=True, lr=0.005,
-                               fixed_noise=unc)
+                               knoise=unctr)
             print('LOSS', loss)
+            print('NOISY', dsettr[onoise>1e-4], onoise[onoise>1e-4])
         else:
             raise ValueError('Model choice not recognized')
 
