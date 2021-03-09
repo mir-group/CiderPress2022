@@ -659,12 +659,47 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         elif 'EA13' in name:
             weights[i] *= 8
 
+    subset_inds = {
+            'AE17': [],
+            'IP23': [],
+            'EA13': [],
+            'SRMG': [],
+            'SRTM': [],
+            'MRMG': [],
+            'MRTM': [],
+            'other': []
+    }
+    for i, name in enumerate(dataset_names):
+            formula = all_formulas[name]
+            if 'AE17' in name:
+                subset_inds['AE17'].append(i)
+            elif 'IP23' in name:
+                subset_inds['IP23'].append(i)
+            elif 'EA13' in name:
+                subset_inds['EA13'].append(i)
+            elif 'SR' in name and 'MG' in name:
+                subset_inds['SRMG'].append(i)
+            elif 'SR' in name and 'TM' in name:
+                subset_inds['SRTM'].append(i)
+            elif 'MR' in name and 'MG' in name:
+                subset_inds['MRMG'].append(i)
+            elif 'MR' in name and 'TM' in name:
+                subset_inds['MRTM'].append(i)
+            else:
+                subset_inds['other'].append(i)
     if regression_method == 'bayesian_lr':
         from mldftdat.data import get_accdb_data
         unc = []
         for i, name in enumerate(dataset_names):
-            formula = all_formulas[name]
-            if 'IP23' in name:
+            #if 'AE17' in name:
+            #    print(name, weights[i])
+            #    unc.append(3.5e-5 / weights[i])
+            #else:
+            #    unc.append(3.5e-5)
+            #continue
+            if 'AE17' in name:
+                unc.append(3e-3 / weights[i])
+            elif 'IP23' in name:
                 unc.append(1e-3)
             elif 'EA13' in name:
                 unc.append(1e-3)
@@ -673,7 +708,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                     get_accdb_data(formula, 'PBE', 'def2-qzvppd',
                                    per_bond=True)
                 if 'TM' in name:
-                    unc.append(2e-3 * abs(nbond))
+                    unc.append(1e-3 * abs(nbond))
                 else:
                     unc.append(5e-4 * abs(nbond))
             else:
@@ -766,8 +801,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             fn = np.minimum(3e-5, np.maximum(1e-7, fn))
             cov = Xtr.T.dot(Xtr)
             coef, onoise, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
-                               cov_mat=cov, lfbgs=True, lr=0.005,
-                               knoise=unctr)
+                               cov_mat=cov, lfbgs=True, lr=0.001,# fixed_noise=unctr)#,
+                               knoise=unctr, bnoise=unctr)
             print('LOSS', loss)
             print('NOISY', dsettr[onoise>1e-4], onoise[onoise>1e-4])
         else:
@@ -785,6 +820,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                      np.mean(yts - np.dot(Xts, coef)),
                      np.std(yts-np.dot(Xts,coef)))
         print(coef.tolist())
+        errs = y - np.dot(X, coef)
+        for k, v in subset_inds.items():
+            print(k, np.mean(np.abs(errs[v])))
 
         coef_sets.append(coef)
         #scores.append(score)
