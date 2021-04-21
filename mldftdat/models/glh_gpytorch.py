@@ -64,7 +64,7 @@ class NoiseCovLinearModel(gpytorch.models.ExactGP):
         #self.noise = torch.nn.Parameter(torch.tensor(1e-5*np.ones_like(init_noise), dtype=torch.float64))
 
     def get_noise(self):
-        return 3e-4 * (torch.sigmoid(self.noise**2 / 3e-4) - 0.5) + self.bnoise
+        return 2e-4 * (torch.sigmoid(self.noise**2 / 2e-4) - 0.5) + self.bnoise
 
     def forward(self, x):
         x = self.cov_mat(x)
@@ -114,7 +114,8 @@ class NoiseCovLinearModel2(gpytorch.models.ExactGP):
 
 def train(train_x, train_y, test_x, test_y, 
           fixed_noise=None, knoise=None, use_cov=False,
-          lfbgs=False, cov_mat=None, lr=0.01, bnoise=None):
+          lfbgs=False, cov_mat=None, lr=0.01, bnoise=None,
+          load_state=False, save_state=True):
 
     nfeat = train_x.shape[-1]
     train_x = torch.tensor(train_x)
@@ -142,29 +143,6 @@ def train(train_x, train_y, test_x, test_y,
                 learn_additional_noise=True,
                 noise_constraint=gpytorch.constraints.Interval(1e-8,1e-3)
         )
-        """
-        class DotMod(torch.nn.Module):
-            def __init__(self, init_noise):
-                super(DotMod, self).__init__()
-                self.noise = torch.nn.Parameter(torch.tensor(init_noise, dtype=torch.float64))
-                self.mean_module = gpytorch.means.ZeroMean()
-            def forward(self, *params):
-                return gpytorch.distributions.MultivariateNormal(self.mean_module(self.noise),
-                                                                 DiagLazyTensor(self.noise**2))
-        class GLB2(gpytorch.likelihoods.gaussian_likelihood._GaussianLikelihoodBase):
-            def __init__(self, noise_model, *args, **kwargs):
-                super(GLB2, self).__init__(noise_model, *args, **kwargs)
-            @property
-            def noise(self):
-                try:
-                    return self.noise_covar.noise_model.noise**2
-                except Exception as e:
-                    raise e
-
-        noise_model = gpytorch.likelihoods.noise_models.HeteroskedasticNoise(DotMod(fixed_noise),
-                               noise_constraint=gpytorch.constraints.Interval(1e-7,1e-2))
-        likelihood = GLB2(noise_model)
-        """
 
     if use_cov:
         if cov_mat is None:
@@ -185,12 +163,16 @@ def train(train_x, train_y, test_x, test_y,
         likelihood = model.likelihood
 
     if lfbgs:
-        training_iterations = 200
+        training_iterations = 100
     else:
         training_iterations = 2000
 
     model.train()
     likelihood.train()
+    if load_state:
+        likelihood.load_state_dict(torch.load('gpy_likelihood.pth'))
+        model.load_state_dict(torch.load('gpy_model.pth'))
+        best_state = copy.deepcopy(model.state_dict())
 
     if not lfbgs:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -198,7 +180,7 @@ def train(train_x, train_y, test_x, test_y,
         optimizer = torch.optim.LBFGS(model.parameters(),
                                       lr=lr, max_iter=200,
                                       history_size=200)
-        
+
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
     orig_train_y = train_y.clone()
@@ -235,6 +217,9 @@ def train(train_x, train_y, test_x, test_y,
     wts = model(torch.eye(nfeat, dtype=torch.float64))
     print('TEST MAE: {}'.format(torch.mean(torch.abs(preds.mean - train_y))))
     print('COEFS: {}'.format((wts.mean.detach()).numpy().tolist()))
-    print('NOISE: {}'.format(likelihood.noise + model.get_noise()))
+    print('NOISE: {}'.format(likelihood.noise, model.get_noise()))
+    if save_state:
+        torch.save(model.state_dict(), 'gpy_model.pth')
+        torch.save(likelihood.state_dict(), 'gpy_likelihood.pth')
 
     return wts.mean.detach().numpy(), (likelihood.noise + model.get_noise()).detach().numpy(), min_loss

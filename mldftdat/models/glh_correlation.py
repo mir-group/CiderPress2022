@@ -103,8 +103,14 @@ def get_corr_contribs(dft_dir, restricted, mlfunc,
         dft_analyzer = RHFAnalyzer.load(dft_dir + '/data.hdf5')
         rhot = dft_analyzer.rho_data[0]
     else:
-        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5')
-        rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
+        dft_analyzer = UHFAnalyzer.load(dft_dir + '/data.hdf5', max_mem=4000)
+        try:
+            rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
+        except:
+            print('NEED TO DO ANALYSIS FOR {}'.format(dft_dir))
+            dft_analyzer.perform_full_analysis()
+            dft_analyzer.dump(dft_dir + '/data.hdf5')
+            rhot = dft_analyzer.rho_data[0][0] + dft_analyzer.rho_data[1][0]
 
     rho_data = dft_analyzer.rho_data
     weights = dft_analyzer.grid.weights
@@ -667,6 +673,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             'SRTM': [],
             'MRMG': [],
             'MRTM': [],
+            'BH76': [],
             'other': []
     }
     for i, name in enumerate(dataset_names):
@@ -685,6 +692,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 subset_inds['MRMG'].append(i)
             elif 'MR' in name and 'TM' in name:
                 subset_inds['MRTM'].append(i)
+            elif 'HTBH' in name:
+                subset_inds['BH76'].append(i)
             else:
                 subset_inds['other'].append(i)
     if regression_method == 'bayesian_lr':
@@ -697,8 +706,9 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             #else:
             #    unc.append(3.5e-5)
             #continue
+            formula = all_formulas[name]
             if 'AE17' in name:
-                unc.append(3e-3 / weights[i])
+                unc.append(5e-3 / weights[i])
             elif 'IP23' in name:
                 unc.append(1e-3)
             elif 'EA13' in name:
@@ -712,7 +722,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
                 else:
                     unc.append(5e-4 * abs(nbond))
             else:
-                unc.append(2e-3)
+                unc.append(1e-3)
         unc = np.array(unc)
         print(unc, np.mean(unc), unc.shape)
     # TODO get formulas as (entry_num count)
@@ -802,7 +812,8 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
             cov = Xtr.T.dot(Xtr)
             coef, onoise, loss = train(Xtr, ytr, Xts, yts, use_cov=True,
                                cov_mat=cov, lfbgs=True, lr=0.001,# fixed_noise=unctr)#,
-                               knoise=unctr, bnoise=unctr)
+                               save_state=False, load_state=False)
+                               #knoise=unctr, bnoise=unctr, save_state=False, load_state=True)
             print('LOSS', loss)
             print('NOISY', dsettr[onoise>1e-4], onoise[onoise>1e-4])
         else:
@@ -822,7 +833,7 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         print(coef.tolist())
         errs = y - np.dot(X, coef)
         for k, v in subset_inds.items():
-            print(k, np.mean(np.abs(errs[v])))
+            print(k, np.mean(np.abs(errs[v])), np.sqrt(np.mean(errs[v]**2)))
 
         coef_sets.append(coef)
         #scores.append(score)

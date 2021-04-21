@@ -633,12 +633,13 @@ def get_accdb_data(formula, FUNCTIONAL, BASIS, per_bond=False):
         if per_bond:
             en, nb = get_run_energy_and_nbond(dname)
             pred_energy += count * en
+            print('NB', nb)
             nbond += count * nb
             #if nbond is None:
             #    nbond = nb
         else:
             pred_energy += count * get_run_total_energy(dname)
-
+    
     if per_bond:
         return pred_energy, formula['energy'], abs(nbond)
     else:
@@ -714,7 +715,7 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
                                             per_bond=True)
             energy = pred_ref
             result[data_point_name]['true'] = pred_ref
-        print(pred_energy-energy)
+        print(pred_energy-energy, pred_energy, energy)
         errs.append(pred_energy-energy)
     errs = np.array(errs)
     print(errs.shape)
@@ -723,7 +724,7 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
     rmse = np.sqrt(np.mean(errs**2))
     std = np.std(errs)
     if per_bond:
-        return np.sum(errs) / nbonds, np.sum(np.abs(errs)) / nbonds
+        return nbonds, np.sum(errs) / nbonds, np.sum(np.abs(errs)) / nbonds
     else:
         return me, mae, rmse, std, result
 

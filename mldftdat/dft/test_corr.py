@@ -64,7 +64,7 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
         n, exc, vxc = 0, 0, 0
     else:
         max_memory = ks.max_memory - lib.current_memory()[0]
-        n, exc, vxc = ni.nr_rks(mol, ks.grids, ks.xc, dm, max_memory=max_memory)
+        n, exc, vxc = 0, 0, 0 #ni.nr_rks(mol, ks.grids, ks.xc, dm, max_memory=max_memory)
         if ks.nlc != '':
             assert('VV10' in ks.nlc.upper())
             _, enlc, vnlc = ni.nr_rks(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm,
@@ -162,7 +162,7 @@ def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10, atom_grid=None):
     grids = dft.gen_grid.Grids(mol)
     grids.level = level
     grids.atom_grid = atom_grid or {}
-    grids.build(with_non0tab=True)
+    grids.build()
 
     ngrids = grids.weights.size
     mask = []
@@ -179,6 +179,7 @@ def get_gridss_with_non0tab(mol, level=1, gthrd=1e-10, atom_grid=None):
     logger.debug(mol, 'threshold for grids screening %g', gthrd)
     logger.debug(mol, 'number of grids %d', grids.weights.size)
     logger.timer_debug1(mol, "Xg screening", *Ktime)
+    grids.non0tab = grids.make_mask(mol, grids.coords)
     return grids
 
 def sgx_fit_corr(mf, auxbasis=None, with_df=None):
@@ -305,7 +306,7 @@ def _contract_corr_uks(vmat, mol, exc, vxc, weight, ao, rho, mask):
 
 
 def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
-            direct_scf_tol=1e-6):
+            direct_scf_tol=1e-13):
     """
     WARNING: Assumes dm.shape=(1,nao,nao) if restricted
     and dm.shape=(2,nao,nao) for unrestricted for correlation
@@ -370,6 +371,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
     for i0, i1 in lib.prange(0, ngrids, blksize):
         non0 = non0tab[i0//BLKSIZE:]
         coords = grids.coords[i0:i1]
+        #ao = mol.eval_gto('GTOval', coords, non0tab=non0)
         ao = mol.eval_gto('GTOval', coords)
         wao = ao * grids.weights[i0:i1,None]
         weights = grids.weights[i0:i1]
@@ -392,17 +394,18 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
         else:
             rhog = None
         ex = numpy.zeros(weights.shape[-1])
-        ao_data = eval_ao(mol, coords, deriv=2)#, non0tab=non0)
+        ao_data = eval_ao(mol, coords, deriv=2, non0tab=non0)
+        #ao_data = eval_ao(mol, coords, deriv=2)
         # should make mask for rho_data in the future.
         if nset == 1:
-            #rho_data = eval_rho(mol, ao_data, proj_dm[0], non0tab=non0, xctype='MGGA')
-            rho_data = eval_rho(mol, ao_data, dms[0], xctype='MGGA')
+            rho_data = eval_rho(mol, ao_data, proj_dm[0], non0tab=non0, xctype='MGGA')
+            #rho_data = eval_rho(mol, ao_data, dms[0], xctype='MGGA')
             NELEC += np.dot(weights, rho_data[0])
         else:
-            #rho_data_0 = eval_rho(mol, ao_data, dms[0], non0tab=non0, xctype='MGGA')
-            rho_data_0 = eval_rho(mol, ao_data, dms[0], xctype='MGGA')
-            #rho_data_1 = eval_rho(mol, ao_data, dms[1], non0tab=non0, xctype='MGGA')
-            rho_data_1 = eval_rho(mol, ao_data, dms[1], xctype='MGGA')
+            rho_data_0 = eval_rho(mol, ao_data, dms[0], non0tab=non0, xctype='MGGA')
+            #rho_data_0 = eval_rho(mol, ao_data, dms[0], xctype='MGGA')
+            rho_data_1 = eval_rho(mol, ao_data, dms[1], non0tab=non0, xctype='MGGA')
+            #rho_data_1 = eval_rho(mol, ao_data, dms[1], xctype='MGGA')
             rho_data = np.stack([rho_data_0, rho_data_1], axis=0)
 
         if sgx.debug:
@@ -458,7 +461,7 @@ def get_jkc(sgx, dm, hermi=1, with_j=True, with_k=True,
                 for i in range(nset):
                     vc2[i] -= lib.einsum('gu,gv->uv', ao, gv[i] * vctmp[-1][:,i,None]) / 2
 
-        jpart = jg = gv = None
+        jpart = jg = gv = ao_data = rho_data = FX = None
 
     t2 = logger.timer_debug1(mol, "sgX J/K builder", *t1)
     tdot = t2[0] - t1[0] - tnuc[0] , t2[1] - t1[1] - tnuc[1]
@@ -484,8 +487,8 @@ class SGXCorr(SGX):
 
     def __init__(self, mol, auxbasis=None):
         super(SGXCorr, self).__init__(mol, auxbasis)
-        self.grids_level_i = 0
-        self.grids_level_f = 0
+        self.grids_level_i = 1
+        self.grids_level_f = 3
         self.grids_switch_thrd = 0.03
         self.atom_grid = {}
 
@@ -505,7 +508,6 @@ class SGXCorr(SGX):
                direct_scf_tol=getattr(__config__, 'scf_hf_SCF_direct_scf_tol', 1e-13),
                omega=None):
         # omega not used
-        direct_scf_tol = 1e-6
         if with_j and self.dfj:
             vj = df_jk.get_j(self, dm, hermi, direct_scf_tol)
             if with_k:
@@ -564,6 +566,7 @@ def setup_rks_calc(mol, corr_model, vv10_coeff=None, **kwargs):
     #rks.with_df.dfj = True
     rks.direct_scf = False
     rks.debug = False
+    rks.with_df.dfj = True
     return rks
 
 def setup_uks_calc(mol, corr_model, vv10_coeff=None, **kwargs):
@@ -573,4 +576,5 @@ def setup_uks_calc(mol, corr_model, vv10_coeff=None, **kwargs):
     uks = sgx_fit_corr(uks)
     uks.direct_scf = False
     uks.debug = False
+    uks.with_df.dfj = True
     return uks
