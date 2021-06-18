@@ -37,7 +37,7 @@ ks.conv_tol = 1e-7
 ks.damp = 30
 ks.DIIS = scf.diis.ADIIS
 ks.level_shift = 0.1
-ks.diis_start_cycle = 200
+ks.diis_start_cycle = 10
 ks.max_cycle = 400
 ks.diis_space = 20
 ks.grids.level = 3
@@ -47,7 +47,7 @@ dm = ks.make_rdm1()
 ks.damp = 80
 ks.level_shift = 0
 ks.kernel(dm)
-
+"""
 fw_spec = {}
 fw_spec['calc'] = ks
 fw_spec['calc_type'] = 'UKS'
@@ -56,7 +56,7 @@ fw_spec['struct'] = struct
 fw_spec['cpu_count'] = 'NA'
 fw_spec['functional'] = functional
 fw_spec['wall_time'] = 'NA'
-
-task = TrainingDataCollector(save_root_dir=SAVE_ROOT, mol_id=mol_id)
-task.run_task(fw_spec)
+"""
+#task = TrainingDataCollector(save_root_dir=SAVE_ROOT, mol_id=mol_id)
+#task.run_task(fw_spec)
 

@@ -11,10 +11,10 @@ BASIS = 'def2-qzvppd'
 import numpy as np
 
 mlfunc = load("/n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/MLFUNCTIONALS/CIDER/SPLINE_A_HEG_WIDE.joblib")
-corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'CIDER_BIG_ITER0.joblib'))
+corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'CIDER_BLN_ITER0.joblib'))
 
-#mol = gto.M(atom='O', basis=BASIS, spin=2)
-mol = gto.M(atom='P', basis=BASIS, spin=3)
+mol = gto.M(atom='O', basis=BASIS, spin=2)
+#mol = gto.M(atom='P', basis=BASIS, spin=3)
 
 ks = dft.UKS(mol)
 ks.xc = 'PBE'
@@ -28,8 +28,8 @@ E_O = calc.kernel()
 print(E_static, E_O, E_static-E_O)
 
 mol.charge = 1
-#mol.spin = 3
-mol.spin = 2
+mol.spin = 3
+#mol.spin = 2
 mol.build()
 
 ks = dft.UKS(mol)
