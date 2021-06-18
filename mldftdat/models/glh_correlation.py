@@ -661,9 +661,11 @@ def solve_from_stored_accdb(AE_DIR, ATOM_DIR, DESC_NAME, noise=1e-3,
         formulas.append(all_formulas[name])
     for i, name in enumerate(dataset_names):
         if 'IP23' in name:
-            weights[i] *= 8
+            weights[i] *= 4
         elif 'EA13' in name:
-            weights[i] *= 8
+            weights[i] *= 4
+        elif 'AE17' in name:
+            weights[i] /= 4
 
     subset_inds = {
             'AE17': [],
