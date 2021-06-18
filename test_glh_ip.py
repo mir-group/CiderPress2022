@@ -10,7 +10,7 @@ BASIS = 'def2-qzvppd'
 
 import numpy as np
 
-corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'HHGGA_BLN_FINAL.joblib'))
+corr_model = load(os.path.join(SAVE_ROOT, 'MLFUNCTIONALS', 'GLH', 'HHGGA_BLN_FIX.joblib'))
 
 #mol = gto.M(atom='O', basis=BASIS, spin=2)
 mol = gto.M(atom='P', basis=BASIS, spin=3)
