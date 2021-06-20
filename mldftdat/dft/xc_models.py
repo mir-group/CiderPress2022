@@ -13,6 +13,15 @@ from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
 
 
 def get_vec_eval(grid, coeffs, X, N):
+    """
+    Call the numba-accelerated spline evaluation routines from the
+    interpolation package.
+    Args:
+        grid: start and end points + number of grids in each dimension
+        coeffs: coefficients of the spline
+        X: coordinates to interpolate
+        N: dimension of the interpolation (between 1 and 4, inclusive)
+    """
     coeffs = np.expand_dims(coeffs, coeffs.ndim)
     y = np.zeros((X.shape[0], 1))
     dy = np.zeros((X.shape[0], N, 1))
@@ -35,10 +44,37 @@ def get_vec_eval(grid, coeffs, X, N):
 
 
 class Evaluator():
+    """
+    The Evaluator module computes the exchange energy densities
+    and exchange enhancement factors for spline-interpolated XC functionals.
+    """
 
     def __init__(self, scale, ind_sets, spline_grids, coeff_sets,
                  xed_y_converter, feature_list, desc_order, const=0,
                  desc_version='c', a0=8.0, fac_mul=0.25, amin=0.05):
+        """
+        Args:
+            scale: lists of weights for the spline functions
+            ind_sets: List of index sets. For each set of indices, passes
+                the features at those indices to the spline interpolation
+                functions.
+            spline_grids: grids on which the splines are evaluated
+            coeff_sets: Coefficients for the spline interpolation
+            xed_y_converter (tuple): set of functions for convert between the
+                exchange energy density (xed) and exchange enhancement
+                factor y
+                    (xed_to_y, y_to_xed, eval_baseline_y,
+                    1 if baseline y is LDA, 2 if GGA)
+            feature_list (FeatureList): FeatureList object
+                (mldftdat.xcutil.transform_data.FeatureList) containing
+                the features to pass to the model.
+            desc_order (list): indexes the descriptors before passing them
+                to the features_list
+            const: constant term to add to the spline
+            desc_version ('c'): Version of the descriptors used ('a' or 'c')
+            a0, fac_mul, amin: parameters passed to CIDER feature generator.
+                (see mldftdat.dft.get_gaussian_grid_a/c)
+        """
         self.scale = scale
         self.nterms = len(self.scale)
         self.ind_sets = ind_sets
@@ -106,6 +142,9 @@ class Evaluator():
         return self.y_to_xed(F, X)
 
     def dump(self, fname):
+        """
+        Save the Evaluator to a file name fname as yaml format.
+        """
         state_dict = {
                         'scale': np.array(self.scale),
                         'ind_sets': self.ind_sets,
@@ -125,6 +164,9 @@ class Evaluator():
 
     @classmethod
     def load(cls, fname):
+        """
+        Load an instance of this class from yaml
+        """
         with open(fname, 'r') as f:
             state_dict = yaml.load(f, Loader=yaml.Loader)
         return cls(state_dict['scale'],
@@ -224,6 +266,9 @@ kappa = 0.804
 mu = 0.2195149727645171
 
 class PBEFunctional(MLFunctional):
+    """
+    PBE Exchange functional using the MLFunctional class
+    """
 
     def __init__(self):
         self.desc_list = [Descriptor(1)]
@@ -239,6 +284,9 @@ class PBEFunctional(MLFunctional):
 
 
 class SCANFunctional(MLFunctional):
+    """
+    SCAN Exchange functional using the MLFunctional class
+    """
 
     def __init__(self):
         self.desc_list = [Descriptor(1), Descriptor(2)]
@@ -425,5 +473,3 @@ class NormGPFunctional(MLFunctional,Evaluator):
             dFddesc[rho<1e-9,:] = 0
 
         return F, dFddesc
-
-
