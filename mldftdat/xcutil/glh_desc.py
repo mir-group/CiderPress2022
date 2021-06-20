@@ -282,8 +282,18 @@ def desc_set4(weights, rhou, rhod, g2u, g2o, g2d, tu, td, exu, exd):
     Fterms = np.dot(extermsu * ldaxu * amix, weights)
     Fterms += np.dot(extermsd * ldaxd * amix, weights)
 
+    flr = get_lrfl(rhot, 0.3)
+    Eterms7 = np.array([flr * (exo-ldaxt) * (1-chi**2) * (1-zeta**2),
+                        flr * (exo-ldaxt) * (1-chi**2*zeta**2),
+                        flr * exo * (chi-chi**3) * (1-zeta**2),
+                        flr * exo * (chi-chi**3),
+                        flr * exo * chi**2 * (1-chi**2) * (1-zeta**2),
+                        flr * exo * chi**2 * (1-chi**2)])
+    Eterms7 = np.dot(Eterms7, weights)
+
     return Ecscan, np.concatenate([Eterms, Eterms2, Fterms, Eterms3,
-                                   Eterms4, Eterms5, Eterms6], axis=0)
+                                   Eterms4, Eterms5, Eterms6,
+                                   Eterms7], axis=0)
 
 
 from scipy.special import erf, erfc

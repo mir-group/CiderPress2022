@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod, abstractproperty
 import numpy as np
 from pyscf.dft.libxc import eval_xc
 import numpy as np
+import yaml
 from interpolation.splines import UCGrid, CGrid, nodes
 from interpolation.splines import filter_cubic, eval_cubic
 from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
@@ -113,7 +114,11 @@ class Evaluator():
                         'xed_y_converter': self.xed_y_converter,
                         'feature_list': self.feature_list,
                         'desc_order': self.desc_order,
-                        'const': self.const
+                        'const': self.const,
+                        'desc_version': self.desc_version,
+                        'a0': self.a0,
+                        'fac_mul': self.fac_mul,
+                        'amin': self.amin
                      }
         with open(fname, 'w') as f:
             yaml.dump(state_dict, f)
@@ -129,7 +134,12 @@ class Evaluator():
                    state_dict['xed_y_converter'],
                    state_dict['feature_list'],
                    state_dict['desc_order'],
-                   const=state_dict['const'])
+                   const=state_dict['const'],
+                   desc_version=state_dict['desc_version'],
+                   a0=state_dict['a0'],
+                   fac_mul=state_dict['fac_mul'],
+                   amin=state_dict['amin']
+                  )
 
 
 
@@ -377,6 +387,11 @@ class GPFunctional(MLFunctional):
 
 class NormGPFunctional(MLFunctional,Evaluator):
 
+    def __init__(self, *args, **kwargs):
+        Evaluator.__init__(self, *args, **kwargs)
+        self.fxb_num = self.xed_y_converter[3]
+        self.fx_baseline = self.xed_y_converter[2]
+
     def get_F_and_derivative(self, X):
         rho = X[0]
         mat = np.zeros((self.nfeat, X.shape[1]))
@@ -410,3 +425,5 @@ class NormGPFunctional(MLFunctional,Evaluator):
             dFddesc[rho<1e-9,:] = 0
 
         return F, dFddesc
+
+
