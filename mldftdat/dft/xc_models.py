@@ -168,7 +168,7 @@ class Evaluator():
         Load an instance of this class from yaml
         """
         with open(fname, 'r') as f:
-            state_dict = yaml.load(f, Loader=yaml.Loader)
+            state_dict = yaml.load(f, Loader=yaml.CLoader)
         return cls(state_dict['scale'],
                    state_dict['ind_sets'],
                    state_dict['spline_grids'],

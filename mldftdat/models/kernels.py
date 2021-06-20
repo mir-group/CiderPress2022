@@ -1,11 +1,12 @@
-# Adaptation of the sklearn RBF kernel to support a matrix covariance
-# between the inputs. License info for sklearn model below:
+# Kernels for training and testing the CIDER model.
+# Based on the sklearn kernel module:
+# https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/gaussian_process/kernels.py
+# License info for sklearn model below:
 
-# Author: Jan Hendrik Metzen <jhm@informatik.uni-bremen.de>
-# License: BSD 3 clause
-
-# Note: this module is strongly inspired by the kernel module of the george
-#       package.
+#   Authors: Jan Hendrik Metzen <jhm@informatik.uni-bremen.de>
+#   License: BSD 3 clause
+#   Note: this module is strongly inspired by the kernel module of the george
+#         package.
 
 import numpy as np 
 from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
@@ -14,68 +15,6 @@ from sklearn.gaussian_process.kernels import StationaryKernelMixin,\
 
 from scipy.special import kv, gamma
 from scipy.spatial.distance import pdist, cdist, squareform
-
-def _check_length_scale(X, length_scale):
-    length_scale = np.squeeze(length_scale).astype(float)
-    if np.ndim(length_scale) == 1 and X.shape[1] * (X.shape[1] + 1) // 2 != length_scale.shape[0]:
-        raise ValueError("Anisotropic kernel must have the same number of "
-                         "dimensions as data (%d!=%d)"
-                         % (length_scale.shape[0], X.shape[1]))
-    return length_scale
-
-
-class PartialRBF(RBF):
-    """
-    Child class of sklearn RBF which only acts on the slice X[:,start:]
-    (or X[:,active_dims] if and only if active_dims is supplied).
-    start is ignored if active_dims is supplied.
-    """
-
-    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0,
-                 active_dims = None):
-        super(PartialRBF, self).__init__(length_scale, length_scale_bounds)
-        self.start = start
-        self.active_dims = active_dims
-
-    def __call__(self, X, Y=None, eval_gradient=False):
-        if self.active_dims is None:
-            X = X[:,self.start:]
-            if Y is not None:
-                Y = Y[:,self.start:]
-        else:
-            X = X[:,self.active_dims]
-            if Y is not None:
-                Y = Y[:,self.active_dims]
-        return super(PartialRBF, self).__call__(X, Y, eval_gradient)
-
-
-class SpinSymRBF(RBF):
-    """
-    TODO this is a draft.
-    RBF child class with spin symmetry.
-    """
-
-    def __init__(self, up_active_dims, down_active_dims, length_scale=1.0,
-                 length_scale_bounds=(1e-5, 1e5)):
-        super(SpinSymRBF, self).__init__(length_scale, length_scale_bounds)
-        self.up_active_dims = up_active_dims
-        self.down_active_dims = down_active_dims
-
-    def __call__(self, X, Y=None, eval_gradient=False):
-        Xup = X[:,self.up_active_dims]
-        Xdown = X[:,self.down_active_dims]
-        if Y is not None:
-            Yup = Y[:,self.up_active_dims]
-            Ydown = Y[:,self.down_active_dims]
-        else:
-            Yup = None
-            Ydown = None
-        uppart = super(SpinSymRBF).__call__(Xup, Yup, eval_gradient)
-        downpart = super(SpinSymRBF).__call__(Xdown, Ydown, eval_gradient)
-        if eval_gradient:
-            return uppart[0] + downpart[0], uppart[1] + downpart[1]
-        else:
-            return uppart + downpart
 
 
 class ARBF(RBF):
@@ -182,6 +121,7 @@ class ARBF(RBF):
         print(kernel.shape)
         return kernel
 
+
 def qarbf_args(arbf_base):
     ndim = len(arbf_base.length_scale)
     length_scale = arbf_base.length_scale
@@ -204,6 +144,7 @@ def arbf_args(arbf_base):
     if order > 3:
         raise ValueError('Order too high for mapping')
     return ndim, np.array(length_scale), scale, order
+
 
 class QARBF(StationaryKernelMixin, Kernel):
     """
@@ -276,6 +217,40 @@ class QARBF(StationaryKernelMixin, Kernel):
                 funcs.append(lambda x, y: self.get_sub_kernel((i,j), t, x, y))
                 t += 1
         return funcs
+
+
+
+###############################################################
+# NOTE: Below is a series of "Partial" kernels, which are the #
+# same as their base kernels except that only a subset of the #
+# features are used to construct the kernel, as specified by  #
+# the initializer arguments start and active_dims.            #
+###############################################################
+
+
+class PartialRBF(RBF):
+    """
+    Child class of sklearn RBF which only acts on the slice X[:,start:]
+    (or X[:,active_dims] if and only if active_dims is supplied).
+    start is ignored if active_dims is supplied.
+    """
+
+    def __init__(self, length_scale=1.0, length_scale_bounds=(1e-5, 1e5), start = 0,
+                 active_dims = None):
+        super(PartialRBF, self).__init__(length_scale, length_scale_bounds)
+        self.start = start
+        self.active_dims = active_dims
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        if self.active_dims is None:
+            X = X[:,self.start:]
+            if Y is not None:
+                Y = Y[:,self.start:]
+        else:
+            X = X[:,self.active_dims]
+            if Y is not None:
+                Y = Y[:,self.active_dims]
+        return super(PartialRBF, self).__call__(X, Y, eval_gradient)
 
 
 class PartialARBF(ARBF):
@@ -376,7 +351,15 @@ class SingleDot(DotProduct):
         return super(SingleDot, self).__call__(X, Y, eval_gradient)
 
 
+
+#################################################################
+# Below are kernels for constructing heteroskedastic noise that #
+# is a function of the electron density at the reference point. #
+#################################################################
+
+
 class DensityNoise(StationaryKernelMixin, GenericKernelMixin, Kernel):
+    # sigma = 1 / rho
 
     def __init__(self, index=0):
         self.index = index
@@ -401,6 +384,7 @@ class DensityNoise(StationaryKernelMixin, GenericKernelMixin, Kernel):
 
 class ExponentialDensityNoise(StationaryKernelMixin, GenericKernelMixin,
                               Kernel):
+    # sigma = 1 / rho^exponent
 
     def __init__(self, exponent=1.0, exponent_bounds=(0.1, 10)):
         self.exponent = exponent
@@ -482,7 +466,20 @@ class FittedDensityNoise(StationaryKernelMixin, GenericKernelMixin,
                                                 self.decay_rate)
 
 
+
+#####################################################
+# Miscellaneous kernels for constructing XC models. #
+#####################################################
+
+
 class ADKernel(Kernel):
+    """
+    A general kernel that passes the active_dims indices
+    of the feature vector to the base kernel k.
+
+    The method docs are taken from the sklearn kernel module
+    authored by Jan Hendrik Metzen.
+    """
 
     def __init__(self, k, active_dims):
         self.k = k
@@ -564,6 +561,13 @@ class ADKernel(Kernel):
 
 
 class SpinSymKernel(ADKernel):
+    """
+    A kernel that takes features for the up spin-channel,
+    up_active_dims, and down spin channel, down_active_dims,
+    and calls the base kernel k on each of them, then sums the
+    result. This results in a kernel that is symmetric to
+    flipping the spin.
+    """
 
     def __init__(self, k, up_active_dims, down_active_dims):
         self.k = k
