@@ -1,13 +1,40 @@
+"""
+Gaussian Process class for training CIDER functionals.
+Serves as a wrapper for the GPR class of sklearn.
+This module also contains utilities for constructing
+covariance and noise kernels and baselines.
+"""
+
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from mldftdat.models.kernels import *
 from mldftdat.xcutil.transform_data import *
-from mldftdat.data import score, true_metric
 from mldftdat.density import get_ldax_dens, get_ldax,\
-                             get_xed_from_y, get_y_from_xed
+                             get_xed_from_y, get_y_from_xed, get_x
 import numpy as np
 
 from scipy.linalg import solve_triangular
+
+def true_metric(y_true, y_pred, rho):
+    """
+    Find relative and absolute mse, as well as r2
+    score, for the exchange energy per particle (epsilon_x)
+    from the true and predicted enhancement factor
+    y_true and y_pred.
+    """
+    res_true = get_x(y_true, rho)
+    res_pred = get_x(y_pred, rho)
+    return np.sqrt(np.mean(((res_true - res_pred) / (1))**2)),\
+           np.sqrt(np.mean(((res_true - res_pred) / (res_true + 1e-7))**2)),\
+           score(res_true, res_pred)
+
+def score(y_true, y_pred):
+    """
+    r2 score
+    """
+    #y_mean = np.mean(y_true)
+    #return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
+    return r2_score(y_true, y_pred)
 
 
 SCALE_FAC = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
@@ -117,55 +144,6 @@ def get_fitted_density_noise_kernel(decay1=50.0, decay2=1e6, noise0=1e-6,
     wk2 = WhiteKernel(noise_level=noise2)
     noise_kernel = wk + wk1 * rhok1 + wk2 * rhok2
     return noise_kernel
-
-
-class ALGPR(GaussianProcessRegressor):
-    # TODO this is WIP, DO NOT USE!!!
-    # active learning GP with utility to add
-    # one training point at a time efficiently.
-
-    def fit_single(self, x, y):
-        # following Rasmussen A.12 (p. 201)
-        if self._K_inv is None:
-            # compute inverse K_inv of K based on its Cholesky
-            # decomposition L and its inverse L_inv
-            L_inv = solve_triangular(self.L_.T,
-                                     np.eye(self.L_.shape[0]))
-            self._K_inv = L_inv.dot(L_inv.T)
-
-        Pinv = self._K_inv
-        self.X_train_ = np.append(self.X_train_, x, axis=0)
-        self.y_train_ = np.append(self.y_train_, y)
-        newK = self.kernel_(x, self.X_train_).reshape(-1)
-        newK[-1] += self.alpha
-        R = newK[:-1]
-        S = newK[-1]
-        RPinv = np.dot(R, Pinv)
-        PinvQRPinv = np.outer(RPinv, RPinv)
-        M = 1 / (S - np.dot(R, np.dot(Pinv, R)))
-        Ptilde = Pinv + M * PinvQRPinv
-        Rtilde = - M * RPinv
-        Stilde = M
-        N_old = Pinv.shape[0]
-        N_new = N_old + 1
-
-        newKinv = np.zeros((N_new, N_new))
-        newKinv[:-1,:-1] = Ptilde
-        newKinv[-1,:-1] = Rtilde
-        newKinv[:-1,-1] = Rtilde
-        newKinv[-1,-1] = Stilde
-        self._K_inv = newKinv
-
-        newL = np.zeros((N_new, N_new))
-        B = newK[:-1]
-        R = solve_triangular(self.L_, B, lower=True)
-        newL[:-1,:-1] = self.L_
-        newL[:-1,-1] = 0
-        newL[-1,:-1] = R
-        newL[-1,-1] = np.sqrt(newK[-1] - np.dot(R, R))
-        self.L_ = newL
-
-        self.alpha_ = np.dot(self._K_inv, self.y_train_).reshape(-1)
 
 
 class DFTGPR():
@@ -301,8 +279,8 @@ class DFTGPR():
         y_pred = self.gp.predict(x)
         return np.abs(y - y_pred) > threshold
 
+    # WARNING: POORLY TESTED
     def add_point(self, xdesc, xed, threshold_factor=1.2):
-        # TODO WARNING: POORLY TESTED
         x = self.get_descriptors(xdesc)
         y = self.xed_to_y(xed, xdesc)
         if self.is_uncertain(x, y, threshold_factor):
@@ -383,4 +361,3 @@ class DFTGPR():
         gpr.desc_version = args.version
 
         return gpr
-

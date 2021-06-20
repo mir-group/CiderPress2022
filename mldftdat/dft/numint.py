@@ -10,7 +10,6 @@ from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTO
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
 from mldftdat.dft.utils import *
-from mldftdat.dft.correlation import nr_rks_vv10
 
 import numpy as np
 import logging
@@ -53,8 +52,8 @@ class QuickGrid():
         self.coords = coords
         self.weights = weights
 
-def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
-           max_memory = 2000, verbose = None):
+def nr_rks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
+           max_memory=2000, verbose=None):
 
     if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
         mol.auxmol, mol.ao_to_aux = setup_aux(mol)
@@ -81,11 +80,12 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         ngrid = weight.size
         aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
         for idm in range(nset):
-            logging.debug('dm shape', dms.shape)
+            logging.debug('dm shape %s', str(dms.shape))
             rho = make_rho(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(xc_code, mol, rho, QuickGrid(coords, weight), density[idm],
-                                  0, relativity, 1,
-                                  verbose=verbose)[:2]
+            exc, vxc = ni.eval_xc_cider(
+                xc_code, mol, rho, QuickGrid(coords, weight), density[idm],
+                0, relativity, 1,
+                verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
             den = rho[0] * weight
             nelec[idm] += den.sum()
@@ -107,29 +107,17 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho = exc = vxc = vrho = vsigma = wv = None
 
-    if ni.vv10:
-        if not hasattr(ni, 'nlcgrids'):
-            nlcgrids = Grids(mol)
-            nlcgrids.level = 1
-            nlcgrids.build()
-            ni.nlcgrids = nlcgrids
-        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms, 
-                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
-
     for i in range(nset):
         vmat[i] = vmat[i] + vmat[i].T
     if nset == 1:
         nelec = nelec[0]
         excsum = excsum[0]
         vmat = vmat.reshape(nao,nao)
-    if ni.vv10:
-        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
-    else:
-        return nelec, excsum, vmat
+    return nelec, excsum, vmat
 
 
-def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
-           max_memory = 2000, verbose = None):
+def nr_uks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
+           max_memory=2000, verbose=None):
     if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
         mol.auxmol, mol.ao_to_aux = setup_aux(mol)
 
@@ -161,12 +149,13 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         ngrid = weight.size
         aow = np.ndarray(ao[0].shape, order='F', buffer=aow)
         for idm in range(nset):
-            logging.debug('dm shape', dma.shape, dmb.shape)
+            logging.debug('dm shape %s %s', str(dma.shape), str(dmb.shape))
             rho_a = make_rhoa(idm, ao, mask, 'MGGA')
             rho_b = make_rhob(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
-                                  QuickGrid(coords, weight), density[idm],
-                                  1, relativity, 1, verbose=verbose)[:2]
+            exc, vxc = ni.eval_xc_cider(
+                xc_code, mol, (rho_a, rho_b),
+                QuickGrid(coords, weight), density[idm],
+                1, relativity, 1, verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
             den = rho_a[0]*weight
             nelec[0,idm] += den.sum()
@@ -200,39 +189,22 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
             rho_a = rho_b = exc = vxc = vrho = vsigma = wva = wvb = None
 
-    if ni.vv10:
-        if not hasattr(ni, 'nlcgrids'):
-            nlcgrids = Grids(mol)
-            nlcgrids.level = 1
-            nlcgrids.build()
-            ni.nlcgrids = nlcgrids
-        _, excsum_vv10, vmat_vv10 = nr_rks_vv10(ni, mol, ni.nlcgrids, xc_code, dms[0] + dms[1],
-                relativity, hermi, max_memory, verbose, b=ni.vv10_b, c=ni.vv10_c)
-        vmat_vv10 = np.asarray([vmat_vv10, vmat_vv10])
-
     for i in range(nset):
         vmat[0,i] = vmat[0,i] + vmat[0,i].T
         vmat[1,i] = vmat[1,i] + vmat[1,i].T
-        logging.debug("VMAT", np.max(np.abs(vmat[0,i])))
-        logging.debug("VMAT", np.max(np.abs(vmat[1,i])))
+        logging.debug("VMAT {}".format(np.max(np.abs(vmat[0,i]))))
+        logging.debug("VMAT {}".format(np.max(np.abs(vmat[1,i]))))
     if isinstance(dma, np.ndarray) and dma.ndim == 2:
         vmat = vmat[:,0]
         nelec = nelec.reshape(2)
         excsum = excsum[0]
-    if ni.vv10:
-        return nelec, excsum + excsum_vv10, vmat + vmat_vv10
-    else:
-        return nelec, excsum, vmat
+    return nelec, excsum, vmat
 
 
 class NLNumInt(pyscf_numint.NumInt):
 
-    nr_rks = nr_rks
-
-    nr_uks = nr_uks
-
     def __init__(self, mlfunc_x, corr_model=None,
-                 vv10_coeff=None, xmix=1.0):
+                 xmix=1.0):
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
         self.mlfunc_x.corr_model = corr_model
@@ -246,18 +218,38 @@ class NLNumInt(pyscf_numint.NumInt):
         else:
             raise ValueError('Invalid version for descriptors')
 
-        if vv10_coeff is None:
-            self.vv10 = False
+    def nr_rks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
+               max_memory=2000, verbose=None):
+        if '__VV10' in xc_code:
+            return super(NLNumInt, ni).nr_rks(
+                mol, grids, xc_code, dms, relativity, hermi,
+                max_memory, verbose
+            )
         else:
-            self.vv10 = True
-            self.vv10_b, self.vv10_c = vv10_coeff
+            return nr_rks(ni,
+                mol, grids, xc_code, dms, relativity, hermi,
+                max_memory, verbose
+            )
+
+    def nr_uks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
+               max_memory=2000, verbose=None):
+        if '__VV10' in xc_code:
+            return super(NLNumInt, ni).nr_uks(
+                mol, grids, xc_code, dms, relativity, hermi,
+                max_memory, verbose
+            )
+        else:
+            return nr_uks(ni,
+                mol, grids, xc_code, dms, relativity, hermi,
+                max_memory, verbose
+            )
 
     def rsh_and_hybrid_coeff(self, xc_code, spin=0):
         return 0, 0, 0
 
-    def eval_xc(self, xc_code, mol, rho_data, grid, density, spin=0,
-                relativity=0, deriv=1, omega=None,
-                verbose=None):
+    def eval_xc_cider(self, xc_code, mol, rho_data, grid, density, spin=0,
+                      relativity=0, deriv=1, omega=None,
+                      verbose=None):
         """
         Args:
             mol (gto.Mole) should be assigned a few additional attributes:
@@ -270,21 +262,19 @@ class NLNumInt(pyscf_numint.NumInt):
             density: density in auxiliary space
         """
         N = grid.weights.shape[0]
-        logging.debug('XCCODE', xc_code, spin)
+        logging.debug('XCCODE {} {}'.format(xc_code, spin))
         has_base_xc = (xc_code is not None) and (xc_code != '')
         if has_base_xc:
             exc0, vxc0, _, _ = eval_xc(xc_code, rho_data, spin, relativity,
                                        deriv, omega, verbose)
 
         if spin == 0:
-            logging.debug('NO SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
                                       (density, density), spin=0)
             vxc = [vxc[0][:,1], 0.5 * vxc[1][:,2] + 0.25 * vxc[1][:,1],\
                    vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1], vxc[5][1,:,:]]
         else:
-            logging.debug('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                         (rho_data[0], rho_data[1]),
                                         grid, (2 * density[0], 2 * density[1]),
@@ -340,7 +330,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
 
     for spin in range(1 if spin==0 else 2):
         pr2 = 2 * rho_data[spin] * np.linalg.norm(grid.coords, axis=1)**2
-        logging.debug('r2', spin, np.dot(pr2, grid.weights))
+        logging.debug('r2 {} {}'.format(spin, np.dot(pr2, grid.weights)))
         rho43 = ntup[spin]**(4.0/3)
         rho13 = ntup[spin]**(1.0/3)
         desc[spin] = np.zeros((N, mlfunc.nfeat))
@@ -376,22 +366,13 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
         vtot[0][:,spin] += (mlfunc.xmix * 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR) * rho13 * F[spin]
         dEddesc[spin] = (mlfunc.xmix * 2**(4.0/3) * LDA_FACTOR) * rho43.reshape(-1,1) * dF[spin]
 
-    logging.info('TIME TO SETUP DESCRIPTORS AND RUN GP', time.monotonic() - chkpt)
+    logging.info('TIME TO SETUP DESCRIPTORS AND RUN GP %f', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
     if mlfunc.corr_model is not None:
         tot, vxc = mlfunc.corr_model.xefc1(rhou, rhod, g2u, g2o, g2d,
                                            tu, td, F[0], F[1])
-        
-        logging.debug('Adding correlation contribution')
         weights = grid.weights
-        logging.debug(np.dot(vxc[0][:,0], rhou * weights))
-        logging.debug(np.dot(vxc[0][:,1], rhod * weights))
-        logging.debug(np.dot(vxc[1][:,0], g2u * weights))
-        logging.debug(np.dot(vxc[1][:,1], g2o * weights))
-        logging.debug(np.dot(vxc[1][:,2], g2d * weights))
-        logging.debug(np.dot(vxc[2][:,0], tu * weights))
-        logging.debug(np.dot(vxc[2][:,1], td * weights))
         
         exc += tot
         vtot[0][:,:] += vxc[0]
@@ -418,7 +399,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
     v_grad = np.stack(v_grad, axis=-1)
     vmol = np.stack(vmol, axis=0)
 
-    logging.info('TIME TO CALCULATE NONLOCAL POTENTIAL', time.monotonic() - chkpt)
+    logging.info('TIME TO CALCULATE NONLOCAL POTENTIAL %f', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
     vtot[0] += v_nst[0]
@@ -448,7 +429,7 @@ def setup_aux(mol):
 
 
 def setup_rks_calc(mol, mlfunc_x, corr_model=None,
-                   vv10_coeff=None, grid_level=3,
+                   grid_level=3,
                    xc=None, xmix=1.0, **kwargs):
     """
     Initialize a PySCF RKS calculation from pyscf.gto.Mole object mol
@@ -469,13 +450,13 @@ def setup_rks_calc(mol, mlfunc_x, corr_model=None,
     rks = dft.RKS(mol)
     rks.xc = xc
     rks._numint = NLNumInt(mlfunc_x, corr_model,
-                           vv10_coeff, xmix)
+                           xmix)
     rks.grids.level = grid_level
     rks.grids.build()
     return rks
 
 def setup_uks_calc(mol, mlfunc_x, corr_model=None,
-                   vv10_coeff=None, grid_level=3,
+                   grid_level=3,
                    xc=None, xmix=1.0, **kwargs):
     """
     Initialize a PySCF UKS calculation, see setup_rks_calc.
@@ -483,7 +464,7 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
     uks = dft.UKS(mol)
     uks.xc = xc
     uks._numint = NLNumInt(mlfunc_x, corr_model,
-                           vv10_coeff, xmix)
+                           xmix)
     uks.grids.level = grid_level
     uks.grids.build()
     return uks
