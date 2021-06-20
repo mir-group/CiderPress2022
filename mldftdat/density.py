@@ -593,7 +593,6 @@ def contract_exchange_descriptors_c(desc):
     dot1 = np.einsum('an,an->n', svec, g1)
 
     # Clebsch Gordan https://en.wikipedia.org/wiki/Table_of_Clebsch%E2%80%93Gordan_coefficients
-    # TODO need to adjust for the fact that these are real sph_harm?
     g2_norm = 0
     for i in range(5):
         g2_norm += g2[i] * g2[i]

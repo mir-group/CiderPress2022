@@ -16,6 +16,9 @@ import numpy as np
 import logging
 import time
 
+##
+# Note 
+#
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -447,6 +450,22 @@ def setup_aux(mol):
 def setup_rks_calc(mol, mlfunc_x, corr_model=None,
                    vv10_coeff=None, grid_level=3,
                    xc=None, xmix=1.0, **kwargs):
+    """
+    Initialize a PySCF RKS calculation from pyscf.gto.Mole object mol
+    and ML exchange model mlfunc_x.
+    Args:
+        mol (pyscf.gto.Mole): molecular structure object
+        mlfunc_x (MLFunctional): ML exchange functional
+        grid_level (int): PySCF integration grid level for XC
+        xc (str): Semi-local exchange-correlation functional to add to CIDER,
+        xmix (float): fraction of CIDER exchange
+
+    Example:
+        For a PBE0-CIDER calculation (i.e. 75% PBE exchange, 25% CIDER
+        exchange, 100% PBE correlation), use
+        xc = '0.75 * GGA_X_PBE + GGA_C_PBE'
+        xmix = 0.25
+    """
     rks = dft.RKS(mol)
     rks.xc = xc
     rks._numint = NLNumInt(mlfunc_x, corr_model,
@@ -458,6 +477,9 @@ def setup_rks_calc(mol, mlfunc_x, corr_model=None,
 def setup_uks_calc(mol, mlfunc_x, corr_model=None,
                    vv10_coeff=None, grid_level=3,
                    xc=None, xmix=1.0, **kwargs):
+    """
+    Initialize a PySCF UKS calculation, see setup_rks_calc.
+    """
     uks = dft.UKS(mol)
     uks.xc = xc
     uks._numint = NLNumInt(mlfunc_x, corr_model,
@@ -465,27 +487,6 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
     uks.grids.level = grid_level
     uks.grids.build()
     return uks
-
-def run_mlscf(mol, calc_type, functional_path, remove_ld=False,
-              conv_tol=1e-9, DIIS=scf.diis.CDIIS):
-    import os, yaml, joblib
-    settings_fname = os.path.join(functional_path, 'settings.yaml')
-    with open(settings_fname, 'r') as f:
-        settings = yaml.load(f, Loader = yaml.Loader)
-        if settings is None:
-            settings = {}
-    mlfunc_fname = os.path.join(functional_path, 'mlfunc.joblib')
-    mlfunc = joblib.load(mlfunc_fname)
-    if calc_type == 'RKS':
-        mf = setup_rks_calc(mol, mlfunc, **settings)
-    elif calc_type == 'UKS':
-        mf = setup_uks_calc(mol, mlfunc, **settings)
-    else:
-        raise ValueError('Invalid calc type, must be RKS or UKS')
-    mf.conv_tol = conv_tol
-    mf.DIIS = DIIS
-    mf.kernel()
-    return mf
 
 def run_mlscf(mol, calc_type, SAVE_ROOT, mlfunc_name, remove_ld=False,
               conv_tol=1e-9, DIIS=scf.diis.CDIIS):

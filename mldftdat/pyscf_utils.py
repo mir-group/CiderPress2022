@@ -1,11 +1,10 @@
-from pyscf import scf, dft, gto, ao2mo, df, lib, fci, cc
+from pyscf import scf, dft, gto, ao2mo, df, lib, cc
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
-from scipy.linalg.blas import dgemm
 import numpy as np
 import logging
-import scipy.linalg
+
 
 CALC_TYPES = {
     'RHF'   : scf.hf.RHF,
@@ -24,6 +23,10 @@ SCF_TYPES = {
     'UKS'  : dft.UKS
 }
 
+########################################################
+# BASIC HELPER ROUTINES FOR RUNNING PYSCF CALCULATIONS #
+########################################################
+
 def mol_from_ase(atoms, basis, spin=0, charge=0):
     """
     Get a pyscf gto.Mole object from an ase Atoms object (atoms).
@@ -39,6 +42,9 @@ def mol_from_ase(atoms, basis, spin=0, charge=0):
     return mol
 
 def setup_rks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
+    """
+    Set up a PySCF RKS calculation with sensible defaults.
+    """
     rks = dft.RKS(mol)
     rks.xc = xc
     rks.grids.level = grid_level
@@ -55,6 +61,9 @@ def setup_rks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
     return rks
 
 def setup_uks_calc(mol, xc, grid_level=3, vv10=False, **kwargs):
+    """
+    Set up a PySCF UKS calculation with sensible defaults.
+    """
     uks = dft.UKS(mol)
     uks.xc = xc
     uks.grids.level = grid_level
@@ -117,6 +126,15 @@ def run_cc(hf):
     calc = calc_cls(hf)
     calc.kernel()
     return calc
+
+
+
+
+
+#############################################
+# HELPER FUNCTIONS FOR THE analyzers MODULE #
+#############################################
+
 
 def get_grid(mol, level=3):
     """
@@ -400,127 +418,6 @@ def get_fx_energy_density(mol, mo_occ, mo_vele_mat, mo_vals):
     tmp = np.einsum('pi,pij->pj', A, mo_vele_mat)
     return -0.25 * np.sum(A * tmp, axis=1)
 
-def get_ee_energy_density(mol, rdm2, vele_mat, orb_vals):
-    """
-    Get the electron-electron repulsion energy density for a system and basis set (mol),
-    for a given molecular structure with basis set (mol).
-    Returns the electron-electron repulsion energy.
-    NOTE: vele_mat, rdm2, and orb_vals must be in the same basis! (AO or MO)
-    Args:
-        mol (gto.Mole)
-        rdm2 (4-dimensional array shape (nao, nao, nao, nao))
-        vele_mat (3-dimensional array shape (N, nao, nao))
-        orb_vals (2D array shape (N, nao))
-
-    The following script is equivalent and easier to read (but slower):
-
-    Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
-    tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
-    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
-    return 0.5 * Vele
-    """
-    #mu,nu,lambda,sigma->i,j,k,l; r->p
-    rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
-    rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
-    vele_mat, shape = vele_mat.view(), vele_mat.shape
-    vele_mat.shape = (shape[0], shape[1] * shape[2])
-    vele_tmp = dgemm(1, vele_mat, rdm2, trans_b=True)
-    vele_tmp.shape = (shape[0], orb_vals.shape[1], orb_vals.shape[1])
-    tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals)
-    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
-    return 0.5 * Vele
-
-def get_ee_energy_density_split(rdm2, vele_mat, orb_vals1, orb_vals2):
-    """
-    Get the electron-electron repulsion energy density for a system.
-    Returns the electron-electron repulsion energy.
-    NOTE: vele_mat, rdm2, and orb_vals must be in the same basis! (AO or MO)
-    This variant allows one to split the calculation into pieces to save
-    memory
-    Args:
-        rdm2 (d1,d2,d3,d4)
-        vele_mat (N,d3,d4)
-        orb_vals1 (N,d1)
-        orb_vals2 (N,d2)
-
-    The following script is equivalent and easier to read (but slower):
-
-    Vele_tmp = np.einsum('ijkl,pkl->pij', rdm2, vele_mat)
-    tmp = np.einsum('pij,pj->pi', Vele_tmp, orb_vals)
-    Vele = np.einsum('pi,pi->p', tmp, orb_vals)
-    return 0.5 * Vele
-
-    return \sum_{pqrs} dm2[p,q,r,s] * vele_mat[:,r,s] * mo_vals[:,p] * mo_vals[:,q]
-    return \sum_{pqrs} < p^\dagger r^\dagger s q > * < r | |x-x'|^{-1} | s > 
-                          * < x | p > * < x | q >
-    Note: Assumes real input
-    """
-    #mu,nu,lambda,sigma->i,j,k,l; r->p
-    rdm2, shape = np.ascontiguousarray(rdm2).view(), rdm2.shape
-    rdm2.shape = (shape[0] * shape[1], shape[2] * shape[3])
-    vele_mat, shape = np.ascontiguousarray(vele_mat).view(), vele_mat.shape
-    vele_mat.shape = (shape[0], shape[1] * shape[2])
-    vele_tmp = np.zeros((shape[0], orb_vals1.shape[1] * orb_vals2.shape[1]),
-                        dtype=vele_mat.dtype)
-    vele_tmp = dgemm(1, vele_mat, rdm2, c=vele_tmp,
-                        overwrite_c=True, trans_b=True)
-    vele_tmp.shape = (shape[0], orb_vals1.shape[1], orb_vals2.shape[1])
-    tmp = np.einsum('pij,pj->pi', vele_tmp, orb_vals2)
-    Vele = np.einsum('pi,pi->p', tmp, orb_vals1)
-    return 0.5 * Vele
-
-def get_lowmem_ee_energy(mycc, vele_mat, mo_vals, dm1 = None):
-    """
-    return \sum_{pqrs} dm2[p,q,r,s] * vele_mat[:,r,s] * mo_vals[:,p] * mo_vals[:,q]
-    return \sum_{pqrs} < p^\dagger r^\dagger s q > * < r | |x-x'|^{-1} | s > 
-                          * < x | p > * < x | q >
-    Note: Assumes real input
-    """
-    from mldftdat.external.pyscf_ccsd_rdm import lowmem_ee_energy
-    if isinstance(vele_mat, np.ndarray):
-        return lowmem_ee_energy(mycc, mycc.t1, mycc.t2, mycc.l1, mycc.l2,
-                                vele_mat, mo_vals, dm1=dm1)
-    else:
-        ee_energy_density = np.array([])
-        for vele_mat_chunk, mo_vals_chunk in vele_mat(mo_vals):
-            ee_energy_density = np.append(ee_energy_density,
-                                    lowmem_ee_energy(mycc, mycc.t1, mycc.t2,
-                                                    mycc.l1, mycc.l2,
-                                                    vele_mat_chunk, mo_vals_chunk,
-                                                    dm1 = dm1))
-        return ee_energy_density
-
-def get_corr_energy_density(mol, tau, vele_mat_ov, orbvals_occ,
-                            orbvals_vir, direct = True):
-    """
-    Get the coupled-cluster correlation energy density for a system
-    and basis set (mol).
-    Args:
-        tau (nocc1,nocc2,nvir1,nvir2)
-        vele_mat_ov(gridsize,nocc2,nvir2)
-        orbvals_occ (gridsize,nocc1)
-        orbvals_occ (gridsize,nvir1)
-    """
-    if direct:
-        vele_tmp = np.einsum('ijab,pjb->pia', tau, vele_mat_ov)
-    else:
-        vele_tmp = np.einsum('jiab,pjb->pia', tau, vele_mat_ov)
-    vele_tmp = np.einsum('pjb,pb->pj', vele_tmp, orbvals_vir)
-    vele = np.einsum('pj,pj->p', vele_tmp, orbvals_occ)
-
-    return vele
-
-    #e += 2 * numpy.einsum('ijab,iabj', tau, eris_ovvo)
-    #e -=     numpy.einsum('jiab,iabj', tau, eris_ovvo)
-
-def get_corr_density(tau, mo_to_aux_ov, direct = True):
-    if direct:
-        vele_tmp = np.einsum('ijab,pjb->pia', tau, mo_to_aux_ov)
-    else:
-        vele_tmp = np.einsum('jiab,pjb->pia', tau, mo_to_aux_ov)
-    vele = np.einsum('pjb,qjb->pq', vele_tmp, mo_to_aux_ov)
-    return vele
-
 
 # The following functions are helpers that check whether vele_mat
 # is a numpy array or a generator before passing to the methods
@@ -549,17 +446,6 @@ def get_fx_energy_density2(mol, mo_occ, mo_vele_mat, mo_vals):
                                     get_fx_energy_density(mol, mo_occ,
                                         vele_mat_chunk, orb_vals_chunk))
         return fx_energy_density
-
-def get_ee_energy_density2(mol, rdm2, vele_mat, orb_vals):
-    if isinstance(vele_mat, np.ndarray):
-        return get_ee_energy_density(mol, rdm2, vele_mat, orb_vals)
-    else:
-        ee_energy_density = np.array([])
-        for vele_mat_chunk, orb_vals_chunk in vele_mat(orb_vals):
-            ee_energy_density = np.append(ee_energy_density,
-                                    get_ee_energy_density(mol, rdm2,
-                                        vele_mat_chunk, orb_vals_chunk))
-        return ee_energy_density
 
 
 def mol_from_dict(mol_dict):
@@ -597,6 +483,14 @@ def load_calc(fname):
 def load_analyzer_data(fname):
     data_file = os.path.join(dirname, fname)
     return lib.chkfile.load(data_file, 'analyzer/data')
+
+
+
+
+##################################################
+# HELPER FUNCTIONS FOR COMPUTING DFT INGREDIENTS #
+##################################################
+
 
 def get_ws_radii(rho):
     return (3.0 / (4 * np.pi * rho + 1e-16))**(1.0/3)
@@ -657,56 +551,3 @@ def squish_tau(tau_data, alpha):
     tau_data[0,:] *= alpha**5
     tau_data[1:4] *= alpha**6
     return tau_data
-
-def get_proj(mol, grids):
-    nao = mol.nao_nr()
-    sn = np.zeros((nao, nao))
-    ngrids = grids.coords.shape[0]
-    blksize = dft.gen_grid.BLKSIZE
-    for i0, i1 in lib.prange(0, ngrids, blksize):
-        coords = grids.coords[i0:i1]
-        ao = mol.eval_gto('GTOval', coords)
-        wao = ao * grids.weights[i0:i1,None]
-        sn += lib.dot(ao.T, wao)
-    ovlp = mol.intor_symmetric('int1e_ovlp')
-    proj = scipy.linalg.solve(sn, ovlp)
-    return proj
-
-def get_normalized_rho_integration(ks):
-    T = type(ks._numint)
-    class NormNumint(T):
-        def __init__(self):
-            super(T, self).__init__()
-            self.proj = get_proj(ks.mol, ks.grids)
-            self.omega = ks._numint.omega
-
-        def _gen_rho_evaluator(self, mol, dms, hermi=0):
-            if isinstance(dms, np.ndarray) and dms.ndim == 2:
-                dms = [dms]
-            if not hermi:
-                # For eval_rho when xctype==GGA, which requires hermitian DMs
-                dms = [(dm+dm.conj().T)*.5 for dm in dms]
-            nao = dms[0].shape[0]
-            ndms = len(dms)
-            def make_rho(idm, ao, non0tab, xctype):
-                return self.eval_rho(mol, ao, dms[idm], non0tab, xctype, hermi=1)
-            return make_rho, ndms, nao
-
-        def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
-            rho_exact = eval_rho(mol, ao, dm, non0tab, xctype, hermi, verbose)
-            proj_dm = lib.einsum('ki,ij->kj', self.proj, dm)
-            rho_scale = eval_rho(mol, ao, proj_dm, non0tab, xctype, hermi, verbose)
-            return lib.tag_array(rho_scale, rho_exact=rho_exact)
-
-        def eval_xc(self, xc_code, rho, spin=0, relativity=0, deriv=1, omega=None,
-                    verbose=None):
-            if omega is None: omega = self.omega
-            if type(rho) == tuple:
-                rho_exact = [r.rho_exact for r in rho]
-            else:
-                rho_exact = rho.rho_exact
-            return self.libxc.eval_xc(xc_code, rho_exact, spin, relativity, deriv,
-                                      omega, verbose)
-    ks._numint = NormNumint()
-    return ks
-
