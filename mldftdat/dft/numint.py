@@ -277,14 +277,15 @@ class NLNumInt(pyscf_numint.NumInt):
             logging.debug('NO SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
-                                      (density, density))
+                                      (density, density), spin=0)
             vxc = [vxc[0][:,1], 0.5 * vxc[1][:,2] + 0.25 * vxc[1][:,1],\
                    vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1], vxc[5][1,:,:]]
         else:
             logging.debug('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                         (rho_data[0], rho_data[1]),
-                                        grid, (2 * density[0], 2 * density[1]))
+                                        grid, (2 * density[0], 2 * density[1]),
+                                        spin=1)
         if has_base_xc:
             exc += exc0
             if vxc0[0] is not None:
@@ -298,7 +299,7 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mlfunc, mol, rho_data, grid, density):
+def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
 
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
@@ -334,7 +335,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density):
 
     exc = 0
 
-    for spin in range(2):
+    for spin in range(1 if spin==0 else 2):
         pr2 = 2 * rho_data[spin] * np.linalg.norm(grid.coords, axis=1)**2
         logging.debug('r2', spin, np.dot(pr2, grid.weights))
         rho43 = ntup[spin]**(4.0/3)
@@ -359,7 +360,19 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density):
         exc += (mlfunc.xmix * 2**(1.0/3) * LDA_FACTOR) * rho43 * F[spin]
         vtot[0][:,spin] += (mlfunc.xmix * 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR) * rho13 * F[spin]
         dEddesc[spin] = (mlfunc.xmix * 2**(4.0/3) * LDA_FACTOR) * rho43.reshape(-1,1) * dF[spin]
-        
+    if spin == 0:
+        raw_desc[1] = raw_desc[0]
+        ovlps[1] = ovlps[0]
+        desc[1] = desc[0]
+        raw_desc_r2[1] = raw_desc_r2[0]
+        contracted_desc[1] = contracted_desc[0]
+        F[1] = F[0]
+        dF[1] = dF[0]
+        spin = 1
+        exc += (mlfunc.xmix * 2**(1.0/3) * LDA_FACTOR) * rho43 * F[spin]
+        vtot[0][:,spin] += (mlfunc.xmix * 2**(1.0/3) * 4.0 / 3 * LDA_FACTOR) * rho13 * F[spin]
+        dEddesc[spin] = (mlfunc.xmix * 2**(4.0/3) * LDA_FACTOR) * rho43.reshape(-1,1) * dF[spin]
+
     logging.info('TIME TO SETUP DESCRIPTORS AND RUN GP', time.monotonic() - chkpt)
     chkpt = time.monotonic()
 
