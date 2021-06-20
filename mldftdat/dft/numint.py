@@ -53,9 +53,19 @@ class QuickGrid():
 def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
 
+    if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
+        mol.auxmol, mol.ao_to_aux = setup_aux(mol)
+
     make_rho, nset, nao = ni._gen_rho_evaluator(mol, dms, hermi)
     shls_slice = (0, mol.nbas)
     ao_loc = mol.ao_loc_nr()
+
+    density = []
+    if nset > 1:
+        for idm in range(nset):
+            density.append(np.einsum('npq,pq->n', mol.ao_to_aux, dms[idm]))
+    else:
+        density.append(np.einsum('npq,pq->n', mol.ao_to_aux, dms))
 
     nelec = np.zeros(nset)
     excsum = np.zeros(nset)
@@ -70,7 +80,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
         for idm in range(nset):
             logging.debug('dm shape', dms.shape)
             rho = make_rho(idm, ao, mask, 'MGGA')
-            exc, vxc = ni.eval_xc(xc_code, mol, rho, QuickGrid(coords, weight), dms,
+            exc, vxc = ni.eval_xc(xc_code, mol, rho, QuickGrid(coords, weight), density[idm],
                                   0, relativity, 1,
                                   verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
@@ -117,14 +127,26 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
 
 def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
            max_memory = 2000, verbose = None):
+    if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
+        mol.auxmol, mol.ao_to_aux = setup_aux(mol)
 
     shls_slice = (0, mol.nbas)
     ao_loc = mol.ao_loc_nr()
 
     dma, dmb = _format_uks_dm(dms)
+
     nao = dma.shape[-1]
     make_rhoa, nset = ni._gen_rho_evaluator(mol, dma, hermi)[:2]
     make_rhob       = ni._gen_rho_evaluator(mol, dmb, hermi)[0]
+
+    density = []
+    if nset > 1:
+        for idm in range(nset):
+            density.append((np.einsum('npq,pq->n', mol.ao_to_aux, dma[idm]),\
+                   np.einsum('npq,pq->n', mol.ao_to_aux, dmb[idm])))
+    else:
+        density = [(np.einsum('npq,pq->n', mol.ao_to_aux, dma),\
+                                   np.einsum('npq,pq->n', mol.ao_to_aux, dmb))]
 
     nelec = np.zeros((2,nset))
     excsum = np.zeros(nset)
@@ -140,7 +162,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity = 0, hermi = 0,
             rho_a = make_rhoa(idm, ao, mask, 'MGGA')
             rho_b = make_rhob(idm, ao, mask, 'MGGA')
             exc, vxc = ni.eval_xc(xc_code, mol, (rho_a, rho_b),
-                                  QuickGrid(coords, weight), (dma, dmb),
+                                  QuickGrid(coords, weight), density[idm],
                                   1, relativity, 1, verbose=verbose)[:2]
             vrho, vsigma, vlapl, vtau, vgrad, vmol = vxc[:6]
             den = rho_a[0]*weight
@@ -230,7 +252,7 @@ class NLNumInt(pyscf_numint.NumInt):
     def rsh_and_hybrid_coeff(self, xc_code, spin=0):
         return 0, 0, 0
 
-    def eval_xc(self, xc_code, mol, rho_data, grid, rdm1, spin=0,
+    def eval_xc(self, xc_code, mol, rho_data, grid, density, spin=0,
                 relativity=0, deriv=1, omega=None,
                 verbose=None):
         """
@@ -242,11 +264,8 @@ class NLNumInt(pyscf_numint.NumInt):
                     basis, shape (naux, nao, nao)
             rho_data (array (6, N)): The density, gradient, laplacian, and tau
             grid (Grids): The molecular grid
-            rdm1: density matrix
+            density: density in auxiliary space
         """
-        if not (hasattr(mol, 'ao_to_aux') and hasattr(mol, 'auxmol')):
-            mol.auxmol, mol.ao_to_aux = setup_aux(mol)
-
         N = grid.weights.shape[0]
         logging.debug('XCCODE', xc_code, spin)
         has_base_xc = (xc_code is not None) and (xc_code != '')
@@ -258,14 +277,14 @@ class NLNumInt(pyscf_numint.NumInt):
             logging.debug('NO SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                       (rho_data / 2, rho_data / 2), grid,
-                                      (rdm1, rdm1))
+                                      (density, density))
             vxc = [vxc[0][:,1], 0.5 * vxc[1][:,2] + 0.25 * vxc[1][:,1],\
                    vxc[2][:,1], vxc[3][:,1], vxc[4][:,:,1], vxc[5][1,:,:]]
         else:
             logging.debug('YES SPIN POL')
             exc, vxc, _, _ = _eval_xc_0(self.mlfunc_x, mol,
                                         (rho_data[0], rho_data[1]),
-                                        grid, (2 * rdm1[0], 2 * rdm1[1]))
+                                        grid, (2 * density[0], 2 * density[1]))
         if has_base_xc:
             exc += exc0
             if vxc0[0] is not None:
@@ -279,14 +298,12 @@ class NLNumInt(pyscf_numint.NumInt):
         return exc, vxc, None, None 
 
 
-def _eval_xc_0(mlfunc, mol, rho_data, grid, rdm1):
+def _eval_xc_0(mlfunc, mol, rho_data, grid, density):
 
     CF = 0.3 * (6 * np.pi**2)**(2.0/3)
 
     chkpt = time.monotonic()
 
-    density = (np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[0]),\
-               np.einsum('npq,pq->n', mol.ao_to_aux, rdm1[1]))
     auxmol = mol.auxmol
     naux = auxmol.nao_nr()
     ao_to_aux = mol.ao_to_aux
