@@ -129,8 +129,6 @@ def run_cc(hf):
 
 
 
-
-
 #############################################
 # HELPER FUNCTIONS FOR THE analyzers MODULE #
 #############################################
@@ -182,52 +180,6 @@ def transform_basis_1e(mat, coeff):
         part1 = np.matmul(coeff[1].transpose(), np.matmul(mat[1], coeff[1]))
         return np.array([part0, part1])
 
-def transform_basis_2e(eri, coeff):
-    """
-    Transforms the 2-electron matrix eri into the basis
-    described by coeff (with the basis vectors being the columns).
-    See transform_basis_1e for how to do different transformations.
-    """
-    if len(coeff.shape) == 2:
-        return ao2mo.incore.full(eri, coeff)
-    else:
-        if len(coeff) != 2 or len(eri) != 3:
-            raise ValueError('Need two sets of orbitals, three eri tensors for unrestricted case.')
-        set00 = [coeff[0]] * 4
-        set11 = [coeff[1]] * 4
-        set01 = set00[:2] + set11[:2]
-        part00 = ao2mo.incore.general(eri[0], set00)
-        part01 = ao2mo.incore.general(eri[1], set01)
-        part11 = ao2mo.incore.general(eri[2], set11)
-        return np.array([part00, part01, part11])
-
-def get_ccsd_ee_total(mol, cccalc, hfcalc):
-    """
-    Get the total CCSD electron-electron repulsion energy.
-    """
-    rdm2 = cccalc.make_rdm2()
-    eeint = mol.intor('int2e', aosym='s1')
-    if len(hfcalc.mo_coeff.shape) == 2:
-        eeint = transform_basis_2e(eeint, hfcalc.mo_coeff)
-        return np.sum(eeint * rdm2) / 2
-    else:
-        eeint = transform_basis_2e([eeint] * 3, hfcalc.mo_coeff)
-        return 0.5 * np.sum(eeint[0] * rdm2[0])\
-                + np.sum(eeint[1] * rdm2[1])\
-                + 0.5 * np.sum(eeint[2] * rdm2[2])
-
-def get_ccsd_ee(rdm2, eeint):
-    """
-    Get the total CCSD electron-electron repulsion energy.
-    """
-    if len(rdm2.shape) == 4:
-        return np.sum(eeint * rdm2) / 2
-    else:
-        if len(eeint.shape) == 4:
-            eeint = [eeint] * 3
-        return 0.5 * np.sum(eeint[0] * rdm2[0])\
-                + np.sum(eeint[1] * rdm2[1])\
-                + 0.5 * np.sum(eeint[2] * rdm2[2])
 
 integrate_on_grid = np.dot
 
