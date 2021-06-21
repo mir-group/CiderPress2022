@@ -4,25 +4,50 @@ import yaml
 
 
 class FeatureNormalizer(ABC):
+    """
+    Abstract base class for nonlinear transformations
+    on raw, scale-invariant CIDER features.
+    Basically a simple, manual differentiation tool
+    in place of autodiff.
+    """
 
     @abstractproperty
     def num_arg(self):
+        """
+        Number of arguments to the feature.
+        """
         pass
 
     @abstractmethod
     def bounds(self):
+        """
+        Returns tuple: lower and upper bound of transformed feature.
+        """
         pass
 
     @abstractmethod
     def fill_feat_(self, y, x):
+        """
+        Fill the transformed feature vector y in place
+        from the initial feature vector x.
+        """
         pass
 
     @abstractmethod
     def fill_deriv_(self, dfdx, dfdy, x):
+        """
+        Fill the derivative dfdx with respect to initial feature vector
+        in place, given the derivative with respect to the
+        transformed feature vector dfdy and initial feature
+        vector x.
+        """
         pass
 
     @classmethod
     def from_dict(cls, d):
+        """
+        Initialize from dictionary d.
+        """
         if d['code'] == 'L':
             return LMap.from_dict(d)
         elif d['code'] == 'U':
@@ -44,6 +69,10 @@ class FeatureNormalizer(ABC):
 class LMap(FeatureNormalizer):
 
     def __init__(self, n, i):
+        """
+        n: Output index
+        i: Input index
+        """
         self.n = n
         self.i = i
 
@@ -78,6 +107,12 @@ class LMap(FeatureNormalizer):
 class UMap(FeatureNormalizer):
 
     def __init__(self, n, i, gamma):
+        """
+        n: Output index
+        i: Input index
+        gamma: parameter
+        y[n] = gamma * x[i] / (1 + gamma * x[i])
+        """
         self.n = n
         self.i = i
         self.gamma = gamma
@@ -118,6 +153,12 @@ def get_vmap_heg_value(heg, gamma):
 class VMap(FeatureNormalizer):
 
     def __init__(self, n, i, gamma, scale=1.0, center=0.0):
+        """
+        n: Output index
+        i: Input index
+        gamma, scale, center: parameters
+        y[n] = scale * gamma * x[i] / (1 + gamma * x[i]) - center
+        """
         self.n = n
         self.i = i
         self.gamma = gamma
@@ -158,6 +199,14 @@ class VMap(FeatureNormalizer):
 class WMap(FeatureNormalizer):
 
     def __init__(self, n, i, j, k, gammai, gammaj):
+        """
+        n: Output index
+        i: Input index 1
+        j: Input index 2
+        k: Input index 3
+        gammai, gammaj: parameters
+        y[n] = gammai/(1+gammai*x[i]) * sqrt(gammaj/(1+gammaj*x[j])) * x[k]
+        """
         self.n = n
         self.i = i
         self.j = j
@@ -205,6 +254,14 @@ class WMap(FeatureNormalizer):
 class XMap(FeatureNormalizer):
 
     def __init__(self, n, i, j, k, gammai, gammaj):
+        """
+        n: Output index
+        i: Input index 1
+        j: Input index 2
+        k: Input index 3
+        gammai, gammaj: parameters
+        y[n] = sqrt(gammai/(1+gammai*x[i])) * sqrt(gammaj/(1+gammaj*x[j])) * x[k]
+        """
         self.n = n
         self.i = i
         self.j = j
@@ -252,6 +309,16 @@ class XMap(FeatureNormalizer):
 class YMap(FeatureNormalizer):
 
     def __init__(self, n, i, j, k, l, gammai, gammaj, gammak):
+        """
+        n: Output index
+        i: Input index 1
+        j: Input index 2
+        k: Input index 3
+        l: Input index 4
+        gammai, gammaj, gammak: parameters
+        y[n] = sqrt(gammai/(1+gammai*x[i])) * sqrt(gammaj/(1+gammaj*x[j])) 
+               * sqrt(gammak/(1+gammak*x[k]))  * x[l]
+        """
         self.n = n
         self.i = i
         self.j = j
@@ -304,6 +371,12 @@ class YMap(FeatureNormalizer):
 class ZMap(FeatureNormalizer):
 
     def __init__(self, n, i, gamma, scale=1.0, center=0.0):
+        """
+        n: Output index
+        i: Input index 1
+        gamma, scale, center: parameters
+        y[n] = -center + scale / (1 + gamma * x[i])
+        """
         self.n = n
         self.i = i
         self.gamma = gamma
@@ -343,8 +416,16 @@ class ZMap(FeatureNormalizer):
 
 
 class FeatureList():
+    """
+    A class containing a list of FeatureNormalizer objects.
+    Used to construct transformed feature vectors
+    for input into spline or GP models.
+    """
 
     def __init__(self, feat_list):
+        """
+        feat_list: list(FeatureNormalizer)
+        """
         self.feat_list = feat_list
         self.nfeat = len(self.feat_list)
 

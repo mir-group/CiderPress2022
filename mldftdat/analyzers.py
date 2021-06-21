@@ -9,6 +9,11 @@ from io import BytesIO
 import psutil
 from pyscf.scf.hf import get_jk
 
+"""
+ElectronAnalyzer classes for loading, storing, and analyzing DFT
+calculations. For thorough documentation, see the lowmem_analyzers module,
+which is equivalent but more efficient for systems larger than a couple atoms.
+"""
 
 def recursive_remove_none(obj):
     if type(obj) == dict:

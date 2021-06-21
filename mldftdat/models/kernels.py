@@ -146,79 +146,6 @@ def arbf_args(arbf_base):
     return ndim, np.array(length_scale), scale, order
 
 
-class QARBF(StationaryKernelMixin, Kernel):
-    """
-    ARBF, except order is restricted to 2 and
-    the algorithm is more efficient.
-    """
-    def __init__(self, ndim, length_scale,
-                 scale,
-                 scale_bounds = (1e-5, 1e5)):
-        super(QARBF, self).__init__()
-        self.ndim = ndim
-        self.scale = scale
-        self.scale_bounds = scale_bounds
-        self.length_scale = length_scale
-
-    @property
-    def hyperparameter_scale(self):
-        return Hyperparameter("scale", "numeric",
-                              self.scale_bounds,
-                              len(self.scale))
-
-    def diag(self, X):
-        return np.diag(self.__call__(X))
-
-    def __call__(self, X, Y=None, eval_gradient=False):
-        if Y is None:
-            Y = X
-        diff = (X[:,np.newaxis,:] - Y[np.newaxis,:,:]) / self.length_scale
-        k0 = np.exp(-0.5 * diff**2)
-        sk = np.zeros((X.shape[0], Y.shape[0], len(self.scale)))
-        sk[:,:,0] = self.scale[0]
-        t = 1
-        for i in range(self.ndim):
-            sk[:,:,t] = self.scale[t] * k0[:,:,i]
-            t += 1
-        for i in range(self.ndim-1):
-            for j in range(i+1,self.ndim):
-                sk[:,:,t] = self.scale[t] * k0[:,:,i] * k0[:,:,j]
-                t += 1
-        k = np.sum(sk, axis=-1)
-        print(self.scale)
-        if eval_gradient:
-            return k, sk
-        return k
-
-    def get_sub_kernel(self, inds, scale_ind, X, Y):
-        if inds is None:
-            return self.scale[0] * np.ones((X.shape[0], Y.shape[0]))
-        if isinstance(inds, int):
-            diff = (X[:,np.newaxis,inds] - Y[np.newaxis,:]) / self.length_scale[inds]
-            k0 = np.exp(-0.5 * diff**2)
-            return self.scale[scale_ind] * k0
-        else:
-            diff = (X[:,np.newaxis,inds[0]] - Y[np.newaxis,:,0])\
-                    / self.length_scale[inds[0]]
-            k0  = np.exp(-0.5 * diff**2)
-            diff = (X[:,np.newaxis,inds[1]] - Y[np.newaxis,:,1])\
-                    / self.length_scale[inds[1]]
-            k0 *= np.exp(-0.5 * diff**2)
-            return self.scale[scale_ind] * k0
-
-    def get_funcs_for_spline_conversion(self):
-        funcs = [lambda x, y: self.get_sub_kernel(None, 0, x, y)]
-        t = 1
-        for i in range(self.ndim):
-            funcs.append(lambda x, y: self.get_sub_kernel(i, t, x, y))
-            t += 1
-        for i in range(self.ndim-1):
-            for j in range(i+1,self.ndim):
-                funcs.append(lambda x, y: self.get_sub_kernel((i,j), t, x, y))
-                t += 1
-        return funcs
-
-
 
 ###############################################################
 # NOTE: Below is a series of "Partial" kernels, which are the #
@@ -284,23 +211,6 @@ class PartialARBF(ARBF):
                 Y = Y[:,self.active_dims]
         return super(PartialARBF, self).__call__(X, Y, eval_gradient, get_sub_kernels)
 
-
-class PartialQARBF(QARBF):
-    """
-    QARBF where subset of X is selected.
-    """
-
-    def __init__(self, ndim, length_scale,
-                 scale,
-                 scale_bounds = (1e-5, 1e5), start = 1):
-        super(PartialQARBF, self).__init__(ndim, length_scale, scale, scale_bounds)
-        self.start = start
-
-    def __call__(self, X, Y=None, eval_gradient=False):
-        X = X[:,self.start:]
-        if Y is not None:
-            Y = Y[:,self.start:]
-        return super(PartialQARBF, self).__call__(X, Y, eval_gradient)
 
 class PartialDot(DotProduct):
     """
@@ -570,6 +480,14 @@ class SpinSymKernel(ADKernel):
     """
 
     def __init__(self, k, up_active_dims, down_active_dims):
+        """
+        Args:
+            k (Kernel): base kernel
+            up_active_dims (list): indices of feature vector
+                corresponding to up spin, to pass to k
+            down_active_dims (list): indices of feature vector
+                corresponding to down spin, to pass to k
+        """
         self.k = k
         self.up_active_dims = up_active_dims
         self.down_active_dims = down_active_dims

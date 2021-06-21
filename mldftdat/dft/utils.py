@@ -89,59 +89,6 @@ def v_basis_transform(rho_data, v_npalpha):
     v_nst[3] = v_npalpha[3] * dadtau
     return v_nst
 
-def v_nonlocal_extra_fast(rho_data, grid, dfdg, density, auxmol,
-                          g, gr2, ovlp, l = 0, mul = 1.0):
-    # g should have shape (2l+1, N)
-    elda = LDA_FACTOR * rho_data[0]**(4.0/3)
-    N = grid.weights.shape[0]
-    lc = get_dft_input2(rho_data)[:3]
-    if l == 0:
-        dedb = (elda * dfdg).reshape(1, -1)
-    elif l == 1:
-        #dedb = 2 * elda * g * dfdg
-        dedb = 2 * elda * g * dfdg# / (np.linalg.norm(g, axis=0) + 1e-10)
-    elif l == 2:
-        dedb = 2 * elda * g * dfdg / np.sqrt(5)
-    elif l == -2:
-        dedb = elda * dfdg
-        l = 2
-    elif l == -1:
-        dedb = elda * dfdg
-        l = 1
-    else:
-        raise ValueError('angular momentum code l=%d unknown' % l)
-
-    rho, s, alpha = lc
-    a = np.pi * (mul * rho / 2 + 1e-16)**(2.0 / 3)
-    scale = 1
-    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    scale += GG_SMUL * fac * s**2
-    scale += GG_AMUL * 0.6 * fac * (alpha - 1)
-    a = a * scale
-    cond = a < GG_AMIN
-    da = np.exp(a[cond] / GG_AMIN - 1)
-    a[cond] = GG_AMIN * np.exp(a[cond] / GG_AMIN - 1)
-
-    # (ngrid * (2l+1), naux)
-    dedb[:,rho<1e-8] = 0
-    dedaux = np.dot((dedb * grid.weights).T.flatten(), ovlp)
-    dgda = l / (2 * a) * g - gr2
-    dgda[:,rho<1e-8] = 0
-
-    dadn = mul * a / (3 * (mul * rho / 2 + 1e-6))
-    dadp = np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
-    dadalpha = 0.6 * np.pi * fac * (mul * rho / 2 + 1e-6)**(2.0/3)
-    # add in line 3 of dE/dn, line 2 of dE/dp and dE/dalpha
-    dadn[cond] *= da
-    dadp[cond] *= da
-    dadalpha[cond] *= da
-
-    v_npa = np.zeros((4, N))
-    deda = np.einsum('mi,mi->i', dedb, dgda)
-    v_npa[0] = deda * dadn
-    v_npa[1] = deda * dadp
-    v_npa[3] = deda * dadalpha
-    return v_npa, dedaux
 
 def v_nonlocal_general(rho_data, grid, dedg, density, auxmol,
                        g, gr2, ovlp, l = 0, mul = 1.0):
@@ -250,119 +197,28 @@ def v_nonlocal(rho_data, grid, dedg, density, auxmol,
     v_npa[3] = deda * dadalpha
     return v_npa, dedaux
 
-def functional_derivative_loop_a(mol, mlfunc, dEddesc, contracted_desc,
-                                 raw_desc, raw_desc_r2,
-                                 rho_data, density, ovlps, grid):
-
-    N = grid.weights.shape[0]
-    naux = mol.auxmol.nao_nr()
-    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
-    n43 = rho_data[0]**(4.0/3)
-    svec = rho_data[1:4] / (sprefac * n43 + 1e-20)
-    v_npa = np.zeros((4, N))
-    v_aniso = np.zeros((3, N))
-    v_aux = np.zeros(naux)
-
-    for i, d in enumerate(mlfunc.desc_order):
-        if d == 0:
-            v_npa[0] += dEddesc[:,i]
-        elif d == 1:
-            v_npa[1] += dEddesc[:,i]
-        elif d == 2:
-            v_npa[3] += dEddesc[:,i]
-        else:
-            mul = 1.0
-            if d in [4, 15, 16]:
-                g = contracted_desc[d]
-                if d == 4:
-                    ovlp = ovlps[0]
-                    gr2 = raw_desc_r2[12:13]
-                elif d == 15:
-                    ovlp = ovlps[3]
-                    gr2 = raw_desc_r2[21:22]
-                    mul = 0.25
-                else:
-                    ovlp = ovlps[4]
-                    gr2 = raw_desc_r2[22:23]
-                    mul = 4.0
-                l = 0
-            elif d == 5:
-                g = raw_desc[13:16]
-                gr2 = raw_desc_r2[13:16]
-                ovlp = ovlps[1]
-                l = 1
-            elif d == 8:
-                g = raw_desc[16:21]
-                gr2 = raw_desc_r2[16:21]
-                ovlp = ovlps[2]
-                l = 2
-            elif d == 6:
-                g = raw_desc[13:16]
-                gr2 = raw_desc_r2[13:16]
-                ovlp = ovlps[1]
-                dfmul = svec
-                v_aniso += dEddesc[:,i] * g
-                l = -1
-            elif d == 12:
-                l = -2
-                g = raw_desc[16:21]
-                gr2 = raw_desc_r2[16:21]
-                ovlp = ovlps[2]
-                dfmul = contract21_deriv(svec)
-                ddesc_dsvec = contract21(g, svec)
-                v_aniso += dEddesc[:,i] * 2 * ddesc_dsvec
-            elif d == 13:
-                g2 = raw_desc[16:21]
-                g2r2 = raw_desc_r2[16:21]
-                ovlp2 = ovlps[2]
-                g1 = raw_desc[13:16]
-                g1r2 = raw_desc_r2[13:16]
-                ovlp1 = ovlps[1]
-                dfmul = contract21_deriv(svec, g1)
-                ddesc_dsvec = contract21(g2, g1)
-                ddesc_dg1 = contract21(g2, svec)
-                v_aniso += dEddesc[:,i] * ddesc_dsvec
-                vtmp1, dedaux1 = v_nonlocal_general(rho_data, grid,
-                                         dEddesc[:,i] * ddesc_dg1,
-                                         density, mol.auxmol, g1,
-                                         g1r2, ovlp1, l=-1,
-                                         mul=1.0)
-                vtmp2, dedaux2 = v_nonlocal_general(rho_data, grid,
-                                         dEddesc[:,i] * dfmul,
-                                         density, mol.auxmol, g2,
-                                         g2r2, ovlp2, l=-2,
-                                         mul=1.0)
-                vtmp = vtmp1 + vtmp2
-                dedaux = dedaux1 + dedaux2
-            else:
-                raise NotImplementedError('Cannot take derivative for code %d' % d)
-
-            if d in [6, 12]:
-                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
-                                         dEddesc[:,i] * dfmul,
-                                         density, mol.auxmol, g,
-                                         gr2, ovlp, l=l)
-            elif d == 13:
-                pass
-            else:
-                vtmp, dedaux = v_nonlocal_general(rho_data, grid,
-                                         dEddesc[:,i],
-                                         density, mol.auxmol, g,
-                                         gr2, ovlp, l=l,
-                                         mul=mul)
-            v_npa += vtmp
-            v_aux += dedaux
-
-    vmol = np.einsum('a,aij->ij', v_aux, mol.ao_to_aux)
-    v_nst = v_basis_transform(rho_data, v_npa)
-    v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
-    v_grad = v_aniso / (sprefac * n43 + 1e-20)
-
-    return v_nst, v_grad, vmol
 
 def functional_derivative_loop_c(mol, mlfunc, dEddesc,
                                  raw_desc, raw_desc_r2,
                                  rho_data, density, ovlps, grid):
+    """
+    Core functional derivative loop for the CIDER features,
+    called by NLNumInt.
+    Args:
+        mol (pyscf.gto.Mole): molecule object
+        mlfunc (MLFunctional): Exchange functional
+        dEddesc (np.ndarray): ngrid x ndesc array of energy derivatives
+            with respect to the descriptors.
+        raw_desc (np.ndarray): raw CIDER descriptor vectors
+        raw_desc_r2 (np.ndarray): raw CIDER descriptor vectors <r^2>
+            for use in functional derivative with respect to the Gaussian
+            exponents
+        rho_data (np.ndarray): 6 x ngrid
+        density (np.ndarray): density in DF basis space
+        ovlps (np.ndarray): Overlaps of the CIDER descriptor functions with
+            the DF basis
+        grid: contains coords and weights of the real-space grid
+    """
 
     gg_dict = {
         'a0': mlfunc.a0,
