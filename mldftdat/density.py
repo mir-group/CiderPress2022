@@ -10,6 +10,12 @@ GG_SMUL = 1.0
 GG_AMUL = 1.0
 GG_AMIN = 1.0 / 18
 
+
+
+######################
+# Exchange baselines #
+######################
+
 def ldax(n):
     return LDA_FACTOR * n**(4.0/3)
 
@@ -43,7 +49,13 @@ def get_y_from_xed(xed, rho):
     return xed / (get_ldax_dens(rho) - 1e-12) - 1
 
 
-def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
+
+##############################################
+# Set up environments for CIDER descriptors. #
+##############################################
+
+
+def get_gaussian_grid(coords, rho, l=0, s=None, alpha=None):
     N = coords.shape[0]
     auxmol = gto.fakemol_for_charges(coords)
     atm = auxmol._atm.copy()
@@ -74,6 +86,19 @@ def get_gaussian_grid(coords, rho, l = 0, s = None, alpha = None):
 
 def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
                         a0=8.0, fac_mul=0.25, amin=GG_AMIN):
+    """
+    Get the molecular environment corresponding to the CIDER feature
+    basis.
+    Args:
+        coords (numpy.ndarray): ngrid x 3 coordinates for feature centers
+        l (int): Principle angular momentum number
+        s (numpy.ndarray): reduced gradient
+        alpha (numpy.ndarray): iso-orbital indicator
+        a0 (float): scaling factor for UEG component of exponent
+        fac_mul (float): scaling factor for AO component of exponent
+        amin (float): exponent below which length-scale is attenuated
+            such that the lowest possible exponent is amin * exp(-1)
+    """
     N = coords.shape[0]
     auxmol = gto.fakemol_for_charges(coords)
     atm = auxmol._atm.copy()
@@ -99,38 +124,38 @@ def get_gaussian_grid_c(coords, rho, l=0, s=None, alpha=None,
 
     return atm, bas, env
 
-def get_gaussian_grid_b(coords, rho, l=0, s=None, alpha=None):
-    N = coords.shape[0]
-    auxmol = gto.fakemol_for_charges(coords)
-    atm = auxmol._atm.copy()
-    bas = auxmol._bas.copy()
-    start = auxmol._env.shape[0] - 2
-    env = np.zeros(start + 2 * N)
-    env[:start] = auxmol._env[:-2]
-    bas[:,5] = start + np.arange(N)
-    bas[:,6] = start + N + np.arange(N)
 
-    a = np.pi * (rho / 2 + 1e-6)**(2.0 / 3)
-    scale = 1
-    #fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    fac = (6 * np.pi**2)**(2.0/3) / (16 * np.pi)
-    if s is not None:
-        scale += fac * s**2
-    if alpha is not None:
-        scale += 3.0 / 5 * fac * (alpha - 1)
-    bas[:,1] = l
-    env[bas[:,5]] = a * scale
-    env[bas[rho<1e-8,5]] = 1e16
-    logging.debug('GAUSS GRID MIN EXPONENT {}'.format(np.sqrt(np.min(env[bas[:,5]]))))
-    env[bas[:,6]] = np.sqrt(4 * np.pi) * (4 * np.pi * rho / 3)**(l / 3.0) * np.sqrt(scale)**l
 
-    return atm, bas, env, (4 * np.pi * rho / 3)**(1.0 / 3), scale
+######################################
+# Evaluate CIDER descriptor vectors. #
+######################################
 
 
 def get_x_helper_full_a(auxmol, rho_data, grid, density,
                         ao_to_aux, deriv=False,
                         return_ovlp=False,
                         a0=8.0, fac_mul=0.25, amin=GG_AMIN):
+    """
+    FOR EVALUATION IN SCF LOOP.
+
+    Construct the raw Version A CIDER descriptors for use in
+    the SCF loop.
+    Args:
+        auxmol (pyscf.gto.Mole): Auxiliary molecule containing
+            the density fitting basis
+        rho_data (numpy.ndarray): 6 x ngrid array with density,
+            gradient, laplacian, and kinetic energy density
+        grid: contains coords and weights for real-space grid
+        density (numpy.ndarray): Density in DF basis
+        ao_to_aux (numpy.ndarray): nao x nao x naux conversion matrix.
+            TODO Unused variable, can be removed.
+        deriv (bool, False): If True, return derivative integrals
+            of the descriptors with respect to the exponent. If False,
+            return the descriptors themselves.
+        return_ovlp (bool, False): If True, also return the overlap
+            between the DF basis and feature orbitals.
+        a0, fac_mul, amin: see get_gaussian_grid_c
+    """
     # desc[0:6]   = rho_data
     # desc[6:12]  = 0
     # desc[12:13] = g0
@@ -183,6 +208,12 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
                         ao_to_aux, deriv=False,
                         return_ovlp=False,
                         a0=8.0, fac_mul=0.25, amin=GG_AMIN):
+    """
+    FOR EVALUATION IN SCF LOOP.
+
+    Construct the raw Version C CIDER descriptors for use in
+    the SCF loop. See get_x_helper_full_a for more details.
+    """
     # Contains convolutions up to second-order
     # desc[0:6] = rho_data
     # desc[6:7] = g0
@@ -249,6 +280,11 @@ def get_x_helper_full_c(auxmol, rho_data, grid, density,
 
 def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                     a0=8.0, fac_mul=0.25, amin=GG_AMIN, **kwargs):
+    """
+    FOR EVALUATION IN TRAIN LOOP
+
+    Evaluate Version A descriptors.
+    """
     # desc[0:6]   = rho_data
     # desc[6:12]  = ddrho
     # desc[12:13] = g0
@@ -290,8 +326,12 @@ def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
 
 def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
                     a0=8.0, fac_mul=0.25, amin=GG_AMIN, **kwargs):
-    print(a0, fac_mul, amin)
-    # desc[0:6]   = rho_data
+    """
+    FOR EVALUATION IN TRAIN LOOP
+
+    Evaluate Version C descriptors.
+    """
+    # desc[0:6] = rho_data
     # desc[6] = g0
     # desc[7:10] = g1
     # desc[10:15] = g2
@@ -435,7 +475,7 @@ def contract21(t2, t1):
 
     return np.real(np.array([xterm, yterm, zterm]))
 
-def contract21_deriv(t1, t1b = None):
+def contract21_deriv(t1, t1b=None):
     if t1b is None:
         t1b = t1
     tmp = np.identity(5)
@@ -444,124 +484,11 @@ def contract21_deriv(t1, t1b = None):
         derivs[i] = contract21(tmp[i], t1)
     return np.einsum('map,ap->mp', derivs, t1b)
 
-def contract_exchange_descriptors_a(desc):
-    # desc[0:6]   = rho_data
-    # desc[6:12]  = ddrho
-    # desc[12:13] = g0
-    # desc[13:16] = g1
-    # desc[16:21] = g2
-    # desc[21] = g0-0.5
-    # desc[22] = g0-2
-    # g1 order: x, y, z
-    # g2 order: xy, yz, z^2, xz, x^2-y^2
-
-    N = desc.shape[1]
-    res = np.zeros((17,N))
-    rho_data = desc[:6]
-
-    # rho, g0, s, alpha, nabla
-    rho, s, alpha, tau_w, tau_unif = get_dft_input2(desc[:6])
-    sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
-    n43 = rho**(4.0/3)
-    svec = desc[1:4] / (sprefac * n43 + 1e-7)
-    nabla = rho_data[4] / (tau_unif + 1e-7)
-
-    res[0] = rho
-    res[1] = s**2
-    res[2] = alpha
-    res[3] = nabla
-
-    # other setup
-    g0 = desc[12]
-    g1 = desc[13:16]
-    g2 = desc[16:21]
-    ddrho = desc[6:12]
-    ddrho_mat = np.zeros((3, 3, N))
-    inds = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
-    for i in range(3):
-        ddrho_mat[:,i,:] = ddrho[inds[i],:]
-        ddrho_mat[i,i,:] -= rho_data[4] / 3
-    ddrho_mat /= tau_unif + 1e-7
-    g2_mat = np.zeros((3, 3, N))
-    # y^2 = -(1/2) (z^2 + (x^2-y^2))
-    g2_mat[1,1,:] = -0.5 * (g2[2] + g2[4])
-    g2_mat[2,2,:] = g2[4]
-    g2_mat[0,0,:] = - (g2_mat[1,1,:] + g2_mat[2,2,:])
-    g2_mat[1,0,:] = g2[0]
-    g2_mat[0,1,:] = g2[0]
-    g2_mat[2,0,:] = g2[3]
-    g2_mat[0,2,:] = g2[3]
-    g2_mat[1,2,:] = g2[1]
-    g2_mat[2,1,:] = g2[1]
-
-    # g1_norm and 1d dot product
-    g1_norm = np.linalg.norm(g1, axis=0)**2
-    dot1 = np.einsum('an,an->n', svec, g1)
-
-    # nabla and g2 norms
-    #g2_norm = np.sqrt(np.einsum('pqn,pqn->n', g2_mat, g2_mat))
-
-    # Clebsch Gordan https://en.wikipedia.org/wiki/Table_of_Clebsch%E2%80%93Gordan_coefficients
-    # TODO need to adjust for the fact that these are real sph_harm?
-    g2_norm = 0
-    """
-    g2 = np.array([(g2[-1] + 1j * g2[0]) / np.sqrt(2),
-                   (-g2[-2] - 1j * g2[1]) / np.sqrt(2),
-                   g2[2],
-                   (g2[-2] - 1j * g2[1]) / np.sqrt(2),
-                   (g2[-1] - 1j * g2[0]) / np.sqrt(2)])
-
-    for i in range(5):
-        g2_norm += g2[i] * g2[-1-i] * (-1)**i
-    """
-    for i in range(5):
-        g2_norm += g2[i] * g2[i]
-    g2_norm /= np.sqrt(5)
-
-    d2_norm = np.sqrt(np.einsum('pqn,pqn->n', ddrho_mat, ddrho_mat))
-
-    res[4] = g0
-    res[5] = g1_norm
-    res[6] = dot1
-    res[7] = d2_norm
-    res[8] = g2_norm
-
-    res[9] = np.einsum('pn,pqn,qn->n', svec, ddrho_mat, svec)
-    res[10] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, svec)
-    res[11] = np.einsum('pn,pqn,qn->n', g1, ddrho_mat, g1)
-
-    sgc = contract21(g2, svec)
-    sgg = contract21(g2, g1)
-
-    res[12] = np.einsum('pn,pn->n', sgc, svec)
-    res[13] = np.einsum('pn,pn->n', sgc, g1)
-    res[14] = np.einsum('pn,pn->n', sgg, g1)
-
-    res[15] = desc[21]
-    res[16] = desc[22]
-
-    # res
-    # 0:  rho
-    # 1:  s
-    # 2:  alpha
-    # 3:  nabla
-    # 4:  g0
-    # 5:  norm(g1)
-    # 6:  g1 dot svec
-    # 7:  norm(ddrho_{l=2})
-    # 8:  norm(g2)
-    # 9:  svec dot ddrho_{l=2} dot svec
-    # 10: g1 dot ddrho_{l=2} dot svec
-    # 11: g1 dot ddrho_{l=2} dot g1
-    # 12: svec dot g2 dot svec
-    # 13: g1 dot g2 dot svec
-    # 14: g1 dot g2 dot g1
-    # 15: g0-0.5
-    # 16: g0-2
-    return res
-
 
 def contract_exchange_descriptors_c(desc):
+    """
+    Contract CIDER descriptors into rotation-invariant quantities.
+    """
     # desc[0:6] = rho_data
     # desc[6:7] = g0
     # desc[7:10] = g1
@@ -629,6 +556,12 @@ def contract_exchange_descriptors_c(desc):
     return res
 
 
+
+#################
+# Miscellaneous #
+#################
+
+
 sprefac = 2 * (3 * np.pi * np.pi)**(1.0/3)
 s0 = 1 / (0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3))
 hprefac = 1.0 / 3 * (4 * np.pi**2 / 3)**(1.0 / 3)
@@ -652,26 +585,3 @@ def tail_fx_direct(s):
     f = term2 + term3
     f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
     return f
-
-def tail_fx_deriv(rho_data):
-    gradn = np.linalg.norm(rho_data[1:4], axis=0)
-    s = get_normalized_grad(rho_data[0], gradn)
-    return tail_fx_deriv_direct(s)
-
-def tail_fx_deriv_direct(s):
-    sp = 0.5 * sprefac * s / np.pi**(1.0/3) * 2**(1.0/3) 
-    sfac = 0.5 * sprefac / np.pi**(1.0/3) * 2**(1.0/3)
-    term1 = hprefac * 2.0 / 3 * sfac * (1.0 / np.arcsinh(0.5 * sp)\
-            - sp / (2 * np.sqrt(1+sp**2/4) * np.arcsinh(sp/2)**2))
-    term3 = sp / 6 - 17 * sp**3 / 720 + 367 * sp**5 / 80640 - 27859 * sp**7 / 29030400\
-            + 1295803 * sp**9 / 6131220480
-    term3 *= hprefac * 2.0 / 3 * sfac
-    denom = (1 + (l*s/2)**4)
-    term2 = 2 * b * s / denom - l**4 * s**3 * (a + b * s**2) / (4 * denom**2)
-    f = term2 + term3
-    f[s > 0.025] = term2[s > 0.025] + term1[s > 0.025]
-    return f
-
-def tail_fx_deriv_p(s):
-    return tail_fx_deriv_direct(s) / (2 * s + 1e-16)
-

@@ -5,7 +5,6 @@ from pyscf.dft.gen_grid import Grids
 from pyscf import df, scf, dft
 
 from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTOR,\
-                             contract_exchange_descriptors_a,\
                              contract_exchange_descriptors_c,\
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
@@ -15,9 +14,13 @@ import numpy as np
 import logging
 import time
 
-##
-# Note 
-#
+
+
+###################################################################
+# Adjusted version of PySCF numint helper functions that accounts #
+# for anisotropic gradient potential.                             #
+###################################################################
+
 
 def _rks_gga_wv0a(rho, vxc, weight):
     vrho, vgamma, vgrad = vxc[0], vxc[1], vxc[4]
@@ -201,10 +204,31 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
     return nelec, excsum, vmat
 
 
+
+##############################################
+# Numerical integrator for CIDER functionals #
+##############################################
+
+
 class NLNumInt(pyscf_numint.NumInt):
 
-    def __init__(self, mlfunc_x, corr_model=None,
-                 xmix=1.0):
+    def __init__(self, mlfunc_x, corr_model=None, xmix=1.0):
+        """
+        Args:
+            mlfunc_x (MLFunctional): Exchange model
+            xmix (float): Fraction of CIDER exchange
+            corr_model (class, None): Optional class to add hyper-GGA
+                correlation model. Must contain a function called xefc1,
+                which takes the following arguments:
+                    (rho_a, rho_b, sigma_aa, sigma_ab, sigma_bb,
+                     tau_a, tau_b, fx_a, fx_b)
+                and returns the following
+                    rho*e_xc, (vrho, vsigma, vtau, vexx)
+                NOTE the convention difference from libxc, the XC energy
+                *density* must be returned, not the XC energy per particle.
+                fx_a and fx_b are the predicted exchange enhancement factors
+                from the CIDER model.
+        """
         super(NLNumInt, self).__init__()
         self.mlfunc_x = mlfunc_x
         self.mlfunc_x.corr_model = corr_model
@@ -411,6 +435,12 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
     return exc / (rhot + 1e-20), (vtot[0], vtot[1], vtot[2], vtot[3], v_grad, vmol), None, None
 
 
+
+##########################
+# Setup helper functions #
+##########################
+
+
 def setup_aux(mol):
     nao = mol.nao_nr()
     auxmol = df.make_auxmol(mol, 'weigend+etb')
@@ -437,6 +467,7 @@ def setup_rks_calc(mol, mlfunc_x, corr_model=None,
     Args:
         mol (pyscf.gto.Mole): molecular structure object
         mlfunc_x (MLFunctional): ML exchange functional
+        corr_model: See NLNumInt.__init__
         grid_level (int): PySCF integration grid level for XC
         xc (str): Semi-local exchange-correlation functional to add to CIDER,
         xmix (float): fraction of CIDER exchange
@@ -449,8 +480,7 @@ def setup_rks_calc(mol, mlfunc_x, corr_model=None,
     """
     rks = dft.RKS(mol)
     rks.xc = xc
-    rks._numint = NLNumInt(mlfunc_x, corr_model,
-                           xmix)
+    rks._numint = NLNumInt(mlfunc_x, corr_model, xmix)
     rks.grids.level = grid_level
     rks.grids.build()
     return rks
@@ -459,42 +489,14 @@ def setup_uks_calc(mol, mlfunc_x, corr_model=None,
                    grid_level=3,
                    xc=None, xmix=1.0, **kwargs):
     """
-    Initialize a PySCF UKS calculation, see setup_rks_calc.
+    Initialize a PySCF UKS calculation, see setup_rks_calc for docs.
     """
     uks = dft.UKS(mol)
     uks.xc = xc
-    uks._numint = NLNumInt(mlfunc_x, corr_model,
-                           xmix)
+    uks._numint = NLNumInt(mlfunc_x, corr_model, xmix)
     uks.grids.level = grid_level
     uks.grids.build()
     return uks
-
-def run_mlscf(mol, calc_type, SAVE_ROOT, mlfunc_name, remove_ld=False,
-              conv_tol=1e-9, DIIS=scf.diis.CDIIS):
-    import os, yaml, joblib
-    settings_fname = mlfunc_name + '.yaml'
-    settings_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                  settings_fname)
-    with open(settings_fname, 'r') as f:
-        settings = yaml.load(f, Loader = yaml.Loader)
-    mlfunc_fname = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                                'CIDER', settings['mlfunc_file'])
-    mlfunc = joblib.load(mlfunc_fname)
-    if settings.get('corr_file') is not None:
-        corr_file = os.path.join(SAVE_ROOT, 'MLFUNCTIONALS',
-                               'GLH', settings['corr_file'])
-        corr_model = joblib.load(corr_file)
-        settings.update({'corr_model': corr_model})
-    if calc_type == 'RKS':
-        mf = setup_rks_calc(mol, mlfunc, **settings)
-    elif calc_type == 'UKS':
-        mf = setup_uks_calc(mol, mlfunc, **settings)
-    else:
-        raise ValueError('Invalid calc type, must be RKS or UKS')
-    mf.conv_tol = conv_tol
-    mf.DIIS = DIIS
-    mf.kernel()
-    return mf
 
 # xc example:
 # set corr_model=None, xc='0.75*GGA_X_PBE + GGA_C_PBE',
