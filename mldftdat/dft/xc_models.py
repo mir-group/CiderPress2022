@@ -11,7 +11,6 @@ from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
                                                    vec_eval_cubic_splines_G_4
 
 
-
 def get_vec_eval(grid, coeffs, X, N):
     """
     Call the numba-accelerated spline evaluation routines from the
@@ -184,17 +183,39 @@ class Evaluator():
                   )
 
 
+class MLFunctional(ABC):
+    """
+    Abstract base class for Machine-Learned functionals
+    to be evaluated using mldftdat.dft.NLNumInt
+    """
+
+    def get_F(self, X):
+        """
+        Get exchange enhancement factor.
+        """
+        return self.get_F_and_derivative(X)[0]
+
+    def get_derivative(self, X):
+        """
+        Get derivative of exchange enhancement factor
+        with respect to descriptors.
+        """
+        return self.get_F_and_derivative(X)[1]
+
+    @abstractmethod
+    def get_F_and_derivative(self, X):
+        """
+        Get exchange enhancement factor and its derivative
+        with respect to descriptors.
+        """
+        pass
 
 
-"""
-NORMALIZED_GRAD_CODE = -1
-ALPHA_CODE = -2
-L0_INTEGRAL_CODE = 0
-L1_INTEGRAL_CODE = 1
-L2_INTEGRAL_CODE = 2
-L1_DOT_CODE = 3
-L2_CONTRACT_CODE = 4
-"""
+
+#######################################################
+# Semi-local functionals and simple helper functions. #
+#######################################################
+
 
 def identity(x):
     return x.copy()
@@ -214,26 +235,13 @@ def extract_kernel_components(kernel):
     """
     return kernel.k1.k1, kernel.k1.k2, kernel.k2
 
-# res
-# 0:  rho
-# 1:  s
-# 2:  alpha
-# 3:  nabla
-# 4:  g0
-# 5:  norm(g1)
-# 6:  g1 dot svec
-# 7:  norm(ddrho_{l=2})
-# 8:  norm(g2)
-# 9:  svec dot ddrho_{l=2} dot svec
-# 10: g1 dot ddrho_{l=2} dot svec
-# 11: g1 dot ddrho_{l=2} dot g1
-# 12: svec dot g2 dot svec
-# 13: g1 dot g2 dot svec
-# 14: g1 dot g2 dot g1
-# 15: g0-0.5
-# 16: g0-2
-class Descriptor():
 
+class Descriptor():
+    """
+    Old version of the Descriptor class (replaced with
+    the xcutil.transform_data module). Used in Semi-local
+    functional examples below.
+    """
     def __init__(self, code, transform = identity,
                  transform_deriv = single, mul = 1.0):
         self._transform = transform
@@ -247,19 +255,6 @@ class Descriptor():
         else:
             return self._transform(desc[self.code]),\
                    self._transform_deriv(desc[self.code])
-
-
-class MLFunctional(ABC):
-
-    def get_F(self, X):
-        return self.get_F_and_derivative(X)[0]
-
-    def get_derivative(self, X):
-        return self.get_F_and_derivative(X)[1]
-
-    @abstractmethod
-    def get_F_and_derivative(self, X):
-        pass
 
 
 kappa = 0.804
@@ -366,6 +361,12 @@ class SCANFunctional(MLFunctional):
         return np.array([dFdp, dFda]).T
 
 
+
+#########################
+# GP-based functionals. #
+#########################
+
+
 class GPFunctional(MLFunctional):
     # TODO: This setup currently assumes that the gp directly
     # predict F_X - 1. This will not always be the case.
@@ -398,18 +399,6 @@ class GPFunctional(MLFunctional):
 
         dFddesc = np.zeros(X.shape)
         self.feature_list.fill_derivs_(dFddesc, dF, X)
-        
-        """
-        if rho is not None:
-            highcut = 1e-3
-            ecut = 1.0/2
-            lowcut = 1e-6
-            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * (rho[rho<highcut] \
-                                                / highcut)**ecut))
-            dFddesc[rho<highcut,:] *= 0.5 * \
-                (1 - np.cos(np.pi * (rho[rho<highcut,np.newaxis] / highcut)**ecut))
-            dFddesc[rho<lowcut,:] = 0
-        """
 
         if self.fxb_num == 1:
             chfx = 1
@@ -434,8 +423,15 @@ class GPFunctional(MLFunctional):
 
 
 class NormGPFunctional(MLFunctional,Evaluator):
+    """
+    MLFunctional to evaluate spline-interpolated GP
+    functionals using the utilities in the Evaluator class.
+    """
 
     def __init__(self, *args, **kwargs):
+        """
+        Same arguments as Evaluator.
+        """
         Evaluator.__init__(self, *args, **kwargs)
         self.fxb_num = self.xed_y_converter[3]
         self.fx_baseline = self.xed_y_converter[2]
@@ -448,16 +444,13 @@ class NormGPFunctional(MLFunctional,Evaluator):
         dFddesc = np.zeros(X.shape).T
         self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
         
-        if rho is not None:
-            highcut = 1e-3
-            lowcut = 1e-6
-            rhocut = np.maximum(rho[rho<highcut], lowcut)
-            xcut = np.log(rhocut / lowcut) / np.log(highcut / lowcut)
-            ##dFddesc[rho<highcut,0] = F[rho<highcut] * np.pi * np.sin(np.pi * xcut)\
-            ##                         / (2 * rhocut * np.log(highcut / lowcut))
-            F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * xcut))
-            dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
-            dFddesc[rho<lowcut,:] = 0
+        highcut = 1e-3
+        lowcut = 1e-6
+        rhocut = np.maximum(rho[rho<highcut], lowcut)
+        xcut = np.log(rhocut / lowcut) / np.log(highcut / lowcut)
+        F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * xcut))
+        dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
+        dFddesc[rho<lowcut,:] = 0
         
         if self.fxb_num == 1:
             chfx = 1

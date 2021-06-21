@@ -10,7 +10,8 @@ from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from mldftdat.models.kernels import *
 from mldftdat.xcutil.transform_data import *
 from mldftdat.density import get_ldax_dens, get_ldax,\
-                             get_xed_from_y, get_y_from_xed, get_x
+                             get_xed_from_y, get_y_from_xed, get_x,\
+                             tail_fx
 import numpy as np
 
 from scipy.linalg import solve_triangular
