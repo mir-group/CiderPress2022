@@ -18,6 +18,12 @@ from ase import Atoms
 from ase.geometry.analysis import Analysis as ASEAnalysis
 
 
+
+###############################################################################
+# Dataset loading and cleaning utilities for compiling datasets and training. #
+###############################################################################
+
+
 def get_unique_coord_indexes_spherical(coords):
     rs = np.linalg.norm(coords, axis=1)
     unique_rs = np.array([])
@@ -28,7 +34,7 @@ def get_unique_coord_indexes_spherical(coords):
             indexes.append(i)
     return indexes
 
-def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+def density_similarity_atom(rho1, rho2, grid, mol, exponent=1, inner_r=0.2):
     class PGrid():
         def __init__(self, coords, weights):
             self.coords = coords
@@ -50,7 +56,7 @@ def density_similarity_atom(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
     diff = np.abs(vals1 - vals2)**exponent
     return np.dot(diff, weights)**(1.0/exponent)
 
-def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
+def density_similarity(rho1, rho2, grid, mol, exponent=1, inner_r=0.2):
     weights = grid.weights.copy()
     for atom in mol._atom:
         coord = np.array(atom[1])
@@ -60,7 +66,7 @@ def density_similarity(rho1, rho2, grid, mol, exponent = 1, inner_r = 0.2):
     diff = np.abs(rho1 - rho2)**exponent
     return np.dot(diff, weights)**(1.0/exponent)
 
-def rho_data_from_calc(calc, grid, is_ccsd = False):
+def rho_data_from_calc(calc, grid, is_ccsd=False):
     ao = eval_ao(calc.mol, grid.coords, deriv=2)
     dm = calc.make_rdm1()
     if is_ccsd:
@@ -109,7 +115,7 @@ def load_descriptors(dirname, count=None, val_dirname=None, load_wt=False,
             return X, y, rho_data, wt
     return X, y, rho_data
 
-def filter_descriptors(X, y, rho_data, tol=1e-3, wt = None):
+def filter_descriptors(X, y, rho_data, tol=1e-3, wt=None):
     if rho_data.ndim == 3:
         condition = np.sum(rho_data[:,0,:], axis=0) > tol
     else:
@@ -162,6 +168,13 @@ def score(y_true, y_pred):
     #y_mean = np.mean(y_true)
     #return 1 - ((y_pred-y_true)**2).sum() / ((y_pred-y_mean)**2).sum()
     return r2_score(y_true, y_pred)
+
+
+
+###################################################################
+# Used in the make_error_table scripts to test exchange energies. #
+###################################################################
+
 
 def predict_exchange(analyzer, model=None, restricted=True, return_desc=False):
     """
@@ -251,22 +264,7 @@ def predict_total_exchange_unrestricted(analyzer, model=None):
              + 0.5 * fxd * get_ldax_dens(2 * rho[1])
     elif type(model) == str:
         eps = eval_xc(model + ',', rho_data, spin=analyzer.mol.spin)[0]
-        #epsu = eval_xc(model + ',', 2 * rho_data[0])[0]
-        #epsd = eval_xc(model + ',', 2 * rho_data[1])[0]
-        #print(eps.shape, rho_data.shape, analyzer.mol.spin)
         neps = eps * (rho[0] + rho[1])
-    #elif isinstance(model, MLFunctional):
-    #    N = analyzer.grid.weights.shape[0]
-    #    neps = 0
-    #    xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
-    #                                               version=model.desc_version)
-    #    for xdesc, rho_data in [(xdescu, analyzer.rho_data[0]), (xdescd, analyzer.rho_data[1])]:
-    #        desc  = np.zeros((N, len(model.desc_list)))
-    #        ddesc = np.zeros((N, len(model.desc_list)))
-    #        for i, d in enumerate(model.desc_list):
-    #            desc[:,i], ddesc[:,i] = d.transform_descriptor(xdesc, deriv = 1)
-    #        xef = model.get_F(desc)
-    #        neps += LDA_FACTOR * xef * rho_data[0]**(4.0/3) * 2**(1.0/3)
     else:
         xdescu, xdescd = get_exchange_descriptors2(analyzer, restricted=False,
                                                    version=model.desc_version,
@@ -331,215 +329,12 @@ def predict_correlation(analyzer, model=None, num=1,
     fx_total = np.dot(neps, weights)
     return eps, neps, fx_total
 
-def calculate_atomization_energy(DBPATH, CALC_TYPE, BASIS, MOL_ID,
-                                 FUNCTIONAL=None, mol=None,
-                                 use_db=True, save_atom_analyzer=False,
-                                 save_mol_analyzer=False,
-                                 full_analysis=False):
-    from mldftdat import lowmem_analyzers
-    from mldftdat.pyscf_utils import run_scf, run_cc
-    from mldftdat.dft.xc_models import MLFunctional
 
-    if type(FUNCTIONAL) == str:
-        CALC_NAME = os.path.join(CALC_TYPE, FUNCTIONAL)
-    else:
-        CALC_NAME = CALC_TYPE
 
-    if CALC_TYPE in ['CCSD', 'CCSD_T']:
-        Analyzer = lowmem_analyzers.CCSDAnalyzer
-    elif CALC_TYPE in ['UCCSD', 'UCCSD_T']:
-        Analyzer = lowmem_analyzers.UCCSDAnalyzer
-    elif CALC_TYPE in ['RKS', 'RHF']:
-        Analyzer = lowmem_analyzers.RHFAnalyzer
-    elif CALC_TYPE in ['UKS', 'UHF']:
-        Analyzer = lowmem_analyzers.UHFAnalyzer
+################################################################
+# Tools for reading and data crunching from ACCDB or CIDER DB. #
+################################################################
 
-    print(type(FUNCTIONAL))
-    print(isinstance(FUNCTIONAL, MLFunctional))
-
-    def run_calc(mol, path, calc_type, Analyzer, save):
-        if os.path.isfile(path) and use_db:
-            analyzer = Analyzer.load(path)
-            if '_T' in calc_type:
-                if analyzer.e_tri is None and mol.nelectron > 2:
-                    analyzer.calc_pert_triples()
-                return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
-            else:
-                return analyzer.calc.e_tot, analyzer.calc
-        elif ('CCSD_T' in path) and os.path.isfile(path.replace('CCSD_T', 'CCSD')):
-            print ('Check if triples correction available.')
-            analyzer = Analyzer.load(path.replace('CCSD_T', 'CCSD'))
-            if analyzer.e_tri is None and mol.nelectron > 2:
-                print ('Calculating triples')
-                analyzer.calc_pert_triples()
-            elif mol.nelectron < 3:
-                analyzer.e_tri = 0
-            else:
-                print ('Triples correction already calculated.')
-            return analyzer.calc.e_tot + analyzer.e_tri, analyzer.calc
-
-        else:
-            if calc_type == 'CCSD' or (calc_type == 'CCSD_T' and mol.nelectron < 3):
-                mf = run_scf(mol, 'RHF')
-                mycc = run_cc(mf)
-                e_tot = mycc.e_tot
-                calc = mycc
-            elif (calc_type == 'UCCSD') or (calc_type == 'UCCSD_T' and mol.nelectron < 3):
-                mf = run_scf(mol, 'UHF')
-                mycc = run_cc(mf)
-                e_tot = mycc.e_tot
-                calc = mycc
-            elif calc_type == 'CCSD_T':
-                mf = run_scf(mol, 'RHF')
-                mycc = run_cc(mf)
-                e_tri = mycc.ccsd_t()
-                e_tot = mycc.e_tot + e_tri
-                calc = mycc
-            elif calc_type == 'UCCSD_T':
-                mf = run_scf(mol, 'UHF')
-                mycc = run_cc(mf)
-                e_tri = mycc.ccsd_t()
-                e_tot = mycc.e_tot + e_tri
-                calc = mycc
-            elif FUNCTIONAL is None:
-                mf = run_scf(mol, calc_type)
-                e_tot = mf.e_tot
-                calc = mf
-            elif type(FUNCTIONAL) == str and 'SGXCorr' in FUNCTIONAL:
-                #fname = '/n/holystore01/LABS/kozinsky_lab/Lab/Data/MLDFTDBv3/MLFUNCTIONALS/SGXCorr_3/settings.yaml'
-                #import yaml
-                #with open(fname, 'r') as f:
-                #    settings = yaml.load(f, Loader=yaml.Loader)
-                if 'RKS' in path:
-                    from mldftdat.dft.sgx_corr import setup_rks_calc4
-                    mf = setup_rks_calc4(mol, fterm_scale=2.0)
-                else:
-                    from mldftdat.dft.sgx_corr import setup_uks_calc4
-                    mf = setup_uks_calc4(mol, fterm_scale=2.0)
-                mf.kernel()
-                #if mol.spin > 0:
-                #    uhf_internal(mf)
-                e_tot = mf.e_tot
-                calc = mf
-            elif type(FUNCTIONAL) == str:
-                func_path = os.path.join(DBPATH, 'MLFUNCTIONALS', FUNCTIONAL + '.yaml')
-                if os.path.exists(os.path.join(func_path)):
-                    from mldftdat.dft.numint import run_mlscf
-                    calc_type = 'RKS' if 'RKS' in path else 'UKS'
-                    mf = run_mlscf(mol, calc_type, DBPATH, FUNCTIONAL)
-                else:
-                    mf = run_scf(mol, calc_type, functional=FUNCTIONAL)
-                e_tot = mf.e_tot
-                calc = mf
-            elif isinstance(FUNCTIONAL, MLFunctional):
-                if 'RKS' in path:
-                    from mldftdat.dft.numint6 import setup_rks_calc3 as setup_rks_calc
-                    mf = run_scf(mol, 'RKS', functional='SCAN')
-                    dm0 = mf.make_rdm1()
-                    #dm0 = None
-                    #mf = setup_rks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_rks_calc(mol, FUNCTIONAL, grid_level=3)
-                    mf.xc = None
-                    #mf.xc = 'GGA_X_CHACHIYO'
-                else:
-                    from mldftdat.dft.numint6 import setup_uks_calc3 as setup_uks_calc
-                    mf = run_scf(mol, 'UKS', functional = 'SCAN')
-                    #dm0 = mf.make_rdm1()
-                    dm0 = None
-                    #mf = setup_uks_calc(mol, FUNCTIONAL, mlc = True, vv10_coeff = (6.0, 0.01))
-                    mf = setup_uks_calc(mol, FUNCTIONAL, grid_level=3)
-                    mf.xc = None
-                    #mf.xc = 'GGA_X_CHACHIYO'
-                    #mf.init_guess = 'atom'
-                    #mf.diis_start_cycle = 10
-                    #from pyscf.scf.diis import ADIIS
-                    #mf.DIIS = ADIIS
-                    #mf.damp = 5
-                    #mf.conv_tol = 1e-7
-                    #mf.kernel()
-                    #mo = uhf_internal(mf)
-                    #dm0 = mf.make_rdm1(mo_coeff=mo, mo_occ=mf.mo_occ)
-                mf.kernel(dm0 = dm0)
-                if mol.spin > 0:
-                    uhf_internal(mf)
-                e_tot = mf.e_tot
-                calc = mf
-            else:
-                assert isinstance(FUNCTIONAL, tuple) and isinstance(FUNCTIONAL[0], MLFunctional)
-                if 'RKS' in path:
-                    from mldftdat.dft.numint5 import setup_rks_calc
-                    mf = setup_rks_calc(mol, FUNCTIONAL[0], FUNCTIONAL[1])
-                    mf.xc = None
-                else:
-                    from mldftdat.dft.numint5 import setup_uks_calc
-                    mf = setup_uks_calc(mol, FUNCTIONAL[0], FUNCTIONAL[1])
-                    mf.xc = None
-                mf.kernel(dm0 = None)
-                e_tot = mf.e_tot
-                calc = mf
-
-            if save:
-                analyzer = Analyzer(mf)
-                if full_analysis:
-                    analyzer.perform_full_analysis()
-                analyzer.dump(path)
-            return e_tot, calc
-
-    mol_path = os.path.join(DBPATH, CALC_NAME, BASIS, MOL_ID, 'data.hdf5')
-    if mol is None:
-        analyzer = Analyzer.load(mol_path.replace('CCSD_T', 'CCSD'))
-        mol = analyzer.mol
-    mol.basis = BASIS
-    mol.build() 
-    mol_energy, mol_calc = run_calc(mol, mol_path, CALC_TYPE, Analyzer, save_mol_analyzer)
-
-    atoms = [atomic_numbers[a[0]] for a in mol._atom]
-    formula = Counter(atoms)
-    element_analyzers = {}
-    atomic_energies = {}
-    atomic_calcs = {}
-
-    atomization_energy = mol_energy
-    for Z in list(formula.keys()):
-        symbol = chemical_symbols[Z]
-        spin = int(ground_state_magnetic_moments[Z])
-        atm = gto.Mole()
-        atm.atom = symbol
-        atm.spin = spin
-        atm.basis = BASIS
-        atm.build()
-        if CALC_TYPE in ['CCSD', 'UCCSD']:
-            ATOM_CALC_TYPE = 'CCSD' if spin == 0 else 'UCCSD'
-            AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
-                           else lowmem_analyzers.UCCSDAnalyzer
-        elif CALC_TYPE in ['CCSD_T', 'UCCSD_T']:
-            ATOM_CALC_TYPE = 'CCSD_T' if spin == 0 else 'UCCSD_T'
-            AtomAnalyzer = lowmem_analyzers.CCSDAnalyzer if spin == 0\
-                           else lowmem_analyzers.UCCSDAnalyzer
-        elif CALC_TYPE in ['RKS', 'UKS']:
-            ATOM_CALC_TYPE = 'RKS' if spin == 0 else 'UKS'
-            AtomAnalyzer = lowmem_analyzers.RHFAnalyzer if spin == 0\
-                           else lowmem_analyzers.UHFAnalyzer
-        else:
-            ATOM_CALC_TYPE = 'RHF' if spin == 0 else 'UHF'
-            AtomAnalyzer = lowmem_analyzers.RHFAnalyzer if spin == 0\
-                           else lowmem_analyzers.UHFAnalyzer
-        if type(FUNCTIONAL) == str:
-            ATOM_CALC_NAME = os.path.join(ATOM_CALC_TYPE, FUNCTIONAL)
-        else:
-            ATOM_CALC_NAME = ATOM_CALC_TYPE
-        path = os.path.join(
-                            DBPATH, ATOM_CALC_NAME, BASIS,
-                            'atoms/{}-{}-{}/data.hdf5'.format(
-                                Z, symbol, spin)
-                           )
-        print(path)
-        atomic_energies[Z], atomic_calcs[Z] = run_calc(atm, path, ATOM_CALC_TYPE,
-                                                       AtomAnalyzer, save_atom_analyzer)
-        atomization_energy -= formula[Z] * atomic_energies[Z]
-
-    return mol, atomization_energy, mol_energy, atomic_energies, mol_calc, atomic_calcs
-    
 
 def get_accdb_formula_entry(entry_names, fname):
     with open(fname, 'r') as f:
@@ -693,13 +488,6 @@ def get_accdb_performance(dataset_eval_name, FUNCTIONAL, BASIS, data_names,
     errs = []
     nbonds = 0
     for data_point_name, formula in list(formulas.items()):
-        skip = False
-        #for term in formula['structs']:
-        #    if 'Pd' in term:
-        #        skip = True
-        #        break
-        if skip:
-            continue
         if data_point_name not in data_names:
             #print(data_point_name)
             continue

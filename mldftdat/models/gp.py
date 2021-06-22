@@ -151,13 +151,26 @@ class DFTGPR():
 
     def __init__(self, feature_list, desc_order=None,
                  xed_y_converter=XED_Y_CONVERTERS['LDA'],
-                 init_kernel=None, use_algpr=False):
+                 init_kernel=None):
         """
         Args:
             feature_list (e.g. xcutil.transform_data.FeatureList):
                 An object containing an nfeat property which, when
                 called, transforms the raw input descriptors to
                 features for the GP to use.
+            desc_order (list): This list indexes the descriptors to
+                pass to the feature_list
+            xed_y_converter (tuple): baseline functional details,
+                see XED_Y_CONVERTERS
+                    (xed_to_y conversion function,
+                     y_to_xed conversion function,
+                     value and derivative of baseline
+                     exchange enhancement factor,
+                     1 if baseline is LDA, 2 if GGA)
+                y is the target function and xed is the exchange
+                energy density.
+            init_kernel: Initial guess for kernel, if desired.
+                Set to a simple RBF otherwise
         """
         num_desc = feature_list.nfeat
         if desc_order is None:
@@ -176,12 +189,8 @@ class DFTGPR():
             kernel = init_kernel
         self.X = None
         self.y = None
-        if use_algpr:
-            self.gp = ALGPR(kernel=kernel)
-            self.al = True
-        else:
-            self.gp = GaussianProcessRegressor(kernel=kernel)
-            self.al = False
+        self.gp = GaussianProcessRegressor(kernel=kernel)
+        self.al = False
         self.init_kernel = kernel
 
     def get_descriptors(self, x):

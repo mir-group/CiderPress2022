@@ -414,7 +414,6 @@ class ZMap(FeatureNormalizer):
         return ZMap(d['n'], d['i'], d['gamma'], d['scale'], d['center'])
 
 
-
 class FeatureList():
     """
     A class containing a list of FeatureNormalizer objects.
