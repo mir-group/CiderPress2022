@@ -1,7 +1,6 @@
 from mldftdat.data import predict_exchange, predict_correlation,\
                           predict_total_exchange_unrestricted
-from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer,\
-                                      CCSDAnalyzer, UCCSDAnalyzer
+from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
 import numpy as np 
 from collections import Counter
@@ -492,8 +491,9 @@ if __name__ == '__main__':
                         '1: Total exchange error for spin-restricted systems\n'
                         '2: Same as above but also returns data for ML descriptors\n'
                         '3: Total and atomization exchange error for spin-restricted systems\n'
-                        'u: Total exchange error for spin-unrestricted systems\n'
-                        'c: Total correlation exchange error.'))
+                        'u: Total exchange error for spin-unrestricted systems.'))
+                        #'u: Total exchange error for spin-unrestricted systems\n'
+                        #'c: Total correlation exchange error.'))
     parser.add_argument('model_file', type=str,
                         help='yaml file containing list of models and how to load them.')
     parser.add_argument('mol_file', type=str,
@@ -507,10 +507,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     calc_type, mol_ids = load_mol_ids(args.mol_file)
-    if args.version.lower() == 'c' and ('CCSD' not in calc_type):
-        raise ValueError('Wrong calc_type')
-    elif 'CCSD' in calc_type:
-        raise ValueError('Wrong calc_type')
+    #if args.version.lower() == 'c' and ('CCSD' not in calc_type):
+    #    raise ValueError('Wrong calc_type')
+    #elif 'CCSD' in calc_type:
+    #    raise ValueError('Wrong calc_type')
+    if 'CCSD' in calc_type:
+        raise ValueError('CCSD analyzers not currently supported.')
     elif 'U' in calc_type and (args.version not in ['u', 'c']):
         raise ValueError('Wrong calc_type')
 
@@ -518,12 +520,12 @@ if __name__ == '__main__':
         Analyzer = RHFAnalyzer
     elif calc_type in ['UKS', 'UHF']:
         Analyzer = UHFAnalyzer
-    elif calc_type == 'CCSD':
-        Analyzer = CCSDAnalyzer
-    elif calc_type == 'UCCSD':
-        Analyzer = UCCSDAnalyzer
+    #elif calc_type == 'CCSD':
+    #    Analyzer = CCSDAnalyzer
+    #elif calc_type == 'UCCSD':
+    #    Analyzer = UCCSDAnalyzer
     else:
-        raise ValueError('Wrong calc_type {}'.format(calc_type))
+        raise ValueError('Incorrect or unsupported calc_type {}'.format(calc_type))
 
     dirs = []
     for mol_id in mol_ids:

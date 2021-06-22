@@ -12,9 +12,16 @@ import yaml
 
 from argparse import ArgumentParser
 
+"""
+Script to compile a dataset from the CIDER DB for training a CIDER functional.
+"""
+
 def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BASIS,
                     spherical_atom=False, locx=False, lam=0.5,
                     version='a', **gg_kwargs):
+
+    if locx:
+        raise ValueError('locx setting not supported in this version! (but might be later)')
 
     all_descriptor_data = None
     all_rho_data = None
@@ -173,6 +180,9 @@ if __name__ == '__main__':
         dataname = 'LOCX_' + dataname
     if args.suffix is not None:
         dataname = dataname + '_' + args.suffix
+
+    # TODO remove this if locx supported in the future
+    args.locx = False
 
     if version == 'c':
         compile_dataset2(

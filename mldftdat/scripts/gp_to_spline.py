@@ -2,7 +2,6 @@ import yaml
 import numpy as np
 from interpolation.splines import UCGrid, CGrid, nodes
 from interpolation.splines import filter_cubic, eval_cubic
-from mldftdat.models.kernels import PartialQARBF, qarbf_args
 from mldftdat.dft.xc_models import NormGPFunctional
 from sklearn.gaussian_process.kernels import RBF
 from itertools import combinations
@@ -10,6 +9,11 @@ from argparse import ArgumentParser
 from joblib import load, dump
 from mldftdat.scripts.train_gp import parse_dataset
 from mldftdat.models.kernels import *
+
+"""
+Script for mapping a CIDER GP to a cubic spline.
+Requires an input DFTGPR object, stored in joblib format.
+"""
 
 def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = None):
     print(length_scale, bound)
@@ -26,11 +30,6 @@ def get_dim(x, length_scale, density = 6, buff = 0.0, bound = None, max_ngrid = 
 
 def get_mapped_gp_evaluator(gpr, test_x=None, test_y=None, test_rho_data=None,
                             srbf_density=8, arbf_density=8, max_ngrid=120):
-    """
-    version a is for RBF(s) * ARBF(other desc) with X[:,0]=rho (used for exchange)
-    version b is for Linear(SCAN) * ARBF(other desc) with X[:,0]=rho
-    (used for correlation)
-    """
     X = gpr.X
     alpha = gpr.gp.alpha_
     D = X[:,1:]
@@ -191,9 +190,12 @@ def main():
                         help='exchange-correlation functional, HF for Hartree-Fock')
     parser.add_argument('-v', '--version', default='c', type=str,
                         help='version of descriptor set. Default c')
-    parser.add_argument('--srbfd', default=8, type=int)
-    parser.add_argument('--arbfd', default=8, type=int)
-    parser.add_argument('--maxng', default=120, type=int)
+    parser.add_argument('--srbfd', default=8, type=int,
+                        help='grid density for reduced gradient descriptor, srbfd pts per stddev of feature')
+    parser.add_argument('--arbfd', default=8, type=int,
+                        help='grid density for other descriptors, arbfd pts per stddev of feature')
+    parser.add_argument('--maxng', default=120, type=int,
+                        help='maximum number of grid points for a feature')
     #srbf_density=8, arbf_density=8, max_ngrid=120
     args = parser.parse_args()
     
