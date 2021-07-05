@@ -320,7 +320,7 @@ def _get_x_helper_a(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
         ovlp = gto.mole.intor_cross('int1e_ovlp', gridmol, auxmol)
         proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
         desc = np.append(desc, proj, axis=0)
-    return contract_exchange_descriptors_c(desc)
+    return contract_exchange_descriptors(desc)
 
 
 def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
@@ -374,7 +374,7 @@ def _get_x_helper_c(auxmol, rho_data, ddrho, grid, rdm1, ao_to_aux,
     proj = np.dot(ovlp, density).reshape(N, 2*l+1).transpose()
     desc = np.append(desc, proj, axis=0)
     
-    return contract_exchange_descriptors_c(desc)
+    return contract_exchange_descriptors(desc)
 
 
 def get_exchange_descriptors2(analyzer, restricted=True, version='a',
@@ -484,7 +484,7 @@ def contract21_deriv(t1, t1b=None):
     return np.einsum('map,ap->mp', derivs, t1b)
 
 
-def contract_exchange_descriptors_c(desc):
+def contract_exchange_descriptors(desc):
     """
     Contract CIDER descriptors into rotation-invariant quantities.
     """

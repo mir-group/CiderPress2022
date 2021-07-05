@@ -65,7 +65,7 @@ class Evaluator():
                     (xed_to_y, y_to_xed, eval_baseline_y,
                     1 if baseline y is LDA, 2 if GGA)
             feature_list (FeatureList): FeatureList object
-                (mldftdat.xcutil.transform_data.FeatureList) containing
+                (mldftdat.models.transform_data.FeatureList) containing
                 the features to pass to the model.
             desc_order (list): indexes the descriptors before passing them
                 to the features_list
@@ -239,7 +239,7 @@ def extract_kernel_components(kernel):
 class Descriptor():
     """
     Old version of the Descriptor class (replaced with
-    the xcutil.transform_data module). Used in Semi-local
+    the models.transform_data module). Used in Semi-local
     functional examples below.
     """
     def __init__(self, code, transform = identity,
