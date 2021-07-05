@@ -45,34 +45,11 @@ class TestPyscfUtils(unittest.TestCase):
 
         cls.rtot_ref_h, cls.rtot_ref_x = get_hf_coul_ex_total(cls.FH, cls.rhf)
         cls.utot_ref_h, cls.utot_ref_x = get_hf_coul_ex_total_unrestricted(cls.NO, cls.uhf)
-        cls.He_ref_ee = get_ccsd_ee_total(cls.He, cls.cc_He, cls.hf_He)
 
         cls.Li = gto.Mole(atom='Li 0 0 0', basis = 'cc-pvdz', spin=1)
         cls.Li.build()
         cls.hf_Li = run_scf(cls.Li, 'UHF')
         cls.cc_Li = run_cc(cls.hf_Li)
-
-        """
-        zs, wts = np.polynomial.legendre.leggauss(12)
-        NUMPHI = 24
-        phis = np.linspace(0, 2*np.pi, num=NUMPHI, endpoint=False)
-        dphi = 2 * np.pi / NUMPHI
-        dphi_lst = dphi * np.ones(phis.shape)
-
-        rs = np.linspace(0.001, 5, 10)
-        rsw0 = np.append([0], rs)
-        drs = rsw0[1:] - rsw0[:-1]
-        rwts = rs**2 * drs
-
-        points = np.vstack(np.meshgrid(rs, zs, phis, indexing='ij')).reshape(3,-1)
-        weights3d = np.vstack(np.meshgrid(rwts, wts, dphi_lst, indexing='ij')).reshape(3,-1)
-        rhos = weights3d[1]
-        weights = np.cumprod(weights3d, axis=0)[-1,:]
-        xs = points[0] * np.sqrt(1-points[1]**2) * np.cos(points[2])
-        ys = points[0] * np.sqrt(1-points[1]**2) * np.sin(points[2])
-        zs = points[0] * points[1]
-        coords = np.array([xs, ys, zs]).T
-        """
 
         Hatom = gto.Mole(atom='H')
         Hatom.basis = 'sto-3g'
@@ -195,28 +172,6 @@ class TestPyscfUtils(unittest.TestCase):
         lapl = ddrho[0] + ddrho[3] + ddrho[5]
         assert_almost_equal(rho_data[4], lapl)
 
-    def test_make_rdm2_from_rdm1(self):
-        rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
-        ree = get_ee_energy_density(self.FH, rhf_rdm2,
-                                    self.rhf_vele_mat, self.rhf_ao_vals)
-        rtot = np.dot(ree, self.rhf_grid.weights)
-        assert_almost_equal(rtot, self.rtot_ref_h + self.rtot_ref_x, 5)
-
-    def test_make_rdm2_from_rdm1_unrestricted(self):
-        uhf_rdm2 = make_rdm2_from_rdm1_unrestricted(self.uhf_rdm1)
-        euu = get_ee_energy_density(
-                self.NO, uhf_rdm2[0],
-                self.uhf_vele_mat, self.uhf_ao_vals)
-        eud = get_ee_energy_density(
-                self.NO, uhf_rdm2[1],
-                self.uhf_vele_mat, self.uhf_ao_vals)
-        edd = get_ee_energy_density(
-                self.NO, uhf_rdm2[2],
-                self.uhf_vele_mat, self.uhf_ao_vals)
-        eee = euu + 2 * eud + edd
-        etot = np.dot(eee, self.uhf_grid.weights)
-        assert_almost_equal(etot, self.utot_ref_h + self.utot_ref_x, 5)
-
     def test_get_vele_mat(self):
         # covered in setup
         pass
@@ -262,12 +217,6 @@ class TestPyscfUtils(unittest.TestCase):
         rtot = np.dot(rfx, self.rhf_grid.weights)
 
         assert_almost_equal(rtot, self.rtot_ref_x, 5)
-
-    def test_get_ee_energy_density(self):
-        ree = get_ee_energy_density(self.He, self.He_rdm2,
-                                    self.He_mo_vele_mat, self.He_mo_vals)
-        rtot = np.dot(ree, self.He_grid.weights)
-        assert_almost_equal(rtot, self.He_ref_ee)
 
     def test_get_ha_energy_density2(self):
         rha_ref = get_ha_energy_density(self.FH, self.rhf_rdm1,

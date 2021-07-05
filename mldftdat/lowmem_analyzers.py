@@ -3,7 +3,6 @@ from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.dft.gen_grid import Grids
 from pyscf.pbc.tools.pyscf_ase import atoms_from_ase
 from mldftdat.pyscf_utils import *
-from mldftdat.external import pyscf_ccsd_rdm as ext_ccsd_rdm
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 from io import BytesIO
