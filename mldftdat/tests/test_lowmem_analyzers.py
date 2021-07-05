@@ -5,7 +5,7 @@ from nose.plugins.skip import Skip
 from numpy.testing import assert_almost_equal, assert_equal
 
 from mldftdat.pyscf_utils import get_hf_coul_ex_total, get_hf_coul_ex_total_unrestricted,\
-                                run_scf, run_cc, integrate_on_grid, get_ccsd_ee_total,\
+                                run_scf, run_cc, np.dot, get_ccsd_ee_total,\
                                 transform_basis_2e, transform_basis_1e, get_ccsd_ee
 import test_analyzers
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer, CCSDAnalyzer, UCCSDAnalyzer,\
@@ -33,19 +33,19 @@ class TestRHFAnalyzer():
 
     def test_get_ha_energy_density(self):
         ha_density = self.analyzer.get_ha_energy_density()
-        ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
+        ha_tot = np.dot(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, self.ha_tot_ref, 5)
         assert_almost_equal(self.analyzer.ha_total, self.ha_tot_ref)
 
     def test_get_fx_energy_density(self):
         fx_density = self.analyzer.get_fx_energy_density()
-        fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
+        fx_tot = np.dot(fx_density, self.analyzer.grid.weights)
         assert_almost_equal(fx_tot, self.fx_tot_ref, 5)
         assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
-        ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
+        ee_tot = np.dot(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.rhf.energy_elec()[1], 5)
 
     def test_as_dict_from_dict(self):
@@ -126,19 +126,19 @@ class TestUHFAnalyzer():
 
     def test_get_ha_energy_density(self):
         ha_density = self.analyzer.get_ha_energy_density()
-        ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
+        ha_tot = np.dot(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, self.ha_tot_ref, 5)
         assert_almost_equal(self.analyzer.ha_total, self.ha_tot_ref)
 
     def test_get_fx_energy_density(self):
         fx_density = self.analyzer.get_fx_energy_density()
-        fx_tot = integrate_on_grid(fx_density, self.analyzer.grid.weights)
+        fx_tot = np.dot(fx_density, self.analyzer.grid.weights)
         assert_almost_equal(fx_tot, self.fx_tot_ref, 5)
         assert_almost_equal(self.analyzer.fx_total, self.fx_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
-        ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
+        ee_tot = np.dot(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.uhf.energy_elec()[1], 5)
 
     def test_as_dict_from_dict(self):
@@ -250,13 +250,13 @@ class TestCCSDAnalyzer():
         rdm1 = self.cc.make_rdm1()
         ha_tot_ref = np.sum(np.sum(eri * rdm1, axis=(2,3)) * rdm1) / 2
         ha_density = self.analyzer.get_ha_energy_density()
-        ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
+        ha_tot = np.dot(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, ha_tot_ref, 5)
         assert_almost_equal(self.analyzer.ha_total, ha_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
-        ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
+        ee_tot = np.dot(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.ee_tot_ref)
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
@@ -299,7 +299,7 @@ class TestCCSDAnalyzer():
 
     def test_get_corr_energy_density(self):
         ecorr_dens = self.analyzer.get_corr_energy_density()
-        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        ecorr = np.dot(ecorr_dens, self.analyzer.grid.weights)
         assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
 
 
@@ -336,13 +336,13 @@ class TestUCCSDAnalyzer():
         rdm1 = np.sum(rdm1, axis=0)
         ha_tot_ref = np.sum(np.sum(eri * rdm1, axis=(2,3)) * rdm1) / 2
         ha_density = self.analyzer.get_ha_energy_density()
-        ha_tot = integrate_on_grid(ha_density, self.analyzer.grid.weights)
+        ha_tot = np.dot(ha_density, self.analyzer.grid.weights)
         assert_almost_equal(ha_tot, ha_tot_ref)
         assert_almost_equal(self.analyzer.ha_total, ha_tot_ref)
 
     def test_get_ee_energy_density(self):
         ee_density = self.analyzer.get_ee_energy_density()
-        ee_tot = integrate_on_grid(ee_density, self.analyzer.grid.weights)
+        ee_tot = np.dot(ee_density, self.analyzer.grid.weights)
         assert_almost_equal(ee_tot, self.ee_tot_ref)
         # ee repulsion should be similar to HF case
         # Note this case may not pass for all systems, but hsould pass for He and Li
@@ -391,7 +391,7 @@ class TestUCCSDAnalyzer():
 
     def test_get_corr_energy_density(self):
         ecorr_dens = self.analyzer.get_corr_energy_density()
-        ecorr = integrate_on_grid(ecorr_dens, self.analyzer.grid.weights)
+        ecorr = np.dot(ecorr_dens, self.analyzer.grid.weights)
         assert_almost_equal(ecorr, self.analyzer.calc.e_corr)
 
 

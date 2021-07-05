@@ -5,7 +5,7 @@ from pyscf.dft.gen_grid import Grids
 from pyscf import df, scf, dft
 
 from mldftdat.density import get_x_helper_full_a, get_x_helper_full_c, LDA_FACTOR,\
-                             contract_exchange_descriptors_c,\
+                             contract_exchange_descriptors,\
                              contract21_deriv, contract21
 from scipy.linalg import cho_factor, cho_solve
 from mldftdat.dft.utils import *
@@ -235,10 +235,10 @@ class NLNumInt(pyscf_numint.NumInt):
         self.mlfunc_x.xmix = xmix
         if mlfunc_x.desc_version == 'c':
             mlfunc_x.get_x_helper_full = get_x_helper_full_c
-            mlfunc_x.functional_derivative_loop = functional_derivative_loop_c
+            mlfunc_x.functional_derivative_loop = functional_derivative_loop
         elif mlfunc_x.desc_version == 'a':
             mlfunc_x.get_x_helper_full = get_x_helper_full_a
-            mlfunc_x.functional_derivative_loop = functional_derivative_loop_c
+            mlfunc_x.functional_derivative_loop = functional_derivative_loop
         else:
             raise ValueError('Invalid version for descriptors')
 
@@ -369,7 +369,7 @@ def _eval_xc_0(mlfunc, mol, rho_data, grid, density, spin=1):
                                                deriv=True, a0=mlfunc.a0,
                                                fac_mul=mlfunc.fac_mul,
                                                amin=mlfunc.amin)
-        contracted_desc[spin] = contract_exchange_descriptors_c(raw_desc[spin])
+        contracted_desc[spin] = contract_exchange_descriptors(raw_desc[spin])
         contracted_desc[spin] = contracted_desc[spin][mlfunc.desc_order]
         F[spin], dF[spin] = mlfunc.get_F_and_derivative(contracted_desc[spin])
         #F[spin][(ntup[spin]<1e-8)] = 0

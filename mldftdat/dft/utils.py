@@ -198,7 +198,7 @@ def v_nonlocal(rho_data, grid, dedg, density, auxmol,
     return v_npa, dedaux
 
 
-def functional_derivative_loop_c(mol, mlfunc, dEddesc,
+def functional_derivative_loop(mol, mlfunc, dEddesc,
                                  raw_desc, raw_desc_r2,
                                  rho_data, density, ovlps, grid):
     """

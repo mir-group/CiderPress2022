@@ -180,9 +180,6 @@ def transform_basis_1e(mat, coeff):
         part1 = np.matmul(coeff[1].transpose(), np.matmul(mat[1], coeff[1]))
         return np.array([part0, part1])
 
-
-integrate_on_grid = np.dot
-
 def make_rdm2_from_rdm1(rdm1):
     """
     For an RHF calculation, return the 2-RDM from

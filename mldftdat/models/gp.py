@@ -8,7 +8,7 @@ covariance and noise kernels and baselines.
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from mldftdat.models.kernels import *
-from mldftdat.xcutil.transform_data import *
+from mldftdat.models.transform_data import *
 from mldftdat.density import get_ldax_dens, get_ldax,\
                              get_xed_from_y, get_y_from_xed, get_x,\
                              tail_fx
@@ -154,7 +154,7 @@ class DFTGPR():
                  init_kernel=None):
         """
         Args:
-            feature_list (e.g. xcutil.transform_data.FeatureList):
+            feature_list (e.g. models.transform_data.FeatureList):
                 An object containing an nfeat property which, when
                 called, transforms the raw input descriptors to
                 features for the GP to use.

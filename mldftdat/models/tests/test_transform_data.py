@@ -4,7 +4,7 @@ from nose.tools import nottest
 from nose.plugins.skip import Skip
 from numpy.testing import assert_almost_equal, assert_equal
 
-from mldftdat.xcutil.transform_data import *
+from mldftdat.models.transform_data import *
 import numpy as np
 import numbers
 import os

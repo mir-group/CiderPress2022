@@ -179,14 +179,14 @@ class TestPyscfUtils(unittest.TestCase):
         desired_shape = (4, self.rhf_grid.coords.shape[0])
         assert_equal(tau_data.shape, desired_shape)
         assert_almost_equal(tau_data[0], rho_data[5])
-        zero = integrate_on_grid(tau_data[1:], self.rhf_grid.weights)
+        zero = np.dot(tau_data[1:], self.rhf_grid.weights)
         assert_almost_equal(np.linalg.norm(zero), 0, 4)
 
         ao_data, rho_data = get_mgga_data(self.NO, self.uhf_grid, self.uhf_rdm1)
         tau_data = get_tau_and_grad(self.NO, self.uhf_grid, self.uhf_rdm1, ao_data)
         desired_shape = (2, 4, self.uhf_grid.coords.shape[0])
         assert_almost_equal(tau_data[:,0,:], rho_data[:,5,:])
-        zero = integrate_on_grid(tau_data[:,1:,:], self.uhf_grid.weights)
+        zero = np.dot(tau_data[:,1:,:], self.uhf_grid.weights)
         assert_almost_equal(np.linalg.norm(zero), 0, 4)
 
     def test_get_rho_second_deriv(self):
@@ -199,7 +199,7 @@ class TestPyscfUtils(unittest.TestCase):
         rhf_rdm2 = make_rdm2_from_rdm1(self.rhf_rdm1)
         ree = get_ee_energy_density(self.FH, rhf_rdm2,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
-        rtot = integrate_on_grid(ree, self.rhf_grid.weights)
+        rtot = np.dot(ree, self.rhf_grid.weights)
         assert_almost_equal(rtot, self.rtot_ref_h + self.rtot_ref_x, 5)
 
     def test_make_rdm2_from_rdm1_unrestricted(self):
@@ -214,7 +214,7 @@ class TestPyscfUtils(unittest.TestCase):
                 self.NO, uhf_rdm2[2],
                 self.uhf_vele_mat, self.uhf_ao_vals)
         eee = euu + 2 * eud + edd
-        etot = integrate_on_grid(eee, self.uhf_grid.weights)
+        etot = np.dot(eee, self.uhf_grid.weights)
         assert_almost_equal(etot, self.utot_ref_h + self.utot_ref_x, 5)
 
     def test_get_vele_mat(self):
@@ -248,7 +248,7 @@ class TestPyscfUtils(unittest.TestCase):
         rha = get_ha_energy_density(self.FH, self.rhf_rdm1,
                                     self.rhf_vele_mat, self.rhf_ao_vals)
 
-        rtot = integrate_on_grid(rha, self.rhf_grid.weights)
+        rtot = np.dot(rha, self.rhf_grid.weights)
 
         assert_almost_equal(rtot, self.rtot_ref_h, 5)
 
@@ -259,14 +259,14 @@ class TestPyscfUtils(unittest.TestCase):
                                     get_mo_vals(self.rhf_ao_vals,
                                         self.rhf.mo_coeff))
 
-        rtot = integrate_on_grid(rfx, self.rhf_grid.weights)
+        rtot = np.dot(rfx, self.rhf_grid.weights)
 
         assert_almost_equal(rtot, self.rtot_ref_x, 5)
 
     def test_get_ee_energy_density(self):
         ree = get_ee_energy_density(self.He, self.He_rdm2,
                                     self.He_mo_vele_mat, self.He_mo_vals)
-        rtot = integrate_on_grid(ree, self.He_grid.weights)
+        rtot = np.dot(ree, self.He_grid.weights)
         assert_almost_equal(rtot, self.He_ref_ee)
 
     def test_get_ha_energy_density2(self):
