@@ -215,11 +215,6 @@ class RHFAnalyzer(ElectronAnalyzer):
             self.rdm2 = make_rdm2_from_rdm1(self.rdm1)
         return self.rdm2
 
-    def _get_ee_energy_density_slow(self):
-        rdm2 = self._get_rdm2()
-        return get_ee_energy_density2(self.mol, self.rdm2,
-                                        self.ao_vele_mat, self.ao_vals)
-
 
 class UHFAnalyzer(ElectronAnalyzer):
 
@@ -282,16 +277,6 @@ class UHFAnalyzer(ElectronAnalyzer):
             self.eri_ao = self.mol.intor('int2e')
             self.rdm2 = make_rdm2_from_rdm1_unrestricted(self.rdm1)
         return self.rdm2
-
-    def _get_ee_energy_density_slow(self):
-        rdm2 = self._get_rdm2()
-        euu = get_ee_energy_density2(self.mol, self.rdm2[0],
-                                    self.ao_vele_mat, self.ao_vals)
-        eud = get_ee_energy_density2(self.mol, self.rdm2[1],
-                                    self.ao_vele_mat, self.ao_vals)
-        edd = get_ee_energy_density2(self.mol, self.rdm2[2],
-                                    self.ao_vele_mat, self.ao_vals)
-        return euu + 2 * eud + edd
 
 
 class RKSAnalyzer(RHFAnalyzer):
