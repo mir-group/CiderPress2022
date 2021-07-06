@@ -110,8 +110,11 @@ def main():
     assert len(args.datasets_list) != 0, 'Need training data'
     nd = len(args.datasets_list) // 2
 
-    assert len(args.validation_set) % 2 == 0, 'Need pairs of entries for datasets list.'
-    nv = len(args.validation_set) // 2
+    if args.validation_set is None:
+        nv = 0
+    else:
+        assert len(args.validation_set) % 2 == 0, 'Need pairs of entries for datasets list.'
+        nv = len(args.validation_set) // 2
 
     X, y, rho, rho_data = parse_dataset(args, 0)
     for i in range(1, nd):
@@ -135,10 +138,11 @@ def main():
     #if args.heg:
     #    gpr.add_heg_limit()
 
-    pred = gpr.xed_to_y(gpr.predict(Xv), Xv)
-    abserr = np.abs(pred - gpr.xed_to_y(yv, Xv))
     print('FINAL KERNEL', gpr.gp.kernel_)
-    print('MAE VAL SET', np.mean(abserr))
+    if nv != 0:
+        pred = gpr.xed_to_y(gpr.predict(Xv), Xv)
+        abserr = np.abs(pred - gpr.xed_to_y(yv, Xv))
+        print('MAE VAL SET', np.mean(abserr))
 
     # Always attach the arguments to the object to keep track of settings.
     gpr.args = args

@@ -7,7 +7,6 @@ from sklearn.metrics import r2_score
 from pyscf.dft.libxc import eval_xc
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
-from mldftdat.lowmem_analyzers import CCSDAnalyzer, UCCSDAnalyzer
 from mldftdat.pyscf_utils import transform_basis_1e, run_scf
 from pyscf.dft.numint import eval_ao, eval_rho
 from pyscf.scf.stability import uhf_internal

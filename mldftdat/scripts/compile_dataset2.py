@@ -3,7 +3,6 @@ from pyscf import scf
 import os, time
 import numpy as np
 from mldftdat.lowmem_analyzers import RHFAnalyzer, UHFAnalyzer
-from mldftdat import loc_analyzers
 from mldftdat.workflow_utils import get_save_dir, SAVE_ROOT, load_mol_ids
 from mldftdat.density import get_exchange_descriptors2, LDA_FACTOR, GG_AMIN
 from mldftdat.data import get_unique_coord_indexes_spherical
@@ -20,9 +19,6 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
                     spherical_atom=False, locx=False, lam=0.5,
                     version='a', **gg_kwargs):
 
-    if locx:
-        raise ValueError('locx setting not supported in this version! (but might be later)')
-
     all_descriptor_data = None
     all_rho_data = None
     all_values = []
@@ -30,6 +26,7 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
     cutoffs = []
 
     if locx:
+        raise ValueError('locx setting not supported in this version! (but might be later)')
         Analyzer = loc_analyzers.UHFAnalyzer if 'U' in CALC_TYPE \
                    else loc_analyzers.RHFAnalyzer
     else:
