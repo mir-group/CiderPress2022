@@ -70,9 +70,16 @@ err_e, err_v = check_spin(ks)
 assert_almost_equal(err_e, 0, 10)
 assert_almost_equal(err_v, 0, 10)
 
-mol2 = gto.M(atom='Ne', basis=BAS, spin=0, verbose=4)
+mol2 = gto.M(atom='H 0 0 0; F 0 0 0.93', basis=BAS, spin=0, verbose=4)
 ks2 = numint.setup_rks_calc(mol2, mlfunc, **settings)
 ks2.kernel()
+
+for i in range(1,6):
+    for s in range(2):
+        err = check_dm_uks(ks,s,i,i)
+        assert_almost_equal(err, 0, 5)
+    err = check_dm_rks(ks2,i,i)
+    assert_almost_equal(err, 0, 5)
 
 for i in range(0,7,2):
     for j in range(i,7,2):

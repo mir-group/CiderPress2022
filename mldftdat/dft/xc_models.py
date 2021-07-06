@@ -4,8 +4,11 @@ from pyscf.dft.libxc import eval_xc
 import numpy as np
 import yaml
 from interpolation.splines import UCGrid, CGrid, nodes
-from interpolation.splines import filter_cubic, eval_cubic
-from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
+from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_1,\
+                                                   vec_eval_cubic_splines_2,\
+                                                   vec_eval_cubic_splines_3,\
+                                                   vec_eval_cubic_splines_4,\
+                                                   vec_eval_cubic_splines_G_1,\
                                                    vec_eval_cubic_splines_G_2,\
                                                    vec_eval_cubic_splines_G_3,\
                                                    vec_eval_cubic_splines_G_4
@@ -14,7 +17,7 @@ from interpolation.splines.eval_cubic_numba import vec_eval_cubic_splines_G_1,\
 def get_vec_eval(grid, coeffs, X, N):
     """
     Call the numba-accelerated spline evaluation routines from the
-    interpolation package.
+    interpolation package. Also returns derivatives
     Args:
         grid: start and end points + number of grids in each dimension
         coeffs: coefficients of the spline
@@ -40,6 +43,35 @@ def get_vec_eval(grid, coeffs, X, N):
     else:
         raise ValueError('invalid dimension N')
     return np.squeeze(y, -1), np.squeeze(dy, -1)
+
+def get_cubic(grid, coeffs, X, N):
+    """
+    Call the numba-accelerated spline evaluation routines from the
+    interpolation package.
+    Args:
+        grid: start and end points + number of grids in each dimension
+        coeffs: coefficients of the spline
+        X: coordinates to interpolate
+        N: dimension of the interpolation (between 1 and 4, inclusive)
+    """
+    coeffs = np.expand_dims(coeffs, coeffs.ndim)
+    y = np.zeros((X.shape[0], 1))
+    a_, b_, orders = zip(*grid)
+    if N == 1:
+        vec_eval_cubic_splines_1(a_, b_, orders,
+                                 coeffs, X, y)
+    elif N == 2:
+        vec_eval_cubic_splines_2(a_, b_, orders,
+                                 coeffs, X, y)
+    elif N == 3:
+        vec_eval_cubic_splines_3(a_, b_, orders,
+                                 coeffs, X, y)
+    elif N == 4:
+        vec_eval_cubic_splines_4(a_, b_, orders,
+                                 coeffs, X, y)
+    else:
+        raise ValueError('invalid dimension N')
+    return np.squeeze(y, -1)
 
 
 class Evaluator():
@@ -124,9 +156,10 @@ class Evaluator():
                     res += y * self.scale[t]
                     dres[:,ind_set] += dy * self.scale[t]
                 else:
-                    res += eval_cubic(self.spline_grids[t],
-                                      self.coeff_sets[t],
-                                      X[:,ind_set])\
+                    res += get_cubic(self.spline_grids[t],
+                                     self.coeff_sets[t],
+                                     X[:,ind_set],
+                                     len(ind_set))\
                            * self.scale[t]
         if vec_eval:
             return res, dres
@@ -373,20 +406,27 @@ class GPFunctional(MLFunctional):
 
     def __init__(self, gpr):
         # Assumes kernel_ is (const * rbf) + noise
+        from sklearn.gaussian_process.kernels import RBF
         cov = gpr.gp.kernel_.k1
         self.alpha_ = cov.k1.constant_value * gpr.gp.alpha_
-        self.kernel = RBF(length_scale=cov.ks.length_scale)
-        self.X_train = gpr.gp.X_train_[:,1:]
+        self.kernel = RBF(length_scale=cov.k2.length_scale)
+        self.X_train_ = gpr.gp.X_train_[:,1:]
         self.feature_list = gpr.feature_list
         self.nfeat = self.feature_list.nfeat
-        self.fx_baseline = gpr.args.xed_y_converter[2]
-        self.fxb_num = gpr.args.xed_y_converter[3]
+        self.desc_version = gpr.args.version
+        self.a0 = gpr.args.gg_a0
+        self.amin = gpr.args.gg_amin
+        self.fac_mul = gpr.args.gg_facmul
+        self.desc_order = gpr.args.desc_order
+        self.fx_baseline = gpr.xed_y_converter[2]
+        self.fxb_num = gpr.xed_y_converter[3]
 
     def get_F_and_derivative(self, X):
+        rho = X[0]
         mat = np.zeros((self.nfeat, X.shape[1]))
         self.feature_list.fill_vals_(mat, X)
 
-        k = self.kernel(X, self.X_train_)
+        k = self.kernel(mat.T, self.X_train_)
         F = k.dot(self.alpha_)
 
         # X has shape n_test, n_desc
@@ -395,23 +435,23 @@ class GPFunctional(MLFunctional):
         # shape n_test, n_desc
         kaxt = np.dot(ka, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        dF = (kaxt - X * kda.reshape(-1,1)) / self.kernel.length_scale**2
+        dF = (kaxt - mat.T * kda.reshape(-1,1)) / self.kernel.length_scale**2
+        print(dF.shape)
 
-        dFddesc = np.zeros(X.shape)
-        self.feature_list.fill_derivs_(dFddesc, dF, X)
+        dFddesc = np.zeros(X.shape).T
+        self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
 
         if self.fxb_num == 1:
             chfx = 1
         elif self.fxb_num == 2:
-            chfx, dchfx = self.fx_baseline(X[:,1])
+            chfx, dchfx = self.fx_baseline(X[1])
             dFddesc[:,1] += dchfx
         else:
             raise ValueError('Unsupported basline fx order.')
         F += chfx
     
-        if rho is not None:
-            F[rho<1e-9] = 0
-            dFddesc[rho<1e-9,:] = 0
+        F[rho<1e-8] = 0
+        dFddesc[rho<1e-8,:] = 0
 
         return F, dFddesc
 
