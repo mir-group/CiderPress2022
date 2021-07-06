@@ -426,20 +426,26 @@ class GPFunctional(MLFunctional):
         mat = np.zeros((self.nfeat, X.shape[1]))
         self.feature_list.fill_vals_(mat, X)
 
-        k = self.kernel(mat.T, self.X_train_)
-        F = k.dot(self.alpha_)
-
         # X has shape n_test, n_desc
         # X_train_ has shape n_train, n_desc
+        k = self.kernel(mat.T, self.X_train_)
+        F = k.dot(self.alpha_)
         ka = k * self.alpha_
         # shape n_test, n_desc
-        kaxt = np.dot(ka, self.X_train_)
+        kaxt = np.dot(k * self.alpha_, self.X_train_)
         kda = np.dot(k, self.alpha_)
-        dF = (kaxt - mat.T * kda.reshape(-1,1)) / self.kernel.length_scale**2
-        print(dF.shape)
-
+        dF = kaxt - mat.T * F.reshape(-1,1)
+        dF /= self.kernel.length_scale**2
         dFddesc = np.zeros(X.shape).T
         self.feature_list.fill_derivs_(dFddesc.T, dF.T, X)
+
+        highcut = 1e-3
+        lowcut = 1e-6
+        rhocut = np.maximum(rho[rho<highcut], lowcut)
+        xcut = np.log(rhocut / lowcut) / np.log(highcut / lowcut)
+        F[rho<highcut] *= 0.5 * (1 - np.cos(np.pi * xcut))
+        dFddesc[rho<highcut,:] *= 0.5 * (1 - np.cos(np.pi * xcut[:,np.newaxis]))
+        dFddesc[rho<lowcut,:] = 0
 
         if self.fxb_num == 1:
             chfx = 1
@@ -450,8 +456,8 @@ class GPFunctional(MLFunctional):
             raise ValueError('Unsupported basline fx order.')
         F += chfx
     
-        F[rho<1e-8] = 0
-        dFddesc[rho<1e-8,:] = 0
+        F[rho<1e-9] = 0
+        dFddesc[rho<1e-9,:] = 0
 
         return F, dFddesc
 

@@ -23,7 +23,9 @@ def check_dm_rks(mf,i,j):
 
 BAS='def2-tzvp'
 functional = 'CIDER_B3LYP_AHW'
-mol = gto.M(atom='H 0 0 0; F 0 0 0.93', basis=BAS, spin=0, verbose=4)
+#mol = gto.M(atom='H 0 0 0; F 0 0 0.93', basis=BAS, spin=0, verbose=4)
+#mol = gto.M(atom='H 0 0 0; H 0 0 0.74', basis=BAS, spin=0, verbose=4)
+mol = gto.M(atom='Ne', basis=BAS, spin=0, verbose=4)
 
 ks_ref = dft.RKS(mol)
 ks_ref.xc = 'PBE0'
@@ -42,12 +44,12 @@ mlfunc = GPFunctional(mlfunc)
 ks = numint.setup_rks_calc(mol, mlfunc, **settings)
 ks.kernel()
 
-for i in range(5):
+for i in range(0,10):
     check_dm_rks(ks,i,i)
 
 mlfunc = joblib.load('test_files/agpr_spline_example.joblib')
 ks = numint.setup_rks_calc(mol, mlfunc, **settings)
 ks.kernel()
 
-for i in range(5):
+for i in range(0,10):
     check_dm_rks(ks,i,i)
