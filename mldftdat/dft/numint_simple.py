@@ -400,15 +400,15 @@ def _eval_xc_0(mol, rho_data, grid, density, spin=1, xf=None, cider=False):
             proj, ovlp, dproj = project_density_cider(grid, 2 * density[0], auxmol, 
                                                       2 * rho_data[0], gg_kwargs)
             v_npa, dedaux = v_nonlocal(2 * rho_data[0], grid,
-                                       2 * xf * rhou**(4./3),
+                                       xf * rhou**(4./3),
                                        2 * density[0], mol.auxmol, proj,
                                        dproj, ovlp, l=0, l_add=0,
                                        **gg_kwargs)
             proj = proj[0]
             dproj = dproj[0]
-            exc = 2 * xf * proj * rhou**(4./3)
-            vtot[0][:,0] += xf * proj * 4./3 * rhou**(1./3)
-            vtot[0][:,1] += xf * proj * 4./3 * rhod**(1./3)
+            exc = 2 * xf * (proj/2) * rhou**(4./3)
+            vtot[0][:,0] += xf * (proj/2) * 4./3 * rhou**(1./3)
+            vtot[0][:,1] += xf * (proj/2) * 4./3 * rhod**(1./3)
             vmol[0] = np.einsum('a,aij->ij', dedaux, mol.ao_to_aux)
             vmol[1] = vmol[0]
 
@@ -554,13 +554,16 @@ if __name__ == '__main__':
 
     #for mol in [mol1, mol2, mol3]:
     for mol in [mol1]:
-        calc = setup_rks_calc(mol, xc='SCAN', xf=0.1/np.sqrt(4*np.pi),
+        calc = setup_rks_calc(mol, xc='SCAN', xf=0.1,
+                              cider=False)
+        calc.kernel()
+        calc = setup_rks_calc(mol, xc='SCAN', xf=0.1,
                               cider=True)
         calc.kernel()
         for i in range(5):
             check_dm_rks(calc, i, i)
 
-        calc = setup_uks_calc(mol, xc='SCAN', xf=0.1/np.sqrt(4*np.pi),
+        calc = setup_uks_calc(mol, xc='SCAN', xf=0.1,
                               cider=True)
         calc.kernel()
         for i in range(5):
