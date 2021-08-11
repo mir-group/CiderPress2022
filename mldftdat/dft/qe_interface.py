@@ -7,19 +7,33 @@ import traceback
 from numba.experimental import jitclass
 from numba import jit
 
+LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
+
+# conversion for spherical harmonic orders
+l1_qe2py = [1,2,0]
+l1_py2qe = [2,0,1]
+l2_qe2py = [4,2,0,1,3]
+l2_py2qe = [2,3,1,4,0]
+
 def init_pyfort():
     return TestPyFort()
 
 class TestPyFort:
 
-    def __init__(self):
-        dirname = os.path.dirname(os.path.abspath(__file__))
-        fname = os.path.join(dirname, '../../functionals/B3LYP_CIDER.yaml')
-        self.mlfunc = NormGPFunctional.load(fname)
+    def __init__(self, mlfunc=None):
+        if mlfunc is None:
+            dirname = os.path.dirname(os.path.abspath(__file__))
+            fname = os.path.join(dirname, '../../functionals/B3LYP_CIDER.yaml')
+            self.mlfunc = NormGPFunctional.load(fname)
+        else:
+            self.mlfunc = mlfunc
 
     def get_xc_fortran(self, *args, **kwargs):
-        print ("calling Python")
+        #print ("calling Python")
+        no_swap = kwargs.get('no_swap') or False
         try:
+            xfac = args[9] * LDA_FACTOR
+            #print(xfac)
             nspin = args[0].shape[-1]
             ngrid = args[0].shape[-2]
             raw_desc = np.concatenate([
@@ -29,25 +43,36 @@ class TestPyFort:
                 args[2].reshape(1,ngrid,nspin),
                 args[3].transpose(1,0,2)
             ])
+            if not no_swap:
+                raw_desc[7:10] = raw_desc[7:10][l1_qe2py]
+                raw_desc[10:15] = raw_desc[10:15][l2_qe2py]
             contracted_desc = [None] * nspin
             F = [None] * nspin
             dF = [None] * nspin
             for s in range(nspin):
                 contracted_desc[s] = contract_exchange_descriptors(raw_desc[:,:,s])
+                contracted_desc[s] = contracted_desc[s][self.mlfunc.desc_order]
                 F[s], dF[s] = self.mlfunc.get_F_and_derivative(contracted_desc[s])
-                args[4][:] += 0.02 * np.abs(args[0][:,s])**(4./3) * \
+                args[4][:] += xfac * np.abs(args[0][:,s])**(4./3) * \
                               np.sign(args[0][:,s]) * F[s]
-                dEddesc = (0.02 * np.abs(args[0][:,s])**(4./3) * \
-                              np.sign(args[0][:,s])).reshape(-1,1) * dF[s]
+                dEddesc = (xfac * np.abs(args[0][:,s])**(4./3) * \
+                          np.sign(args[0][:,s])).reshape(-1,1) * dF[s]
                 vfeat, v_nst, v_grad = functional_derivative_loop(
                     self.mlfunc, dEddesc,
                     raw_desc[:,:,s], raw_desc[:6,:,s],
                 )
+                if not no_swap:
+                    vfeat[1:4] = vfeat[1:4][l1_py2qe]
+                    vfeat[4:9] = vfeat[4:9][l2_py2qe]
+                args[5][:,s] += xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s]
                 args[8][:,:,s] += vfeat.T
                 args[5][:,s] += v_nst[0]
-                args[5][:,s] += 0.02 * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s]
-                args[6][:,s] += v_nst[1]
-                args[7][:,s] += v_nst[2]
+                if no_swap:
+                    args[6][:,s] += v_nst[1]
+                else:
+                    args[6][:,s] += v_nst[1] * 2 * np.linalg.norm(raw_desc[1:4,:,s], axis=0)
+                #args[7][:,s] += v_nst[3]
+                args[10][:,:,s] += v_grad
         except Exception as e:
             print(str(e))
             traceback.print_exc()
@@ -93,16 +118,15 @@ def functional_derivative_loop(mlfunc, dEddesc,
                 else:
                     g = raw_desc[16]
                     vfeat[16-FSTART] += dEddesc[:,i]
-                l = 0
             elif d == 4:
                 g = raw_desc[7:10]
                 vfeat[7-FSTART:10-FSTART] += 2 * g * dEddesc[:,i]
             elif d == 6:
                 g = raw_desc[10:15]
-                vfeat[10-FSTART:15-FSTART] += 2 * g * dEddesc[:,i]
+                vfeat[10-FSTART:15-FSTART] += 2 * g * dEddesc[:,i] / np.sqrt(5)
             elif d == 5:
                 g = raw_desc[7:10]
-                vfeat[7-FSTART:10-FSTART] = dEddesc[:,i] * svec
+                vfeat[7-FSTART:10-FSTART] += dEddesc[:,i] * svec
                 v_aniso += dEddesc[:,i] * g
             elif d == 7:
                 g = raw_desc[10:15]
@@ -128,6 +152,7 @@ def functional_derivative_loop(mlfunc, dEddesc,
                 vfeat[10-FSTART:15-FSTART] += dEddesc[:,i] * dfmul
             else:
                 raise NotImplementedError('Cannot take derivative for code %d' % d)
+        g = g1 = g2 = None
 
     v_nst = v_basis_transform(rho_data, v_npa)
     v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
