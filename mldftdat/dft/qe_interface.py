@@ -85,11 +85,11 @@ class TestPyFort:
                 #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(), np.abs(raw_desc)[10:15].sum(), vfeat.shape)
                 #print('vfeat sum', vfeat[0].sum(), np.abs(vfeat[1:4]).sum(), np.abs(vfeat[4:9]).sum(), vfeat.shape)
                 if not no_swap:
-                    vfeat[1:4] = vfeat[1:4][l1_py2qe]
                     vfeat[1:3] *= -1
-                    vfeat[4:9] = vfeat[4:9][l2_py2qe]
+                    vfeat[1:4] = vfeat[1:4][l1_py2qe]
                     vfeat[5] *= -1
                     vfeat[7] *= -1
+                    vfeat[4:9] = vfeat[4:9][l2_py2qe]
                 args[5][:,s] += xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s]
                 args[8][:,:,s] += vfeat.T
                 args[5][:,s] += v_nst[0]
