@@ -65,9 +65,9 @@ class TestPyFort:
             F = [None] * nspin
             dF = [None] * nspin
             # TODO remove line below
-            raw_desc[5,:,:] = np.linalg.norm(raw_desc[1:4,:,:], axis=0)**2 / (8*raw_desc[0,:,:])
-            rho_data = raw_desc[:6]
-            rho, g, alpha = get_dft_input2(rho_data)[:3]
+            #raw_desc[5,:,:] = np.linalg.norm(raw_desc[1:4,:,:], axis=0)**2 / (8*raw_desc[0,:,:])
+            #rho_data = raw_desc[:6]
+            #rho, g, alpha = get_dft_input2(rho_data)[:3]
             #test_permutations(raw_desc[1:4,:,0], raw_desc[7:10,:,0])
             #print (np.mean(1/(1+alpha**2)*rho)/np.mean(rho))
             for s in range(nspin):
@@ -97,7 +97,7 @@ class TestPyFort:
                     args[6][:,s] += v_nst[1]
                 else:
                     args[6][:,s] += v_nst[1] * 2
-                #args[7][:,s] += v_nst[3] # TODO ADD THIS
+                args[7][:,s] += v_nst[3] # TODO ADD THIS
                 #print('tau sum', v_nst[3].sum(), v_nst.shape)
                 
                 args[10][:,:,s] += v_grad
@@ -182,7 +182,7 @@ def functional_derivative_loop(mlfunc, dEddesc,
                 raise NotImplementedError('Cannot take derivative for code %d' % d)
         g = g1 = g2 = None
 
-    v_npa[-1,:] = 0.0 # TODO REMOVE
+    #v_npa[-1,:] = 0.0 # TODO REMOVE
     v_nst = v_basis_transform(rho_data, v_npa)
     v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
     v_grad = v_aniso / (sprefac * n43 + 1e-20)
