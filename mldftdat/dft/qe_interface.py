@@ -6,6 +6,7 @@ from mldftdat.dft.utils import v_basis_transform
 import traceback
 from numba.experimental import jitclass
 from numba import jit
+from mldftdat.pyscf_utils import get_dft_input2
 
 LDA_FACTOR = - 3.0 / 4.0 * (3.0 / np.pi)**(1.0/3)
 
@@ -14,6 +15,13 @@ l1_qe2py = [1,2,0]
 l1_py2qe = [2,0,1]
 l2_qe2py = [4,2,0,1,3]
 l2_py2qe = [2,3,1,4,0]
+
+def test_permutations(grad, g1):
+    import itertools
+    for lst in itertools.permutations([0,1,2]):
+        for i,j,k in [(1,1,1),(-1,1,1),(1,-1,1),(-1,-1,1),(1,1,-1),(-1,1,-1),(1,-1,-1),(-1,-1,-1)]:
+            arr = np.array([i,j,k]).reshape(-1,1)
+            print (lst, np.sum(np.einsum('ap,ap->p',grad[list(lst),:]*arr,g1)))
 
 def init_pyfort():
     return TestPyFort()
@@ -25,6 +33,8 @@ class TestPyFort:
             dirname = os.path.dirname(os.path.abspath(__file__))
             fname = os.path.join(dirname, '../../functionals/B3LYP_CIDER.yaml')
             self.mlfunc = NormGPFunctional.load(fname)
+            #from joblib import load
+            #self.mlfunc = load(os.path.join(dirname, '../../test_files/agpr_spline_example_34.joblib'))
         else:
             self.mlfunc = mlfunc
 
@@ -37,18 +47,29 @@ class TestPyFort:
             nspin = args[0].shape[-1]
             ngrid = args[0].shape[-2]
             raw_desc = np.concatenate([
-                args[0].reshape(1,ngrid,nspin),
+                np.abs(args[0].reshape(1,ngrid,nspin)),
                 args[1],
                 args[2].reshape(1,ngrid,nspin) * 0,
                 args[2].reshape(1,ngrid,nspin),
                 args[3].transpose(1,0,2)
             ])
+            #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(),
+            #    np.abs(raw_desc)[10:15].sum())
             if not no_swap:
                 raw_desc[7:10] = raw_desc[7:10][l1_qe2py]
+                raw_desc[7:9] *= -1
                 raw_desc[10:15] = raw_desc[10:15][l2_qe2py]
+                raw_desc[11] *= -1
+                raw_desc[13] *= -1
             contracted_desc = [None] * nspin
             F = [None] * nspin
             dF = [None] * nspin
+            # TODO remove line below
+            raw_desc[5,:,:] = np.linalg.norm(raw_desc[1:4,:,:], axis=0)**2 / (8*raw_desc[0,:,:])
+            rho_data = raw_desc[:6]
+            rho, g, alpha = get_dft_input2(rho_data)[:3]
+            #test_permutations(raw_desc[1:4,:,0], raw_desc[7:10,:,0])
+            #print (np.mean(1/(1+alpha**2)*rho)/np.mean(rho))
             for s in range(nspin):
                 contracted_desc[s] = contract_exchange_descriptors(raw_desc[:,:,s])
                 contracted_desc[s] = contracted_desc[s][self.mlfunc.desc_order]
@@ -61,17 +82,24 @@ class TestPyFort:
                     self.mlfunc, dEddesc,
                     raw_desc[:,:,s], raw_desc[:6,:,s],
                 )
+                #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(), np.abs(raw_desc)[10:15].sum(), vfeat.shape)
+                #print('vfeat sum', vfeat[0].sum(), np.abs(vfeat[1:4]).sum(), np.abs(vfeat[4:9]).sum(), vfeat.shape)
                 if not no_swap:
                     vfeat[1:4] = vfeat[1:4][l1_py2qe]
+                    vfeat[1:3] *= -1
                     vfeat[4:9] = vfeat[4:9][l2_py2qe]
+                    vfeat[5] *= -1
+                    vfeat[7] *= -1
                 args[5][:,s] += xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s]
                 args[8][:,:,s] += vfeat.T
                 args[5][:,s] += v_nst[0]
                 if no_swap:
                     args[6][:,s] += v_nst[1]
                 else:
-                    args[6][:,s] += v_nst[1] * 2 * np.linalg.norm(raw_desc[1:4,:,s], axis=0)
-                #args[7][:,s] += v_nst[3]
+                    args[6][:,s] += v_nst[1] * 2
+                #args[7][:,s] += v_nst[3] # TODO ADD THIS
+                #print('tau sum', v_nst[3].sum(), v_nst.shape)
+                
                 args[10][:,:,s] += v_grad
         except Exception as e:
             print(str(e))
@@ -154,6 +182,7 @@ def functional_derivative_loop(mlfunc, dEddesc,
                 raise NotImplementedError('Cannot take derivative for code %d' % d)
         g = g1 = g2 = None
 
+    v_npa[-1,:] = 0.0 # TODO REMOVE
     v_nst = v_basis_transform(rho_data, v_npa)
     v_nst[0] += np.einsum('ap,ap->p', -4.0 * svec / (3 * rho_data[0] + 1e-20), v_aniso)
     v_grad = v_aniso / (sprefac * n43 + 1e-20)
