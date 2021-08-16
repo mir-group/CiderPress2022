@@ -22,9 +22,6 @@ def check_dm_rks(mf,i,j):
     return err
 
 BAS='def2-tzvp'
-functional = 'CIDER_B3LYP_AHW'
-#mol = gto.M(atom='H 0 0 0; F 0 0 0.93', basis=BAS, spin=0, verbose=4)
-#mol = gto.M(atom='H 0 0 0; H 0 0 0.74', basis=BAS, spin=0, verbose=4)
 mol = gto.M(atom='Ne', basis=BAS, spin=0, verbose=4)
 
 ks_ref = dft.RKS(mol)
@@ -33,21 +30,41 @@ ks_ref.kernel()
 
 from mldftdat.dft import numint
 
+# Construct settings. 'xc' should compute all XC contributions EXCEPT CIDER.
+# xmix should be the fraction of CIDER.
+# The below settings represent PBE0 with 25% HF replaced with 25% CIDER.
 settings = {
     'xc': 'GGA_C_PBE + 0.75*GGA_X_PBE',
     'xmix': 0.25
 }
 
+##### EXAMPLE 1: Simple GP Functional #####
+# WARNING: Un-mapped GP functional provided as reference,
+# but functional derivatives are buggy.
+# Can load functionals using joblib
 mlfunc = joblib.load('test_files/gpr_example.joblib')
 mlfunc = GPFunctional(mlfunc)
 
 ks = numint.setup_rks_calc(mol, mlfunc, **settings)
 ks.kernel()
 
+# This routine tests the functional derivatives.
+# There are significant errors for the pure GP functional,
+# but not for the spline functional.
 for i in range(0,10):
     check_dm_rks(ks,i,i)
 
+##### EXAMPLE 2: Simple Spline Functional #####
+# Spline-based functionals are faster.
 mlfunc = joblib.load('test_files/agpr_spline_example.joblib')
+ks = numint.setup_rks_calc(mol, mlfunc, **settings)
+ks.kernel()
+
+for i in range(0,10):
+    check_dm_rks(ks,i,i)
+
+##### EXAMPLE 3: Accurate CIDER Functional #####
+mlfunc = NormGPFunctional.load('functionals/B3LYP_CIDER.yaml')
 ks = numint.setup_rks_calc(mol, mlfunc, **settings)
 ks.kernel()
 
