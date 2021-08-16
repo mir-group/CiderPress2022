@@ -406,6 +406,13 @@ class GPFunctional(MLFunctional):
 
     def __init__(self, gpr):
         # Assumes kernel_ is (const * rbf) + noise
+        msg = """
+        GPFunctional is provided as a reference only. Its functional
+        derivatives are buggy, so please do not use it for practical
+        calculations.
+        """
+        import warnings
+        warnings.warn(msg)
         from sklearn.gaussian_process.kernels import RBF
         cov = gpr.gp.kernel_.k1
         self.alpha_ = cov.k1.constant_value * gpr.gp.alpha_
