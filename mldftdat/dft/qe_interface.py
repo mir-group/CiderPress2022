@@ -50,12 +50,13 @@ class TestPyFort:
                 np.abs(args[0].reshape(1,ngrid,nspin)),
                 args[1],
                 args[2].reshape(1,ngrid,nspin) * 0,
-                args[2].reshape(1,ngrid,nspin),
+                np.abs(args[2].reshape(1,ngrid,nspin)),
                 args[3].transpose(1,0,2)
             ])
             #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(),
             #    np.abs(raw_desc)[10:15].sum())
             if not no_swap:
+                #raw_desc[[6,15,16]] = np.maximum(raw_desc[[6,15,16]], 0)
                 raw_desc[7:10] = raw_desc[7:10][l1_qe2py]
                 raw_desc[7:9] *= -1
                 raw_desc[10:15] = raw_desc[10:15][l2_qe2py]
@@ -78,6 +79,9 @@ class TestPyFort:
                               np.sign(args[0][:,s]) * F[s]
                 dEddesc = (xfac * np.abs(args[0][:,s])**(4./3) * \
                           np.sign(args[0][:,s])).reshape(-1,1) * dF[s]
+                rho = raw_desc[0,:,s]
+                cond = args[0][:,s] > 1e-8
+                #dEddesc[cond,:] = 0
                 vfeat, v_nst, v_grad = functional_derivative_loop(
                     self.mlfunc, dEddesc,
                     raw_desc[:,:,s], raw_desc[:6,:,s],
@@ -90,17 +94,17 @@ class TestPyFort:
                     vfeat[5] *= -1
                     vfeat[7] *= -1
                     vfeat[4:9] = vfeat[4:9][l2_py2qe]
-                args[5][:,s] += xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s]
-                args[8][:,:,s] += vfeat.T
-                args[5][:,s] += v_nst[0]
+
+                args[5][cond,s] += (xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s])[cond]
+                args[8][cond,:,s] += vfeat[:,cond].T
+                args[5][cond,s] += v_nst[0][cond]
                 if no_swap:
-                    args[6][:,s] += v_nst[1]
+                    args[6][cond,s] += v_nst[1][cond]
                 else:
-                    args[6][:,s] += v_nst[1] * 2
-                args[7][:,s] += v_nst[3] # TODO ADD THIS
-                #print('tau sum', v_nst[3].sum(), v_nst.shape)
+                    args[6][cond,s] += v_nst[1][cond] * 2
+                args[7][cond,s] += v_nst[3][cond]
+                args[10][:,cond,s] += v_grad[:,cond]
                 
-                args[10][:,:,s] += v_grad
         except Exception as e:
             print(str(e))
             traceback.print_exc()
