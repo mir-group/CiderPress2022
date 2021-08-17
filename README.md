@@ -14,6 +14,10 @@ See the `test_scripts/run_example_calculation.py` for examples of running calcul
 
 See the scripts contained in test_scripts/ for examples of running the different scripts used to train CIDER functionals. Calling `sh test_scripts/workflow.sh` runs a complete workflow to generate a GP functional (directly calls a Gaussian Process to evaluate a functional) and a Spline Functional (maps the GP to a spline for computational efficiency). See `mldftdat.scripts` for the command options for different training-related scripts.
 
+## External Licenses
+
+Parts of this code (namely `mldftdat.dft.numint` and `mldftdat.models.kernels`) copy a decent portion of code from PySCF () and scikit-learn (), respectively. As such, these two modules contain the appropriate copyright notices, and the licenses for these codes are stored in the `external_licenses/` directory.
+
 ## Questions and Comments
 
 Find a bug? Areas of code unclearly documented? Other questions? Feel free to contact

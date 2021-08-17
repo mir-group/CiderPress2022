@@ -1,0 +1,1 @@
+The mldftdat.dft.numint module contains significant code segments from PySCF https://github.com/pyscf/pyscf. This code is noted in the package and subject to the Apache 2.0 LICENSE provided here. The PySCF NOTICE file is also included.
