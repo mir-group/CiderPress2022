@@ -16,7 +16,7 @@ See the scripts contained in test_scripts/ for examples of running the different
 
 ## External Licenses
 
-Parts of this code (namely `mldftdat.dft.numint` and `mldftdat.models.kernels`) copy a decent portion of code from PySCF () and scikit-learn (), respectively. As such, these two modules contain the appropriate copyright notices, and the licenses for these codes are stored in the `external_licenses/` directory.
+Parts of this code (namely `mldftdat.dft.numint` and `mldftdat.models.kernels`) copy a decent portion of code from PySCF (https://github.com/pyscf/pyscf) and scikit-learn (https://github.com/scikit-learn/scikit-learn), respectively. As such, these two modules contain the appropriate copyright notices, and the licenses for these codes are stored in the `external_licenses/` directory.
 
 ## Questions and Comments
 
