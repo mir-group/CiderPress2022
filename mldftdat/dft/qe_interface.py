@@ -43,9 +43,9 @@ class TestPyFort:
         no_swap = kwargs.get('no_swap') or False
         try:
             xfac = args[9] * LDA_FACTOR
-            #print(xfac)
             nspin = args[0].shape[-1]
             ngrid = args[0].shape[-2]
+            print("SHAPE", nspin, ngrid)
             raw_desc = np.concatenate([
                 np.abs(args[0].reshape(1,ngrid,nspin)),
                 args[1],
@@ -53,10 +53,11 @@ class TestPyFort:
                 np.abs(args[2].reshape(1,ngrid,nspin)),
                 args[3].transpose(1,0,2)
             ])
+            raw_desc *= nspin
             #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(),
             #    np.abs(raw_desc)[10:15].sum())
             if not no_swap:
-                #raw_desc[[6,15,16]] = np.maximum(raw_desc[[6,15,16]], 0)
+                # convention for Ylm in QE is without (-1)^m prefactor
                 raw_desc[7:10] = raw_desc[7:10][l1_qe2py]
                 raw_desc[7:9] *= -1
                 raw_desc[10:15] = raw_desc[10:15][l2_qe2py]
@@ -65,29 +66,20 @@ class TestPyFort:
             contracted_desc = [None] * nspin
             F = [None] * nspin
             dF = [None] * nspin
-            # TODO remove line below
-            #raw_desc[5,:,:] = np.linalg.norm(raw_desc[1:4,:,:], axis=0)**2 / (8*raw_desc[0,:,:])
-            #rho_data = raw_desc[:6]
-            #rho, g, alpha = get_dft_input2(rho_data)[:3]
-            #test_permutations(raw_desc[1:4,:,0], raw_desc[7:10,:,0])
-            #print (np.mean(1/(1+alpha**2)*rho)/np.mean(rho))
             for s in range(nspin):
+                rho = raw_desc[0,:,s]
                 contracted_desc[s] = contract_exchange_descriptors(raw_desc[:,:,s])
                 contracted_desc[s] = contracted_desc[s][self.mlfunc.desc_order]
                 F[s], dF[s] = self.mlfunc.get_F_and_derivative(contracted_desc[s])
-                args[4][:] += xfac * np.abs(args[0][:,s])**(4./3) * \
-                              np.sign(args[0][:,s]) * F[s]
-                dEddesc = (xfac * np.abs(args[0][:,s])**(4./3) * \
-                          np.sign(args[0][:,s])).reshape(-1,1) * dF[s]
-                rho = raw_desc[0,:,s]
-                cond = args[0][:,s] > 1e-8
-                #dEddesc[cond,:] = 0
+                args[4][:] += xfac * np.abs(rho)**(4./3) * \
+                              np.sign(rho) * F[s] / nspin
+                dEddesc = (xfac * np.abs(rho)**(4./3) * \
+                          np.sign(rho)).reshape(-1,1) * dF[s]
+                cond = rho > 1e-8
                 vfeat, v_nst, v_grad = functional_derivative_loop(
                     self.mlfunc, dEddesc,
                     raw_desc[:,:,s], raw_desc[:6,:,s],
                 )
-                #print('feat sum', raw_desc[6].sum(), np.abs(raw_desc[7:10]).sum(), np.abs(raw_desc)[10:15].sum(), vfeat.shape)
-                #print('vfeat sum', vfeat[0].sum(), np.abs(vfeat[1:4]).sum(), np.abs(vfeat[4:9]).sum(), vfeat.shape)
                 if not no_swap:
                     vfeat[1:3] *= -1
                     vfeat[1:4] = vfeat[1:4][l1_py2qe]
@@ -95,18 +87,22 @@ class TestPyFort:
                     vfeat[7] *= -1
                     vfeat[4:9] = vfeat[4:9][l2_py2qe]
 
-                args[5][cond,s] += (xfac * 4.0/3 * np.abs(args[0][:,s])**(1./3) * F[s])[cond]
+                args[5][cond,s] += (xfac * 4.0/3 * np.abs(rho)**(1./3) * F[s])[cond]
                 args[8][cond,:,s] += vfeat[:,cond].T
                 args[5][cond,s] += v_nst[0][cond]
                 if no_swap:
                     args[6][cond,s] += v_nst[1][cond]
                 else:
-                    args[6][cond,s] += v_nst[1][cond] * 2
+                    args[6][cond,s] += v_nst[1][cond] * 2 * nspin
                 args[7][cond,s] += v_nst[3][cond]
                 args[10][:,cond,s] += v_grad[:,cond]
-                
+
+                vfeat = v_nst = v_grad = None
+            raw_desc = None
+            args = None
+            vfeat = None
+            contracted_desc = None
         except Exception as e:
-            print(str(e))
             traceback.print_exc()
             raise e
 
