@@ -410,6 +410,8 @@ class GPFunctional(MLFunctional):
         GPFunctional is provided as a reference only. Its functional
         derivatives are buggy, so please do not use it for practical
         calculations.
+
+        gpr is a mldftdat.models.gp.DFTGPR object
         """
         import warnings
         warnings.warn(msg)
