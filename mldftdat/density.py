@@ -398,8 +398,6 @@ def get_exchange_descriptors2(analyzer, restricted=True, version='a',
     """
     if version == 'a':
         _get_x_helper = _get_x_helper_a
-    elif version == 'b':
-        _get_x_helper = _get_x_helper_b
     elif version == 'c':
         _get_x_helper = _get_x_helper_c
     else:
