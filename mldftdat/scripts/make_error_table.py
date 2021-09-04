@@ -215,7 +215,7 @@ def error_table2(dirs, Analyzer, models, rows):
            (columns, rows, errtbl),\
            data_dict
 
-def error_table3(dirs, Analyzer, models, rows):
+def error_table3(dirs, Analyzer, models, rows, basis, functional):
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -238,8 +238,8 @@ def error_table3(dirs, Analyzer, models, rows):
             symbol = chemical_symbols[Z]
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        SAVE_ROOT, letter, Z, symbol, spin)
+            path = '{}/{}KS/{}/{}/atoms/{}-{}-{}/data.hdf5'.format(
+                        SAVE_ROOT, letter, functional, basis, Z, symbol, spin)
             if letter == 'R':
                 element_analyzers[Z] = RHFAnalyzer.load(path)
             else:
@@ -305,7 +305,7 @@ def error_table3(dirs, Analyzer, models, rows):
     return (fxlst_true, fxlst_pred, errlst, ae_errlst),\
            (columns, rows, errtbl)
 
-def error_table3u(dirs, Analyzer, models, rows):
+def error_table3u(dirs, Analyzer, models, rows, basis, functional):
     errlst = [[] for _ in models]
     ae_errlst = [[] for _ in models]
     fxlst_pred = [[] for _ in models]
@@ -328,8 +328,8 @@ def error_table3u(dirs, Analyzer, models, rows):
             symbol = chemical_symbols[Z]
             spin = int(ground_state_magnetic_moments[Z])
             letter = 'R' if spin == 0 else 'U'
-            path = '{}/{}KS/SCAN/aug-cc-pvtz/atoms/{}-{}-{}/data.hdf5'.format(
-                        SAVE_ROOT, letter, Z, symbol, spin)
+            path = '{}/{}KS/{}/{}/atoms/{}-{}-{}/data.hdf5'.format(
+                        SAVE_ROOT, letter, functional, basis, Z, symbol, spin)
             if letter == 'R':
                 element_analyzers[Z] = RHFAnalyzer.load(path)
             else:
@@ -559,7 +559,7 @@ if __name__ == '__main__':
         lib.chkfile.dump('errtbl_out_%d.hdf5' % NUM, 'data', res3)
         print(df.to_latex())
     elif args.version == '3':
-        res1, res2 = error_table3(dirs, Analyzer, models, rows)
+        res1, res2 = error_table3(dirs, Analyzer, models, rows, args.basis, args.functional)
         fxlst_true, fxlst_pred, errlst, ae_errlst = res1
         columns, rows, errtbl = res2
         print(res1)
@@ -568,7 +568,7 @@ if __name__ == '__main__':
         df = pd.DataFrame(errtbl, index=rows, columns=columns)
         print(df.to_latex())
     elif args.version == 'u':
-        res1, res2 = error_table3u(dirs, Analyzer, models, rows)
+        res1, res2 = error_table3u(dirs, Analyzer, models, rows, args.basis, args.functional)
         fxlst_true, fxlst_pred, errlst, ae_errlst = res1
         columns, rows, errtbl = res2
         print(res1)
