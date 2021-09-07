@@ -18,7 +18,7 @@ h2o = gto.M(
 no = gto.M(atom='N 0 0 0; O 0 0 1.15', basis='def2-tzvp', spin=1)
 
 print('loading CIDER')
-mlfunc = NormGPFunctional.load('functionals/B3LYP_CIDER.yaml')
+mlfunc = NormGPFunctional.load('functionals/CIDER_X_AHW.yaml')
 print('loaded CIDER')
 
 class TestCIDER():
