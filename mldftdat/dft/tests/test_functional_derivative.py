@@ -50,7 +50,6 @@ def check_dm_rks(mf,i,j):
     return err
 
 BAS='def2-tzvp'
-functional = 'CIDER_B3LYP_AHW'
 mol = gto.M(atom='O', basis=BAS, spin=2, verbose=4)
 
 from mldftdat.dft import numint
@@ -61,7 +60,7 @@ settings = {
     'xmix': 0.2
 }
 
-mlfunc = NormGPFunctional.load('functionals/B3LYP_CIDER.yaml')
+mlfunc = NormGPFunctional.load('functionals/CIDER_X_AHW.yaml')
 
 ks = numint.setup_uks_calc(mol, mlfunc, **settings)
 ks.kernel()
@@ -79,8 +78,8 @@ for i in range(1,6):
         err = check_dm_uks(ks,s,i,i)
         assert_almost_equal(err, 0, 5)
     err = check_dm_rks(ks2,i,i)
-    print(err)
-    #assert_almost_equal(err, 0, 5)
+    #print(err)
+    assert_almost_equal(err, 0, 5)
 
 for i in range(0,7,2):
     for j in range(i,7,2):
@@ -88,5 +87,5 @@ for i in range(0,7,2):
             err = check_dm_uks(ks,s,i,j)
             assert_almost_equal(err, 0, 5)
         err = check_dm_rks(ks2,i,j)
-        print(err)
-        #assert_almost_equal(err, 0, 5)
+        #print(err)
+        assert_almost_equal(err, 0, 5)

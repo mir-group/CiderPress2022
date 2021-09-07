@@ -83,6 +83,9 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
             values = values[indexes]
             descriptor_data = descriptor_data[:,indexes]
             rho_data = rho_data[:,indexes]
+            weights = analyzer.grid.weights[indexes]
+        else:
+            weights = analyzer.grid.weights
 
         if all_descriptor_data is None:
             all_descriptor_data = descriptor_data
@@ -94,10 +97,10 @@ def compile_dataset2(DATASET_NAME, MOL_IDS, SAVE_ROOT, CALC_TYPE, FUNCTIONAL, BA
         else:
             all_rho_data = np.append(all_rho_data, rho_data, axis=1)
         all_values = np.append(all_values, values)
-        all_weights = np.append(all_weights, analyzer.grid.weights)
+        all_weights = np.append(all_weights, weights)
         if not restricted:
             # two copies for unrestricted case
-            all_weights = np.append(all_weights, analyzer.grid.weights)
+            all_weights = np.append(all_weights, weights)
         cutoffs.append(all_values.shape[0])
 
     DATASET_NAME = os.path.basename(DATASET_NAME)

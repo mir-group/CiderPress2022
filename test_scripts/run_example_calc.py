@@ -64,7 +64,7 @@ for i in range(0,10):
     check_dm_rks(ks,i,i)
 
 ##### EXAMPLE 3: Accurate CIDER Functional #####
-mlfunc = NormGPFunctional.load('functionals/B3LYP_CIDER.yaml')
+mlfunc = NormGPFunctional.load('functionals/CIDER_X_AHW.yaml')
 ks = numint.setup_rks_calc(mol, mlfunc, **settings)
 ks.kernel()
 
