@@ -1,0 +1,3 @@
+mlfunc_file: SPLINE_A_HEG_WIDE.joblib
+xc: '.08*SLATER + .72*B88, .81*LYP + .19*VWN'
+xmix: 0.2
