@@ -334,9 +334,9 @@ class NLNumInt(pyscf_numint.NumInt):
                 vxc[0][:] += vxc0[0]
             if vxc0[1] is not None:
                 vxc[1][:] += vxc0[1]
-            if vxc0[2] is not None:
+            if len(vxc0) > 2 and vxc0[2] is not None:
                 vxc[2][:] += vxc0[2]
-            if vxc0[3] is not None:
+            if len(vxc0) > 3 and vxc0[3] is not None:
                 vxc[3][:] += vxc0[3]
         return exc, vxc, None, None 
 
