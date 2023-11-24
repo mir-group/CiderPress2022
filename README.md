@@ -2,6 +2,12 @@
 
 Tools for training and evaluating CIDER functionals for use in Density Functional Theory calculations.
 
+**NOTE**: Due to issues with LFS bandwidth, the CIDER_X_AHW.yaml file containing the functional from the JCTC2022 paper has been removed from the repository and is available here instead: https://drive.google.com/file/d/113fMxP3ElYEAFKF-qso7wlNnrKRTLl_Y/view?usp=sharing.
+
+To use the repository, first clone it and then download CIDER_X_AHW.yaml and place it in the functionals/ directory. We will work on a more permanent solution for storing the data in the near future. Please post an issue if you have difficulty accessing anything.
+
+Also note that we will soon release a new version of CIDER featuring more accurate, more transferable, and much faster functionals (https://arxiv.org/abs/2303.00682), but are still in the peer review process.
+
 ## What is the CIDER model?
 
 Machine Learning (ML) has recently gained attention as a means to fit more accurate Exchange-Correlation (XC) functionals for use in Density Functional Theory (DFT). We have recently developed the CIDER model, a set of features that efficiently describe the electronic environment around a reference point in real space and can be used as input for ML-XC functionals. **CIDER** stands for **C**ompressed scale-**I**nvariant **DE**nsity **R**epresentation, which refers to the fact that the descriptors are invariant under squishing or expanding of the density while maintaining its shape. This property makes it efficient for learning the XC functional, especially the exchange energy.
@@ -22,3 +28,22 @@ Parts of this code (namely `mldftdat.dft.numint` and `mldftdat.models.kernels`) 
 
 Find a bug? Areas of code unclearly documented? Other questions? Feel free to contact
 Kyle Bystrom at kylebystrom@gmail.com AND/OR create an issue on the Github page at https://github.com/mir-group/CiderPress.
+
+## Citing
+
+If you use the CiderPress code or our functional design approach in your research, please cite the following work:
+```
+@article{Bystrom2022,
+author = {Bystrom, Kyle and Kozinsky, Boris},
+doi = {10.1021/acs.jctc.1c00904},
+issn = {1549-9618},
+journal = {J. Chem. Theory Comput.},
+month = {apr},
+number = {4},
+pages = {2180--2192},
+title = {{CIDER: An Expressive, Nonlocal Feature Set for Machine Learning Density Functionals with Exact Constraints}},
+url = {https://pubs.acs.org/doi/10.1021/acs.jctc.1c00904},
+volume = {18},
+year = {2022}
+}
+```
