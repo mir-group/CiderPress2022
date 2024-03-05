@@ -1,5 +1,7 @@
 # CiderPress
 
+**NOTICE**: This repository only contains the code for our 2022 paper in JCTC (https://pubs.acs.org/doi/10.1021/acs.jctc.1c00904). If you are looking for the code to run the CIDER calculations in our 2023 preprint (https://arxiv.org/abs/2303.00682), please see the new codebase at https://github.com/mir-group/CiderPressLite.
+
 Tools for training and evaluating CIDER functionals for use in Density Functional Theory calculations.
 
 **NOTE**: Due to issues with LFS bandwidth, the CIDER_X_AHW.yaml file containing the functional from the JCTC2022 paper has been removed from the repository and is available here instead: https://drive.google.com/file/d/113fMxP3ElYEAFKF-qso7wlNnrKRTLl_Y/view?usp=sharing.
